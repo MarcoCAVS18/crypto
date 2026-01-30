@@ -1,55 +1,60 @@
-import { getExchange, SUPPORTED_SYMBOLS, SUPPORTED_TIMEFRAMES } from '../config/exchange.js';
+// Usa CoinGecko API (sin restricciones geográficas)
 
-// Cache para almacenar datos temporalmente
+const COINGECKO_IDS = {
+  BTC: 'bitcoin',
+  PAXG: 'pax-gold'
+};
+
 const cache = {
   BTC: null,
   PAXG: null,
   lastUpdate: null
 };
 
-// Obtiene datos de mercado para un símbolo específico
+// Obtiene datos de mercado usando CoinGecko
 export async function getCryptoData(symbol, timeframe = '4h', limit = 100) {
-  const exchange = getExchange();
-  const pair = SUPPORTED_SYMBOLS[symbol];
+  const coinId = COINGECKO_IDS[symbol];
 
-  if (!pair) {
+  if (!coinId) {
     throw new Error(`Símbolo no soportado: ${symbol}`);
   }
 
-  if (!SUPPORTED_TIMEFRAMES.includes(timeframe)) {
-    throw new Error(`Timeframe no soportado: ${timeframe}`);
-  }
-
   try {
-    // Obtener ticker actual
-    const ticker = await exchange.fetchTicker(pair);
+    // Obtener precio actual y datos de mercado
+    const marketRes = await fetch(
+      `https://api.coingecko.com/api/v3/coins/${coinId}?localization=false&tickers=false&community_data=false&developer_data=false`
+    );
+    const marketData = await marketRes.json();
 
-    // Obtener velas históricas
-    const ohlcv = await exchange.fetchOHLCV(pair, timeframe, undefined, limit);
+    // Obtener datos históricos para velas (últimos 30 días)
+    const days = timeframe === '1d' ? 90 : timeframe === '4h' ? 30 : 7;
+    const historyRes = await fetch(
+      `https://api.coingecko.com/api/v3/coins/${coinId}/ohlc?vs_currency=usd&days=${days}`
+    );
+    const ohlcData = await historyRes.json();
 
     // Formatear velas
-    const candles = ohlcv.map(candle => ({
-      timestamp: candle[0],
-      open: candle[1],
-      high: candle[2],
-      low: candle[3],
-      close: candle[4],
-      volume: candle[5]
+    const candles = ohlcData.map(c => ({
+      timestamp: c[0],
+      open: c[1],
+      high: c[2],
+      low: c[3],
+      close: c[4],
+      volume: marketData.market_data?.total_volume?.usd || 0
     }));
 
     const data = {
       symbol: symbol,
-      pair: pair,
-      price: ticker.last,
-      change24h: ticker.percentage,
-      volume: ticker.quoteVolume,
-      high24h: ticker.high,
-      low24h: ticker.low,
-      candles: candles,
+      pair: `${symbol}/USDT`,
+      price: marketData.market_data.current_price.usd,
+      change24h: marketData.market_data.price_change_percentage_24h,
+      volume: marketData.market_data.total_volume.usd,
+      high24h: marketData.market_data.high_24h.usd,
+      low24h: marketData.market_data.low_24h.usd,
+      candles: candles.slice(-limit),
       timestamp: new Date().toISOString()
     };
 
-    // Actualizar cache
     cache[symbol] = data;
     cache.lastUpdate = new Date();
 
@@ -57,7 +62,6 @@ export async function getCryptoData(symbol, timeframe = '4h', limit = 100) {
   } catch (error) {
     console.error(`Error obteniendo datos de ${symbol}:`, error.message);
 
-    // Retornar cache si existe
     if (cache[symbol]) {
       console.log(`Usando datos en cache para ${symbol}`);
       return cache[symbol];
@@ -67,27 +71,12 @@ export async function getCryptoData(symbol, timeframe = '4h', limit = 100) {
   }
 }
 
-// Obtiene datos de múltiples timeframes para un símbolo
-export async function getMultiTimeframeData(symbol) {
-  const timeframes = ['1h', '4h', '1d'];
-  const data = {};
-
-  for (const tf of timeframes) {
-    data[tf] = await getCryptoData(symbol, tf, 100);
-  }
-
-  return data;
-}
-
-// Obtiene el cache actual
 export function getCache() {
   return cache;
 }
 
-// Verifica si el cache está actualizado (menos de 5 minutos)
 export function isCacheValid() {
   if (!cache.lastUpdate) return false;
-  const now = new Date();
-  const diff = now - cache.lastUpdate;
-  return diff < 5 * 60 * 1000; // 5 minutos
+  const diff = new Date() - cache.lastUpdate;
+  return diff < 5 * 60 * 1000;
 }
