@@ -6,16 +6,21 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const dbPath = path.join(__dirname, '../../data/decisions.db');
+// Usar /tmp en producción (Render), data/ en local
+const dbPath = process.env.NODE_ENV === 'production'
+  ? '/tmp/decisions.db'
+  : path.join(__dirname, '../../data/decisions.db');
 
 let db = null;
 
 // Inicializa la base de datos y crea las tablas si no existen
 export function initDatabase() {
-  // Crear directorio data si no existe
-  const dataDir = path.dirname(dbPath);
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
+  // Crear directorio si no existe (solo para local)
+  if (process.env.NODE_ENV !== 'production') {
+    const dataDir = path.dirname(dbPath);
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
   }
 
   db = new Database(dbPath);
