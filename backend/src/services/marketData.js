@@ -1,8 +1,8 @@
-// Usa CryptoCompare API (rate limit más generoso que CoinGecko)
+// Coinbase API - realmente gratis sin rate limiting agresivo
 
-const SYMBOLS = {
-  BTC: 'BTC',
-  PAXG: 'PAXG'
+const COINBASE_IDS = {
+  BTC: 'BTC-USD',
+  PAXG: 'PAXG-USD'
 };
 
 const cache = {
@@ -11,40 +11,38 @@ const cache = {
   lastUpdate: null
 };
 
-// Datos de respaldo si la API falla
-const FALLBACK_DATA = {
-  BTC: { price: 83000, high: 85000, low: 81000, change: -2 },
-  PAXG: { price: 2900, high: 2950, low: 2850, change: 0.5 }
-};
-
 export async function getCryptoData(symbol, timeframe = '4h', limit = 100) {
-  if (!SYMBOLS[symbol]) {
+  if (!COINBASE_IDS[symbol]) {
     throw new Error(`Símbolo no soportado: ${symbol}`);
   }
 
-  // Cache de 3 minutos
-  if (cache[symbol] && (Date.now() - new Date(cache[symbol].timestamp).getTime()) < 180000) {
+  // Cache de 2 minutos
+  if (cache[symbol] && (Date.now() - new Date(cache[symbol].timestamp).getTime()) < 120000) {
     return cache[symbol];
   }
 
   try {
-    // CryptoCompare API
-    const res = await fetch(
-      `https://min-api.cryptocompare.com/data/pricemultifull?fsyms=${symbol}&tsyms=USD`
-    );
-    const json = await res.json();
+    const pair = COINBASE_IDS[symbol];
 
-    if (!json?.RAW?.[symbol]?.USD) {
-      console.error('CryptoCompare response:', JSON.stringify(json));
-      return useFallback(symbol);
+    // Obtener precio actual
+    const tickerRes = await fetch(`https://api.coinbase.com/v2/prices/${pair}/spot`);
+    const tickerData = await tickerRes.json();
+
+    if (!tickerData?.data?.amount) {
+      throw new Error('No price data');
     }
 
-    const raw = json.RAW[symbol].USD;
-    const price = raw.PRICE;
-    const high = raw.HIGH24HOUR;
-    const low = raw.LOW24HOUR;
-    const change = raw.CHANGEPCT24HOUR;
-    const volume = raw.VOLUME24HOURTO;
+    const price = parseFloat(tickerData.data.amount);
+
+    // Obtener stats 24h
+    const statsRes = await fetch(`https://api.exchange.coinbase.com/products/${pair}/stats`);
+    const stats = await statsRes.json();
+
+    const high = parseFloat(stats.high) || price * 1.02;
+    const low = parseFloat(stats.low) || price * 0.98;
+    const volume = parseFloat(stats.volume_30day) || 1000000;
+    const open = parseFloat(stats.open) || price;
+    const change = ((price - open) / open) * 100;
 
     // Generar velas sintéticas
     const candles = generateCandles(price, high, low, volume);
@@ -68,28 +66,13 @@ export async function getCryptoData(symbol, timeframe = '4h', limit = 100) {
     return data;
   } catch (error) {
     console.error(`Error ${symbol}:`, error.message);
-    return useFallback(symbol);
+
+    if (cache[symbol]) {
+      return cache[symbol];
+    }
+
+    throw error;
   }
-}
-
-function useFallback(symbol) {
-  if (cache[symbol]) return cache[symbol];
-
-  const fb = FALLBACK_DATA[symbol];
-  const data = {
-    symbol,
-    pair: `${symbol}/USDT`,
-    price: fb.price,
-    change24h: fb.change,
-    volume: 1000000000,
-    high24h: fb.high,
-    low24h: fb.low,
-    candles: generateCandles(fb.price, fb.high, fb.low, 1000000000),
-    timestamp: new Date().toISOString()
-  };
-
-  cache[symbol] = data;
-  return data;
 }
 
 function generateCandles(price, high, low, volume) {
