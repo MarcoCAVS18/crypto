@@ -2,8 +2,11 @@
 
 const COINGECKO_IDS = {
   BTC: 'bitcoin',
-  PAXG: 'paxos-gold'
+  PAXG: 'pax-gold'
 };
+
+// Delay para evitar rate limiting
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 const cache = {
   BTC: null,
@@ -21,16 +24,25 @@ export async function getCryptoData(symbol, timeframe = '4h', limit = 100) {
 
   try {
     // Obtener precio actual y datos de mercado
+    // Usar cache si existe y es válido (evita rate limiting)
+    if (cache[symbol] && (Date.now() - new Date(cache[symbol].timestamp).getTime()) < 60000) {
+      return cache[symbol];
+    }
+
     const marketRes = await fetch(
       `https://api.coingecko.com/api/v3/coins/${coinId}?localization=false&tickers=false&community_data=false&developer_data=false`
     );
     const marketData = await marketRes.json();
 
     if (!marketData?.market_data?.current_price?.usd) {
+      console.error('CoinGecko response:', JSON.stringify(marketData));
+      if (cache[symbol]) return cache[symbol];
       throw new Error(`No se pudo obtener precio para ${symbol}`);
     }
 
-    // Obtener datos históricos para velas (últimos 30 días)
+    await delay(500); // Evitar rate limit
+
+    // Obtener datos históricos para velas
     const days = timeframe === '1d' ? 90 : timeframe === '4h' ? 30 : 7;
     const historyRes = await fetch(
       `https://api.coingecko.com/api/v3/coins/${coinId}/ohlc?vs_currency=usd&days=${days}`
