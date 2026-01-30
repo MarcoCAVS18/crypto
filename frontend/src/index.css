@@ -15,6 +15,16 @@ body {
   @apply bg-gray-900 text-gray-100 min-h-screen;
 }
 
+/* Animaciones sutiles */
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 /* Scrollbar personalizado */
 ::-webkit-scrollbar {
   width: 8px;

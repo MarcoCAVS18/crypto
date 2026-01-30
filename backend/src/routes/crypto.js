@@ -77,12 +77,18 @@ router.post('/decision', async (req, res) => {
 
     const validSymbols = ['BTC', 'PAXG'];
     if (!validSymbols.includes(symbol.toUpperCase())) {
-      return res.status(400).json({ error: 'Símbolo no válido' });
+      return res.status(400).json({ error: 'Símbolo no válido. Usa BTC o PAXG' });
     }
 
     const validModes = ['inversion', 'trading', 'observacion'];
     if (mode && !validModes.includes(mode)) {
-      return res.status(400).json({ error: 'Modo no válido' });
+      return res.status(400).json({ error: 'Modo no válido. Usa: inversion, trading u observacion' });
+    }
+
+    // Validar cashPercent
+    const cash = Number(cashPercent);
+    if (isNaN(cash) || cash < 0 || cash > 100) {
+      return res.status(400).json({ error: 'Cash debe ser un número entre 0 y 100' });
     }
 
     // Obtener datos de mercado

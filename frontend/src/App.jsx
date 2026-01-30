@@ -134,7 +134,7 @@ function App() {
       <div className="max-w-6xl mx-auto px-4 py-6">
         <div className="flex flex-col lg:flex-row gap-6">
           {/* Contenido principal */}
-          <main className="flex-1 space-y-6">
+          <main className="flex-1 space-y-6 animate-fade-in">
             {loading && !currentData ? (
               <div className="flex items-center justify-center py-20">
                 <Spinner size="lg" />
