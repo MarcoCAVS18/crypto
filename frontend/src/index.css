@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+/* Colores personalizados para el proyecto */
+@theme {
+  --color-risk-on: #10b981;
+  --color-risk-neutral: #f59e0b;
+  --color-risk-off: #ef4444;
+  --color-zone-buy: #34d399;
+  --color-zone-neutral: #fbbf24;
+  --color-zone-sell: #f87171;
+}
+
+/* Estilos base */
+body {
+  @apply bg-gray-900 text-gray-100 min-h-screen;
+}
+
+/* Scrollbar personalizado */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-gray-800;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-600 rounded;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-500;
+}

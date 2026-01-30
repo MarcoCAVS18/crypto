@@ -1,0 +1,237 @@
+// Componente principal de la aplicación
+import { useEffect, useState } from 'react';
+import { useAppStore } from './store/appStore';
+import { Card } from './components/ui/Card';
+import { Spinner } from './components/ui/Spinner';
+import { CryptoSelector } from './components/CryptoSelector';
+import { MarketModeIndicator } from './components/MarketModeIndicator';
+import { PriceDisplay } from './components/PriceDisplay';
+import { ZoneMap } from './components/ZoneMap';
+import { TechnicalAnalysis } from './components/TechnicalAnalysis';
+import { UserStateInput } from './components/UserStateInput';
+import { DecisionPanel } from './components/DecisionPanel';
+import { RulesDisplay } from './components/RulesDisplay';
+import { RefreshCw, AlertCircle, Menu, X } from 'lucide-react';
+import { formatRelativeTime } from './utils/formatters';
+import { AUTO_REFRESH_INTERVAL } from './utils/constants';
+
+function App() {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const {
+    selectedCrypto,
+    cryptoData,
+    userState,
+    currentDecision,
+    loading,
+    decisionLoading,
+    error,
+    serverWaking,
+    lastUpdate,
+    setSelectedCrypto,
+    loadCryptoData,
+    updateUserState,
+    getDecision,
+    refreshData,
+    clearError
+  } = useAppStore();
+
+  // Cargar datos iniciales
+  useEffect(() => {
+    loadCryptoData(selectedCrypto);
+  }, []);
+
+  // Auto-refresh cada 5 minutos
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refreshData();
+    }, AUTO_REFRESH_INTERVAL);
+
+    return () => clearInterval(interval);
+  }, [selectedCrypto]);
+
+  const currentData = cryptoData[selectedCrypto];
+
+  const handleUserStateSubmit = ({ cashPercent, mode }) => {
+    updateUserState({ cashPercent, mode });
+    getDecision();
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-900">
+      {/* Header */}
+      <header className="bg-gray-800 border-b border-gray-700 sticky top-0 z-50">
+        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <h1 className="text-xl font-bold text-white">Crypto Context</h1>
+            <CryptoSelector
+              selected={selectedCrypto}
+              onSelect={setSelectedCrypto}
+            />
+          </div>
+
+          <div className="flex items-center gap-3">
+            {/* Última actualización */}
+            {lastUpdate && (
+              <span className="text-xs text-gray-500 hidden sm:block">
+                Actualizado: {formatRelativeTime(lastUpdate)}
+              </span>
+            )}
+
+            {/* Botón refresh */}
+            <button
+              onClick={refreshData}
+              disabled={loading}
+              className="p-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-5 h-5 text-gray-400 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+
+            {/* Botón sidebar mobile */}
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="p-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition-colors lg:hidden"
+            >
+              {sidebarOpen ? (
+                <X className="w-5 h-5 text-gray-400" />
+              ) : (
+                <Menu className="w-5 h-5 text-gray-400" />
+              )}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Server waking banner */}
+      {serverWaking && (
+        <div className="bg-blue-500/20 border-b border-blue-500/50 px-4 py-3">
+          <div className="max-w-6xl mx-auto flex items-center justify-center gap-2 text-blue-400">
+            <RefreshCw className="w-4 h-4 animate-spin" />
+            <span className="text-sm">Despertando servidor... esto puede tardar 30 segundos</span>
+          </div>
+        </div>
+      )}
+
+      {/* Error banner */}
+      {error && (
+        <div className="bg-red-500/20 border-b border-red-500/50 px-4 py-2">
+          <div className="max-w-6xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-2 text-red-400">
+              <AlertCircle className="w-5 h-5" />
+              <span className="text-sm">{error}</span>
+            </div>
+            <button
+              onClick={clearError}
+              className="text-red-400 hover:text-red-300"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Main content */}
+      <div className="max-w-6xl mx-auto px-4 py-6">
+        <div className="flex flex-col lg:flex-row gap-6">
+          {/* Contenido principal */}
+          <main className="flex-1 space-y-6">
+            {loading && !currentData ? (
+              <div className="flex items-center justify-center py-20">
+                <Spinner size="lg" />
+              </div>
+            ) : currentData ? (
+              <>
+                {/* Market Mode */}
+                <Card>
+                  <MarketModeIndicator
+                    mode={currentData.marketMode?.mode}
+                    reasons={currentData.marketMode?.reasons}
+                  />
+                </Card>
+
+                {/* Precio */}
+                <Card>
+                  <PriceDisplay
+                    symbol={selectedCrypto}
+                    price={currentData.price}
+                    change24h={currentData.change24h}
+                  />
+                </Card>
+
+                {/* Mapa de zonas */}
+                {currentData.zones && (
+                  <Card>
+                    <h2 className="text-sm font-semibold text-gray-400 mb-4">
+                      Zonas de Precio
+                    </h2>
+                    <ZoneMap
+                      zones={currentData.zones}
+                      currentPrice={currentData.price}
+                    />
+                  </Card>
+                )}
+
+                {/* Análisis técnico */}
+                {currentData.technicalAnalysis && (
+                  <div>
+                    <h2 className="text-sm font-semibold text-gray-400 mb-3">
+                      Análisis Técnico
+                    </h2>
+                    <TechnicalAnalysis analysis={currentData.technicalAnalysis} />
+                  </div>
+                )}
+
+                {/* Input del usuario */}
+                <Card>
+                  <h2 className="text-sm font-semibold text-gray-400 mb-4">
+                    Tu Estado Actual
+                  </h2>
+                  <UserStateInput
+                    onSubmit={handleUserStateSubmit}
+                    initialCash={userState.cashPercent}
+                    initialMode={userState.mode}
+                  />
+                </Card>
+
+                {/* Panel de decisión */}
+                {decisionLoading ? (
+                  <Card className="flex items-center justify-center py-8">
+                    <Spinner />
+                  </Card>
+                ) : (
+                  <DecisionPanel decision={currentDecision} />
+                )}
+              </>
+            ) : (
+              <Card className="text-center py-10">
+                <p className="text-gray-400">
+                  No se pudieron cargar los datos. Intenta refrescar la página.
+                </p>
+              </Card>
+            )}
+          </main>
+
+          {/* Sidebar - Reglas */}
+          <aside className={`
+            lg:w-64 lg:block
+            ${sidebarOpen ? 'block' : 'hidden'}
+            fixed lg:static inset-0 top-16 z-40
+            lg:z-auto bg-gray-900/95 lg:bg-transparent
+            p-4 lg:p-0 overflow-auto
+          `}>
+            <RulesDisplay />
+          </aside>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <footer className="bg-gray-800 border-t border-gray-700 mt-10">
+        <div className="max-w-6xl mx-auto px-4 py-4 text-center text-xs text-gray-500">
+          Crypto Context Dashboard - Herramienta de análisis, no consejo financiero
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+export default App;
