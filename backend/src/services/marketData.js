@@ -1,12 +1,9 @@
-// Usa CoinGecko API (sin restricciones geográficas)
+// Usa CoinGecko API - endpoint simple (menos rate limiting)
 
 const COINGECKO_IDS = {
   BTC: 'bitcoin',
   PAXG: 'pax-gold'
 };
-
-// Delay para evitar rate limiting
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 const cache = {
   BTC: null,
@@ -22,78 +19,69 @@ export async function getCryptoData(symbol, timeframe = '4h', limit = 100) {
     throw new Error(`Símbolo no soportado: ${symbol}`);
   }
 
+  // Usar cache si es válido (2 minutos)
+  if (cache[symbol] && (Date.now() - new Date(cache[symbol].timestamp).getTime()) < 120000) {
+    console.log(`Usando cache para ${symbol}`);
+    return cache[symbol];
+  }
+
   try {
-    // Obtener precio actual y datos de mercado
-    // Usar cache si existe y es válido (evita rate limiting)
-    if (cache[symbol] && (Date.now() - new Date(cache[symbol].timestamp).getTime()) < 60000) {
-      return cache[symbol];
-    }
-
-    const marketRes = await fetch(
-      `https://api.coingecko.com/api/v3/coins/${coinId}?localization=false&tickers=false&community_data=false&developer_data=false`
+    // Endpoint simple (menos rate limiting)
+    const priceRes = await fetch(
+      `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true&include_high_low=true`
     );
-    const marketData = await marketRes.json();
+    const priceData = await priceRes.json();
 
-    if (!marketData?.market_data?.current_price?.usd) {
-      console.error('CoinGecko response:', JSON.stringify(marketData));
+    if (!priceData?.[coinId]?.usd) {
+      console.error('CoinGecko response:', JSON.stringify(priceData));
       if (cache[symbol]) return cache[symbol];
       throw new Error(`No se pudo obtener precio para ${symbol}`);
     }
 
-    await delay(500); // Evitar rate limit
+    const coinData = priceData[coinId];
+    const price = coinData.usd;
 
-    // Obtener datos históricos para velas
-    const days = timeframe === '1d' ? 90 : timeframe === '4h' ? 30 : 7;
-    const historyRes = await fetch(
-      `https://api.coingecko.com/api/v3/coins/${coinId}/ohlc?vs_currency=usd&days=${days}`
-    );
-    const ohlcData = await historyRes.json();
+    // Generar velas sintéticas basadas en high/low
+    const high = coinData.usd_24h_high || price * 1.02;
+    const low = coinData.usd_24h_low || price * 0.98;
+    const now = Date.now();
 
-    // Formatear velas (validar que sea array)
-    let candles = (Array.isArray(ohlcData) ? ohlcData : []).map(c => ({
-      timestamp: c[0],
-      open: c[1],
-      high: c[2],
-      low: c[3],
-      close: c[4],
-      volume: marketData.market_data?.total_volume?.usd || 0
-    }));
-
-    // Si no hay velas, crear sintéticas con precio actual
-    if (candles.length === 0) {
-      const price = marketData.market_data.current_price.usd;
-      const now = Date.now();
-      candles = Array.from({ length: 50 }, (_, i) => ({
+    const candles = Array.from({ length: 50 }, (_, i) => {
+      const progress = i / 49;
+      const variance = (Math.random() - 0.5) * (high - low) * 0.3;
+      const candlePrice = low + (high - low) * progress + variance;
+      return {
         timestamp: now - (50 - i) * 3600000,
-        open: price,
-        high: price * 1.01,
-        low: price * 0.99,
-        close: price,
-        volume: marketData.market_data?.total_volume?.usd || 0
-      }));
-    }
+        open: candlePrice * (1 - Math.random() * 0.005),
+        high: candlePrice * (1 + Math.random() * 0.01),
+        low: candlePrice * (1 - Math.random() * 0.01),
+        close: candlePrice,
+        volume: coinData.usd_24h_vol || 1000000
+      };
+    });
 
     const data = {
       symbol: symbol,
       pair: `${symbol}/USDT`,
-      price: marketData.market_data.current_price.usd,
-      change24h: marketData.market_data.price_change_percentage_24h,
-      volume: marketData.market_data.total_volume.usd,
-      high24h: marketData.market_data.high_24h.usd,
-      low24h: marketData.market_data.low_24h.usd,
-      candles: candles.slice(-limit),
+      price: price,
+      change24h: coinData.usd_24h_change || 0,
+      volume: coinData.usd_24h_vol || 0,
+      high24h: high,
+      low24h: low,
+      candles: candles,
       timestamp: new Date().toISOString()
     };
 
     cache[symbol] = data;
     cache.lastUpdate = new Date();
+    console.log(`Datos actualizados para ${symbol}: $${price}`);
 
     return data;
   } catch (error) {
     console.error(`Error obteniendo datos de ${symbol}:`, error.message);
 
     if (cache[symbol]) {
-      console.log(`Usando datos en cache para ${symbol}`);
+      console.log(`Usando cache para ${symbol} tras error`);
       return cache[symbol];
     }
 
