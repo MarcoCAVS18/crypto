@@ -2,7 +2,7 @@
 
 const COINGECKO_IDS = {
   BTC: 'bitcoin',
-  PAXG: 'pax-gold'
+  PAXG: 'paxos-gold'
 };
 
 const cache = {
@@ -25,6 +25,10 @@ export async function getCryptoData(symbol, timeframe = '4h', limit = 100) {
       `https://api.coingecko.com/api/v3/coins/${coinId}?localization=false&tickers=false&community_data=false&developer_data=false`
     );
     const marketData = await marketRes.json();
+
+    if (!marketData?.market_data?.current_price?.usd) {
+      throw new Error(`No se pudo obtener precio para ${symbol}`);
+    }
 
     // Obtener datos históricos para velas (últimos 30 días)
     const days = timeframe === '1d' ? 90 : timeframe === '4h' ? 30 : 7;
