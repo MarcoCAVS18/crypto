@@ -40,7 +40,7 @@ export function TechnicalAnalysis({ analysis }) {
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
       {metrics.map((metric, index) => (
         <Card key={index} className="p-3">
           <div className="flex items-start gap-2">

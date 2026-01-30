@@ -5,10 +5,10 @@ export function PriceDisplay({ symbol, price, change24h }) {
   const isPositive = change24h >= 0;
 
   return (
-    <div className="flex flex-col items-center gap-2">
-      <div className="flex items-baseline gap-2">
-        <span className="text-xl text-gray-400 font-medium">{symbol}</span>
-        <span className="text-4xl font-bold text-white">
+    <div className="flex flex-col items-center gap-1 sm:gap-2">
+      <div className="flex items-baseline gap-1 sm:gap-2">
+        <span className="text-lg sm:text-xl text-gray-400 font-medium">{symbol}</span>
+        <span className="text-2xl sm:text-4xl font-bold text-white">
           ${formatPrice(price)}
         </span>
       </div>

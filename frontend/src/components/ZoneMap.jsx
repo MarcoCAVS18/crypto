@@ -61,15 +61,15 @@ export function ZoneMap({ zones, currentPrice }) {
       </div>
 
       {/* Labels de precios */}
-      <div className="flex justify-between text-xs text-gray-500">
+      <div className="flex justify-between text-[10px] sm:text-xs text-gray-500 px-1">
         <span>${formatPrice(zones.buy.min)}</span>
-        <span>${formatPrice(zones.buy.max)}</span>
-        <span>${formatPrice(zones.sell.min)}</span>
+        <span className="hidden sm:inline">${formatPrice(zones.buy.max)}</span>
+        <span className="hidden sm:inline">${formatPrice(zones.sell.min)}</span>
         <span>${formatPrice(zones.sell.max)}</span>
       </div>
 
       {/* Razones de las zonas */}
-      <div className="mt-4 grid grid-cols-2 gap-4 text-xs">
+      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 text-xs">
         <div className="text-green-400">
           <span className="font-medium">Zona compra: </span>
           <span className="text-gray-400">{zones.buy.reason}</span>

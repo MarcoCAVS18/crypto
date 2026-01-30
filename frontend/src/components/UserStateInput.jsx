@@ -50,22 +50,22 @@ export function UserStateInput({ onSubmit, initialCash = 50, initialMode = 'inve
       <div className="space-y-3">
         <span className="text-sm text-gray-400">Modo de operación</span>
 
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-1 sm:gap-2">
           {modes.map((m) => (
             <button
               key={m.id}
               onClick={() => setMode(m.id)}
               className={`
-                flex flex-col items-center gap-1 p-3 rounded-lg border transition-all
+                flex flex-col items-center gap-0.5 sm:gap-1 p-2 sm:p-3 rounded-lg border transition-all
                 ${mode === m.id
                   ? 'bg-blue-500/20 border-blue-500 text-blue-400'
                   : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'
                 }
               `}
             >
-              <m.icon className="w-5 h-5" />
-              <span className="text-sm font-medium">{m.label}</span>
-              <span className="text-xs opacity-70">{m.description}</span>
+              <m.icon className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span className="text-xs sm:text-sm font-medium">{m.label}</span>
+              <span className="text-[10px] sm:text-xs opacity-70 hidden sm:block">{m.description}</span>
             </button>
           ))}
         </div>
