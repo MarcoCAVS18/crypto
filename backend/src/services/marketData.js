@@ -33,8 +33,8 @@ export async function getCryptoData(symbol, timeframe = '4h', limit = 100) {
     );
     const ohlcData = await historyRes.json();
 
-    // Formatear velas
-    const candles = ohlcData.map(c => ({
+    // Formatear velas (validar que sea array)
+    let candles = (Array.isArray(ohlcData) ? ohlcData : []).map(c => ({
       timestamp: c[0],
       open: c[1],
       high: c[2],
@@ -42,6 +42,20 @@ export async function getCryptoData(symbol, timeframe = '4h', limit = 100) {
       close: c[4],
       volume: marketData.market_data?.total_volume?.usd || 0
     }));
+
+    // Si no hay velas, crear sintéticas con precio actual
+    if (candles.length === 0) {
+      const price = marketData.market_data.current_price.usd;
+      const now = Date.now();
+      candles = Array.from({ length: 50 }, (_, i) => ({
+        timestamp: now - (50 - i) * 3600000,
+        open: price,
+        high: price * 1.01,
+        low: price * 0.99,
+        close: price,
+        volume: marketData.market_data?.total_volume?.usd || 0
+      }));
+    }
 
     const data = {
       symbol: symbol,
