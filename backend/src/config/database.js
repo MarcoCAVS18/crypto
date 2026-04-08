@@ -41,6 +41,23 @@ export function initDatabase() {
 
     CREATE INDEX IF NOT EXISTS idx_timestamp ON decisions(timestamp);
     CREATE INDEX IF NOT EXISTS idx_symbol ON decisions(symbol);
+
+    CREATE TABLE IF NOT EXISTS portfolio_operations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      date TEXT NOT NULL,
+      symbol TEXT NOT NULL,
+      type TEXT NOT NULL,
+      amount_usd REAL NOT NULL,
+      price REAL NOT NULL,
+      units REAL NOT NULL,
+      fee REAL DEFAULT 0,
+      exchange TEXT DEFAULT 'Binance',
+      notes TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_portfolio_symbol ON portfolio_operations(symbol);
+    CREATE INDEX IF NOT EXISTS idx_portfolio_date ON portfolio_operations(date);
   `);
 
   return db;
@@ -83,4 +100,74 @@ export function getDecisions(limit = 20) {
   `);
 
   return stmt.all(limit);
+}
+
+// ── Portfolio operations ───────────────────────────────────────────────────────
+
+export function addPortfolioOperation(op) {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    INSERT INTO portfolio_operations (date, symbol, type, amount_usd, price, units, fee, exchange, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  return stmt.run(
+    op.date,
+    op.symbol.toUpperCase(),
+    op.type.toUpperCase(),
+    op.amount_usd,
+    op.price,
+    op.units,
+    op.fee || 0,
+    op.exchange || 'Binance',
+    op.notes || null
+  );
+}
+
+export function getPortfolioOperations(symbol = null, limit = 100) {
+  const db = getDatabase();
+  if (symbol) {
+    return db.prepare(`
+      SELECT * FROM portfolio_operations WHERE symbol = ?
+      ORDER BY date DESC, id DESC LIMIT ?
+    `).all(symbol.toUpperCase(), limit);
+  }
+  return db.prepare(`
+    SELECT * FROM portfolio_operations
+    ORDER BY date DESC, id DESC LIMIT ?
+  `).all(limit);
+}
+
+export function deletePortfolioOperation(id) {
+  const db = getDatabase();
+  return db.prepare('DELETE FROM portfolio_operations WHERE id = ?').run(id);
+}
+
+export function getPortfolioSummary() {
+  const db = getDatabase();
+  const ops = db.prepare('SELECT * FROM portfolio_operations ORDER BY date ASC').all();
+
+  // Calcular balance por símbolo
+  const bySymbol = {};
+  for (const op of ops) {
+    if (!bySymbol[op.symbol]) {
+      bySymbol[op.symbol] = { symbol: op.symbol, units: 0, invested: 0, withdrawn: 0, fees: 0, operations: 0 };
+    }
+    const s = bySymbol[op.symbol];
+    s.operations += 1;
+    s.fees += op.fee || 0;
+    if (op.type === 'BUY') {
+      s.units += op.units;
+      s.invested += op.amount_usd;
+    } else if (op.type === 'SELL') {
+      s.units -= op.units;
+      s.withdrawn += op.amount_usd;
+    }
+  }
+
+  return Object.values(bySymbol).map(s => ({
+    ...s,
+    units: Math.max(0, s.units),
+    netInvested: s.invested - s.withdrawn,
+    avgBuyPrice: s.invested > 0 && s.units > 0 ? (s.invested - s.withdrawn) / s.units : 0
+  }));
 }

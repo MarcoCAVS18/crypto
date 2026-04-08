@@ -47,13 +47,22 @@ router.get('/:symbol', async (req, res) => {
       low24h: marketData.low24h,
       marketMode: marketMode,
       zones: zones,
+      candlesSource: marketData.candlesSource,
       technicalAnalysis: {
         trendShort: indicators.trendShort,
         trendLong: indicators.trendLong,
         volumeStatus: volumeAnalysis.status,
+        volumeRatio: Math.round(volumeAnalysis.ratio * 100) / 100,
         rsi: Math.round(indicators.rsi * 10) / 10,
         atr: Math.round(indicators.atr * 100) / 100,
-        ema200: indicators.ema.ema200 ? Math.round(indicators.ema.ema200 * 100) / 100 : null
+        atrPercent: indicators.atr && marketData.price
+          ? Math.round((indicators.atr / marketData.price) * 10000) / 100
+          : null,
+        ema20: indicators.ema.ema20 ? Math.round(indicators.ema.ema20 * 100) / 100 : null,
+        ema50: indicators.ema.ema50 ? Math.round(indicators.ema.ema50 * 100) / 100 : null,
+        ema200: indicators.ema.ema200 ? Math.round(indicators.ema.ema200 * 100) / 100 : null,
+        vwap: indicators.vwap ? Math.round(indicators.vwap * 100) / 100 : null,
+        candlesCount: marketData.candles.length
       }
     });
   } catch (error) {
@@ -68,7 +77,7 @@ router.get('/:symbol', async (req, res) => {
 // POST /api/decision - Genera una decisión basada en estado del usuario
 router.post('/decision', async (req, res) => {
   try {
-    const { symbol, cashPercent, mode } = req.body;
+    const { symbol, cashPercent, mode, totalCapital } = req.body;
 
     // Validaciones
     if (!symbol) {
@@ -105,10 +114,11 @@ router.post('/decision', async (req, res) => {
     // Generar decisión
     const userState = {
       cashPercent: cashPercent ?? 50,
-      mode: mode || 'inversion'
+      mode: mode || 'inversion',
+      totalCapital: parseFloat(totalCapital) || 0
     };
 
-    const decision = makeDecision(marketMode, zones, marketData.price, userState);
+    const decision = makeDecision(marketMode, zones, marketData.price, userState, indicators);
 
     // Guardar en historial
     let savedToHistory = false;

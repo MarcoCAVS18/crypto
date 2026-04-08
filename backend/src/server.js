@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import cryptoRoutes from './routes/crypto.js';
 import historyRoutes from './routes/history.js';
+import portfolioRoutes from './routes/portfolio.js';
 import { initDatabase } from './config/database.js';
 import { startUpdateJob } from './jobs/updateData.js';
 
@@ -18,6 +19,7 @@ app.use(express.json());
 // Rutas
 app.use('/api/crypto', cryptoRoutes);
 app.use('/api', historyRoutes);
+app.use('/api/portfolio', portfolioRoutes);
 
 // Ruta de health check
 app.get('/api/health', (req, res) => {

@@ -5,13 +5,10 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 const api = axios.create({
   baseURL: API_URL,
-  timeout: 60000, // 60 seg para cuando Render despierta
-  headers: {
-    'Content-Type': 'application/json'
-  }
+  timeout: 60000,
+  headers: { 'Content-Type': 'application/json' }
 });
 
-// Interceptor para manejar errores
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -21,35 +18,47 @@ api.interceptors.response.use(
   }
 );
 
-// Obtiene datos de un crypto específico
 export async function fetchCryptoData(symbol, timeframe = '4h') {
-  const response = await api.get(`/crypto/${symbol}`, {
-    params: { timeframe }
-  });
+  const response = await api.get(`/crypto/${symbol}`, { params: { timeframe } });
   return response.data;
 }
 
-// Solicita una decisión basada en el estado del usuario
-export async function requestDecision(symbol, cashPercent, mode) {
-  const response = await api.post('/crypto/decision', {
-    symbol,
-    cashPercent,
-    mode
-  });
+export async function requestDecision(symbol, cashPercent, mode, totalCapital = 0) {
+  const response = await api.post('/crypto/decision', { symbol, cashPercent, mode, totalCapital });
   return response.data;
 }
 
-// Obtiene el historial de decisiones
 export async function fetchHistory(limit = 20) {
-  const response = await api.get('/history', {
-    params: { limit }
-  });
+  const response = await api.get('/history', { params: { limit } });
   return response.data;
 }
 
-// Health check del servidor
 export async function checkHealth() {
   const response = await api.get('/health');
+  return response.data;
+}
+
+// ── Portfolio ─────────────────────────────────────────────────────────────────
+
+export async function fetchPortfolioOperations(symbol = null, limit = 100) {
+  const params = { limit };
+  if (symbol) params.symbol = symbol;
+  const response = await api.get('/portfolio/operations', { params });
+  return response.data;
+}
+
+export async function fetchPortfolioSummary() {
+  const response = await api.get('/portfolio/summary');
+  return response.data;
+}
+
+export async function createPortfolioOperation(op) {
+  const response = await api.post('/portfolio/operations', op);
+  return response.data;
+}
+
+export async function removePortfolioOperation(id) {
+  const response = await api.delete(`/portfolio/operations/${id}`);
   return response.data;
 }
 

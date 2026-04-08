@@ -9,12 +9,13 @@
     "dev": "node --watch src/server.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
+    "better-sqlite3": "^9.4.3",
+    "ccxt": "^4.2.0",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
-    "ccxt": "^4.2.0",
-    "technicalindicators": "^3.1.0",
+    "express": "^4.18.2",
     "node-cron": "^3.0.3",
-    "better-sqlite3": "^9.4.3"
+    "technicalindicators": "^3.1.0",
+    "web-push": "^3.6.7"
   }
 }
