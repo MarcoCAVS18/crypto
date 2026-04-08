@@ -7,7 +7,6 @@ import {
   PlusCircle, Trash2, TrendingUp, TrendingDown, Wallet,
   BarChart3, RefreshCw, ChevronDown, ChevronUp, AlertCircle
 } from 'lucide-react';
-import { createPortfolioOperation, removePortfolioOperation } from '../services/api';
 import { useAppStore } from '../store/appStore';
 
 const SUPPORTED_SYMBOLS = ['BTC', 'PAXG', 'ETH', 'USDT', 'USDC'];
@@ -26,7 +25,7 @@ const EMPTY_FORM = {
 };
 
 export function PortfolioSection() {
-  const { portfolio, loadPortfolio, cryptoData } = useAppStore();
+  const { portfolio, loadPortfolio, addOperation, removeOperation, cryptoData } = useAppStore();
   const { operations, summary, loading } = portfolio;
 
   const [showForm, setShowForm] = useState(false);
@@ -64,14 +63,13 @@ export function PortfolioSection() {
     }
     setSaving(true);
     try {
-      await createPortfolioOperation({
+      await addOperation({
         ...form,
         amount_usd: parseFloat(form.amount_usd),
         price: parseFloat(form.price),
         units: parseFloat(form.units),
         fee: parseFloat(form.fee) || 0
       });
-      await loadPortfolio();
       setForm(EMPTY_FORM);
       setShowForm(false);
     } catch (err) {
@@ -84,8 +82,7 @@ export function PortfolioSection() {
   const handleDelete = async (id) => {
     if (!confirm('¿Eliminar esta operación?')) return;
     try {
-      await removePortfolioOperation(id);
-      await loadPortfolio();
+      await removeOperation(id);
     } catch (err) {
       console.error(err);
     }
@@ -103,8 +100,8 @@ export function PortfolioSection() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-white">Mi Portfolio</h2>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-lg font-bold text-white shrink-0">Mi Portfolio</h2>
         <div className="flex items-center gap-2">
           <button
             onClick={loadPortfolio}
@@ -115,7 +112,8 @@ export function PortfolioSection() {
           </button>
           <Button onClick={() => setShowForm(!showForm)} className="flex items-center gap-1.5 text-sm">
             <PlusCircle className="w-4 h-4" />
-            Agregar operación
+            <span className="hidden sm:inline">Agregar operación</span>
+            <span className="sm:hidden">Agregar</span>
           </Button>
         </div>
       </div>
@@ -149,7 +147,7 @@ export function PortfolioSection() {
             </div>
           )}
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {/* Fecha */}
             <FormField label="Fecha *">
               <input type="date" value={form.date}
@@ -168,7 +166,7 @@ export function PortfolioSection() {
 
             {/* Tipo */}
             <FormField label="Tipo *">
-              <div className="flex gap-1">
+              <div className="flex gap-2">
                 {['BUY', 'SELL'].map(t => (
                   <button
                     key={t}
@@ -220,7 +218,7 @@ export function PortfolioSection() {
             </FormField>
 
             {/* Notas */}
-            <FormField label="Notas" className="col-span-2 sm:col-span-1">
+            <FormField label="Notas">
               <input type="text" value={form.notes}
                 onChange={e => handleFormChange('notes', e.target.value)}
                 placeholder="Opcional"
@@ -340,7 +338,7 @@ function OperationRow({ op, expanded, onToggle, onDelete }) {
   return (
     <div className={`rounded-lg border ${bg} overflow-hidden`}>
       <div
-        className="flex items-center gap-3 p-3 cursor-pointer hover:bg-white/5 transition-colors"
+        className="flex items-center gap-2 sm:gap-3 p-3 cursor-pointer hover:bg-white/5 transition-colors"
         onClick={onToggle}
       >
         {/* Badge tipo */}
@@ -349,19 +347,19 @@ function OperationRow({ op, expanded, onToggle, onDelete }) {
         {/* Símbolo + fecha */}
         <div className="flex-1 min-w-0">
           <span className="font-semibold text-white text-sm">{op.symbol}</span>
-          <span className="text-gray-500 text-xs ml-2">{op.date}</span>
+          <span className="text-gray-500 text-xs ml-1.5">{op.date}</span>
         </div>
 
         {/* Monto + unidades */}
-        <div className="text-right shrink-0">
-          <p className={`text-sm font-mono font-semibold ${color}`}>
+        <div className="text-right shrink-0 max-w-[120px] sm:max-w-none">
+          <p className={`text-sm font-mono font-semibold ${color} truncate`}>
             ${parseFloat(op.amount_usd).toLocaleString('en-US', { maximumFractionDigits: 0 })}
           </p>
-          <p className="text-xs text-gray-500">{formatUnits(op.units)} @ {formatPrice(op.price)}</p>
+          <p className="text-xs text-gray-500 truncate">{formatUnits(op.units)} @ {formatPrice(op.price)}</p>
         </div>
 
         {/* Toggle */}
-        <div className="text-gray-600">
+        <div className="text-gray-600 shrink-0">
           {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </div>
       </div>

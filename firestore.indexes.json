@@ -1,0 +1,13 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "portfolio_operations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "symbol", "order": "ASCENDING" },
+        { "fieldPath": "date",   "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

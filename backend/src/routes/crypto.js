@@ -4,7 +4,7 @@ import { calculateAllIndicators, analyzeVolume } from '../services/technicalAnal
 import { calculateZones } from '../services/zoneCalculator.js';
 import { determineMarketMode } from '../services/marketMode.js';
 import { makeDecision } from '../services/decisionEngine.js';
-import { saveDecision } from '../config/database.js';
+import { saveDecision, getPortfolioSummaryBySymbol } from '../config/database.js';
 
 const router = express.Router();
 
@@ -118,7 +118,18 @@ router.post('/decision', async (req, res) => {
       totalCapital: parseFloat(totalCapital) || 0
     };
 
-    const decision = makeDecision(marketMode, zones, marketData.price, userState, indicators);
+    // Contexto del portfolio: prioridad al valor enviado por el frontend (Firestore)
+    // Si no viene del body, intentar desde la base de datos local (desarrollo)
+    let portfolioContext = req.body.portfolioContext || null;
+    if (!portfolioContext) {
+      try {
+        portfolioContext = getPortfolioSummaryBySymbol(symbol.toUpperCase());
+      } catch (dbErr) {
+        console.warn('No se pudo obtener el contexto del portfolio desde DB:', dbErr.message);
+      }
+    }
+
+    const decision = makeDecision(marketMode, zones, marketData.price, userState, indicators, symbol.toUpperCase(), portfolioContext);
 
     // Guardar en historial
     let savedToHistory = false;

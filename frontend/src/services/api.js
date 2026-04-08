@@ -23,8 +23,10 @@ export async function fetchCryptoData(symbol, timeframe = '4h') {
   return response.data;
 }
 
-export async function requestDecision(symbol, cashPercent, mode, totalCapital = 0) {
-  const response = await api.post('/crypto/decision', { symbol, cashPercent, mode, totalCapital });
+export async function requestDecision(symbol, cashPercent, mode, totalCapital = 0, portfolioContext = null) {
+  const response = await api.post('/crypto/decision', {
+    symbol, cashPercent, mode, totalCapital, portfolioContext
+  });
   return response.data;
 }
 
@@ -38,28 +40,5 @@ export async function checkHealth() {
   return response.data;
 }
 
-// ── Portfolio ─────────────────────────────────────────────────────────────────
-
-export async function fetchPortfolioOperations(symbol = null, limit = 100) {
-  const params = { limit };
-  if (symbol) params.symbol = symbol;
-  const response = await api.get('/portfolio/operations', { params });
-  return response.data;
-}
-
-export async function fetchPortfolioSummary() {
-  const response = await api.get('/portfolio/summary');
-  return response.data;
-}
-
-export async function createPortfolioOperation(op) {
-  const response = await api.post('/portfolio/operations', op);
-  return response.data;
-}
-
-export async function removePortfolioOperation(id) {
-  const response = await api.delete(`/portfolio/operations/${id}`);
-  return response.data;
-}
 
 export default api;
