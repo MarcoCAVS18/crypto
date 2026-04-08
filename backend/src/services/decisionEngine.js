@@ -1,14 +1,15 @@
 // Motor de decisión: cruza market mode, zonas, indicadores y perfil del usuario
 
 /**
- * @param {object} marketMode  - { mode: 'risk_on'|'neutral'|'risk_off', score, reasons }
- * @param {object} zones       - { buy, neutral, sell, currentZone }
+ * @param {object} marketMode      - { mode: 'risk_on'|'neutral'|'risk_off', score, reasons }
+ * @param {object} zones           - { buy, neutral, sell, currentZone }
  * @param {number} currentPrice
- * @param {object} userState   - { cashPercent, mode, totalCapital }
- * @param {object} indicators  - { rsi, atr, ema, trendShort, trendLong }
- * @param {string} symbol      - e.g. 'BTC', 'PAXG'
+ * @param {object} userState       - { cashPercent, mode, totalCapital }
+ * @param {object} indicators      - { rsi, atr, ema, trendShort, trendLong }
+ * @param {string} symbol          - e.g. 'BTC', 'PAXG'
+ * @param {object|null} portfolioContext - { units, avgBuyPrice, netInvested, hasPosition, ... }
  */
-export function makeDecision(marketMode, zones, currentPrice, userState, indicators = {}, symbol = '') {
+export function makeDecision(marketMode, zones, currentPrice, userState, indicators = {}, symbol = '', portfolioContext = null) {
   const { cashPercent, mode: userMode, totalCapital = 0 } = userState;
   const { rsi = 50 } = indicators;
   const currentZone = zones.currentZone;
@@ -53,8 +54,8 @@ export function makeDecision(marketMode, zones, currentPrice, userState, indicat
     const result = decideTradingMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital);
     ({ action, strength, reason, recommendation, operations } = result);
   } else {
-    // --- MODO INVERSIÓN: conservador, largo plazo, foco en zonas y EMA ---
-    const result = decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, symbol);
+    // --- MODO INVERSIÓN: conservador, largo plazo, usa P&L real del portfolio ---
+    const result = decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, portfolioContext);
     ({ action, strength, reason, recommendation, operations } = result);
   }
 
@@ -62,92 +63,146 @@ export function makeDecision(marketMode, zones, currentPrice, userState, indicat
 }
 
 // ── Lógica modo INVERSIÓN ──────────────────────────────────────────────────────
+//
+// La decisión combina dos dimensiones:
+//   1. Condiciones de mercado (zona, market mode, RSI)
+//   2. Estado real del portfolio (precio promedio de compra, P&L actual)
+//
+// Umbrales de P&L para recomendar venta parcial:
+//   < 0%       → precio por debajo del promedio → acumular (DCA)
+//   0 – 15%    → ganancia pequeña → mantener posición, sin acción
+//   15 – 25%   → ganancia moderada → WAIT, monitorear zona de distribución
+//   ≥ 25%      → ganancia significativa + zona de venta → toma parcial de ganancias
+//   ≥ 40%      → ganancia fuerte + zona de venta → toma parcial más agresiva
 
-// PAXG es oro tokenizado: la estrategia es acumulación de largo plazo sin vender.
-// Nunca se recomienda SELL para PAXG en modo inversión.
-const HODL_ASSETS = ['PAXG'];
-
-function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, symbol = '') {
+function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, portfolioCtx = null) {
   const currentZone = zones.currentZone;
-  const isHodlAsset = HODL_ASSETS.includes(symbol.toUpperCase());
 
+  // ── Contexto del portfolio ──────────────────────────────────────────────────
+  const hasPosition = portfolioCtx?.hasPosition ?? false;
+  const avgBuyPrice = portfolioCtx?.avgBuyPrice ?? 0;
+  const pnlPercent = hasPosition && avgBuyPrice > 0
+    ? ((currentPrice - avgBuyPrice) / avgBuyPrice) * 100
+    : null;
+
+  // Flags derivados del P&L
+  const isBelowAvg       = pnlPercent !== null && pnlPercent < 0;
+  const isNearAvg        = pnlPercent !== null && pnlPercent >= 0  && pnlPercent < 15;
+  const isModerateProfit = pnlPercent !== null && pnlPercent >= 15 && pnlPercent < 25;
+  const isGoodProfit     = pnlPercent !== null && pnlPercent >= 25 && pnlPercent < 40;
+  const isStrongProfit   = pnlPercent !== null && pnlPercent >= 40;
+  const sellMakesSense   = isGoodProfit || isStrongProfit; // ≥ 25%
+
+  // Etiqueta de contexto para incluir en mensajes
+  const pnlTag = pnlPercent !== null
+    ? ` · promedio de compra ${formatPrice(avgBuyPrice)}, P&L actual ${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toFixed(1)}%`
+    : ' · Registra tu portfolio para que la decisión use tu precio promedio real.';
+
+  const noPortfolioMsg = !hasPosition
+    ? ' Registra tus operaciones en el Portfolio para que la decisión use tu promedio de compra real.'
+    : '';
+
+  // ── Risk OFF: nunca operar ──────────────────────────────────────────────────
+  // (ya filtrado en makeDecision, pero como fallback)
+
+  // ── Risk ON ────────────────────────────────────────────────────────────────
   if (marketMode.mode === 'risk_on') {
-    if (currentZone === 'buy' && cashPercent >= 30) {
-      const operations = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion');
+
+    // BUY: zona de compra, O precio debajo del promedio (DCA) → siempre acumular
+    const dcaOpportunity = isBelowAvg && cashPercent >= 20;
+    const buyZoneOk      = currentZone === 'buy' && cashPercent >= 30;
+
+    if (buyZoneOk || dcaOpportunity) {
+      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion');
+      const isDca = dcaOpportunity && !buyZoneOk;
       return {
         action: 'BUY',
         strength: 'fuerte',
-        reason: `Risk ON + zona de compra + ${cashPercent}% cash disponible`,
-        recommendation: isHodlAsset
-          ? 'Acumulación de largo plazo. Dividir entrada en 2-3 tramos. Estrategia: no vender, solo acumular.'
-          : 'Acumulación progresiva. Dividir entrada en 2-3 niveles para promediar precio.',
-        operations
+        reason: isDca
+          ? `Precio por debajo del promedio de compra${pnlTag}`
+          : `Risk ON + zona de compra + ${cashPercent}% cash disponible${pnlTag}`,
+        recommendation: isDca
+          ? `Oportunidad de DCA: el precio está ${Math.abs(pnlPercent).toFixed(1)}% por debajo de tu promedio (${formatPrice(avgBuyPrice)}). Acumular en tramos reduce el precio promedio.`
+          : 'Acumulación progresiva. Dividir entrada en 2-3 tramos para promediar precio.',
+        operations: ops
       };
     }
+
+    // SELL zone: solo si la ganancia realmente lo justifica
     if (currentZone === 'sell') {
-      // PAXG: nunca recomendar venta — mantener posición siempre
-      if (isHodlAsset) {
+      if (sellMakesSense) {
+        const pctSell = isStrongProfit ? 50 : 30;
+        const ops = generateSellOperations(currentPrice, zones, totalCapital, 'inversion');
         return {
-          action: 'WAIT',
-          strength: 'fuerte',
-          reason: 'Precio en zona de distribución — estrategia PAXG: mantener posición',
-          recommendation: 'Tu estrategia es holdear PAXG a largo plazo. No vender aunque el precio esté alto. Esperar oportunidad de acumulación adicional en zona de compra.',
-          operations: []
+          action: 'SELL',
+          strength: isStrongProfit ? 'fuerte' : 'moderado',
+          reason: `Zona de distribución con ganancia significativa${pnlTag}`,
+          recommendation: `Toma de ganancias parcial recomendada: ${pctSell}% de la posición. Mantener el resto como núcleo de largo plazo. No salir completamente.`,
+          operations: ops
         };
       }
-      const operations = generateSellOperations(currentPrice, zones, totalCapital, 'inversion');
+
+      // Zona de venta pero la ganancia no justifica vender todavía
+      const gapTo25 = pnlPercent !== null ? (25 - pnlPercent).toFixed(1) : null;
       return {
-        action: 'SELL',
+        action: 'WAIT',
         strength: 'moderado',
-        reason: 'Precio en zona de distribución con contexto alcista',
-        recommendation: 'Toma de ganancias parcial (30-50% de la posición). Mantener núcleo de largo plazo.',
-        operations
+        reason: pnlPercent !== null
+          ? `Zona de distribución — ganancia aún insuficiente para vender${pnlTag}`
+          : `Zona de distribución — sin datos de portfolio para evaluar${noPortfolioMsg}`,
+        recommendation: gapTo25
+          ? `Mantener posición. El precio debería subir un ${gapTo25}% adicional desde tu promedio para considerar toma de ganancias.`
+          : 'Mantener posición. Registra tus operaciones para ver cuándo tiene sentido vender.',
+        operations: []
       };
     }
+
+    // Zona neutral con ganancia moderada: solo esperar
     return {
       action: 'WAIT',
       strength: 'débil',
-      reason: 'Precio en zona neutral — sin setup claro',
-      recommendation: isHodlAsset
-        ? `Mantener posición actual. Aguardar pullback a zona de acumulación: ${formatPrice(zones.buy.min)} – ${formatPrice(zones.buy.max)}`
-        : `Esperar pullback a zona de compra: ${formatPrice(zones.buy.min)} – ${formatPrice(zones.buy.max)}`,
+      reason: `Precio en zona neutral${pnlTag}`,
+      recommendation: `Mantener posición y aguardar. Acumular si baja a ${formatPrice(zones.buy.min)} – ${formatPrice(zones.buy.max)}.${noPortfolioMsg}`,
       operations: []
     };
   }
 
+  // ── Neutral ────────────────────────────────────────────────────────────────
   if (marketMode.mode === 'neutral') {
-    if (currentZone === 'buy' && cashPercent >= 50) {
-      const operations = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', 0.5);
+
+    // DCA incluso en contexto neutral si el precio está muy por debajo del promedio
+    const strongDca = isBelowAvg && pnlPercent < -8 && cashPercent >= 30;
+    const normalBuy = currentZone === 'buy' && cashPercent >= 50;
+
+    if (strongDca || normalBuy) {
+      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', 0.5);
       return {
         action: 'BUY',
         strength: 'moderado',
-        reason: `Soporte con cash suficiente (${cashPercent}%), contexto mixto`,
-        recommendation: isHodlAsset
-          ? 'Acumulación reducida — máximo 50% del capital previsto. Contexto aún incierto, pero PAXG es reserva de valor a largo plazo.'
-          : 'Compra reducida — máximo 50% del capital previsto. Contexto aún incierto.',
-        operations
+        reason: strongDca
+          ? `Precio ${Math.abs(pnlPercent).toFixed(1)}% por debajo del promedio${pnlTag} — contexto mixto pero DCA válido`
+          : `Zona de soporte con cash suficiente (${cashPercent}%)${pnlTag}`,
+        recommendation: 'Entrada reducida — máximo 50% del capital previsto. Contexto incierto, dividir en tramos.',
+        operations: ops
       };
     }
-    if (currentZone === 'sell') {
+
+    if (currentZone === 'sell' && sellMakesSense) {
+      const ops = generateSellOperations(currentPrice, zones, totalCapital, 'inversion');
       return {
-        action: 'WAIT',
+        action: 'SELL',
         strength: 'moderado',
-        reason: isHodlAsset
-          ? 'Zona de distribución — estrategia PAXG: mantener sin vender'
-          : 'Zona de distribución sin contexto alcista claro',
-        recommendation: isHodlAsset
-          ? 'Mantener posición. No vender. Esperar zona de compra para acumular más.'
-          : 'Considerar reducir exposición si hay ganancias. No agregar posición.',
-        operations: []
+        reason: `Zona de distribución con ganancia significativa${pnlTag}`,
+        recommendation: 'Toma parcial de ganancias (30% de la posición). Contexto mixto — no salir completamente.',
+        operations: ops
       };
     }
+
     return {
       action: 'WAIT',
       strength: 'moderado',
-      reason: 'Contexto neutral + zona neutral',
-      recommendation: isHodlAsset
-        ? 'Mantener posición PAXG. Sin oportunidad de acumulación clara por ahora.'
-        : 'Esperar confirmación de dirección. No hay setup de alta probabilidad.',
+      reason: `Contexto neutral${pnlTag}`,
+      recommendation: `Mantener posición. Sin oportunidad clara de entrada.${noPortfolioMsg}`,
       operations: []
     };
   }
@@ -156,7 +211,7 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
     action: 'WAIT',
     strength: 'débil',
     reason: 'Sin condiciones claras',
-    recommendation: isHodlAsset ? 'Mantener posición PAXG. Monitorear.' : 'Monitorear.',
+    recommendation: 'Monitorear.',
     operations: []
   };
 }

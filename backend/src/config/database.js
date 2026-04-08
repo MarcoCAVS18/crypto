@@ -141,11 +141,7 @@ export function deletePortfolioOperation(id) {
   return db.prepare('DELETE FROM portfolio_operations WHERE id = ?').run(id);
 }
 
-export function getPortfolioSummary() {
-  const db = getDatabase();
-  const ops = db.prepare('SELECT * FROM portfolio_operations ORDER BY date ASC').all();
-
-  // Calcular balance por símbolo
+function calcSummaryFromOps(ops) {
   const bySymbol = {};
   for (const op of ops) {
     if (!bySymbol[op.symbol]) {
@@ -162,11 +158,32 @@ export function getPortfolioSummary() {
       s.withdrawn += op.amount_usd;
     }
   }
-
   return Object.values(bySymbol).map(s => ({
     ...s,
     units: Math.max(0, s.units),
     netInvested: s.invested - s.withdrawn,
     avgBuyPrice: s.invested > 0 && s.units > 0 ? (s.invested - s.withdrawn) / s.units : 0
   }));
+}
+
+export function getPortfolioSummary() {
+  const db = getDatabase();
+  const ops = db.prepare('SELECT * FROM portfolio_operations ORDER BY date ASC').all();
+  return calcSummaryFromOps(ops);
+}
+
+// Resumen de un símbolo específico, usado por el motor de decisión
+export function getPortfolioSummaryBySymbol(symbol) {
+  const db = getDatabase();
+  const ops = db.prepare(
+    'SELECT * FROM portfolio_operations WHERE symbol = ? ORDER BY date ASC'
+  ).all(symbol.toUpperCase());
+
+  if (ops.length === 0) return null;
+
+  const [s] = calcSummaryFromOps(ops);
+  return {
+    ...s,
+    hasPosition: s.units > 0 && s.avgBuyPrice > 0
+  };
 }
