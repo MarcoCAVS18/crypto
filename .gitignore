@@ -13,6 +13,10 @@ build/
 # Database
 backend/data/
 
+# Firebase service account (nunca commitear)
+*serviceAccountKey*.json
+scripts/serviceAccount*.json
+
 # Logs
 *.log
 npm-debug.log*

@@ -7,7 +7,6 @@ import {
   PlusCircle, Trash2, TrendingUp, TrendingDown, Wallet,
   BarChart3, RefreshCw, ChevronDown, ChevronUp, AlertCircle
 } from 'lucide-react';
-import { createPortfolioOperation, removePortfolioOperation } from '../services/api';
 import { useAppStore } from '../store/appStore';
 
 const SUPPORTED_SYMBOLS = ['BTC', 'PAXG', 'ETH', 'USDT', 'USDC'];
@@ -26,7 +25,7 @@ const EMPTY_FORM = {
 };
 
 export function PortfolioSection() {
-  const { portfolio, loadPortfolio, cryptoData } = useAppStore();
+  const { portfolio, loadPortfolio, addOperation, removeOperation, cryptoData } = useAppStore();
   const { operations, summary, loading } = portfolio;
 
   const [showForm, setShowForm] = useState(false);
@@ -64,14 +63,13 @@ export function PortfolioSection() {
     }
     setSaving(true);
     try {
-      await createPortfolioOperation({
+      await addOperation({
         ...form,
         amount_usd: parseFloat(form.amount_usd),
         price: parseFloat(form.price),
         units: parseFloat(form.units),
         fee: parseFloat(form.fee) || 0
       });
-      await loadPortfolio();
       setForm(EMPTY_FORM);
       setShowForm(false);
     } catch (err) {
@@ -84,8 +82,7 @@ export function PortfolioSection() {
   const handleDelete = async (id) => {
     if (!confirm('¿Eliminar esta operación?')) return;
     try {
-      await removePortfolioOperation(id);
-      await loadPortfolio();
+      await removeOperation(id);
     } catch (err) {
       console.error(err);
     }

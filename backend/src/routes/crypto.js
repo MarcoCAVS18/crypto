@@ -118,12 +118,15 @@ router.post('/decision', async (req, res) => {
       totalCapital: parseFloat(totalCapital) || 0
     };
 
-    // Obtener contexto del portfolio para decisión inteligente
-    let portfolioContext = null;
-    try {
-      portfolioContext = getPortfolioSummaryBySymbol(symbol.toUpperCase());
-    } catch (dbErr) {
-      console.warn('No se pudo obtener el contexto del portfolio:', dbErr.message);
+    // Contexto del portfolio: prioridad al valor enviado por el frontend (Firestore)
+    // Si no viene del body, intentar desde la base de datos local (desarrollo)
+    let portfolioContext = req.body.portfolioContext || null;
+    if (!portfolioContext) {
+      try {
+        portfolioContext = getPortfolioSummaryBySymbol(symbol.toUpperCase());
+      } catch (dbErr) {
+        console.warn('No se pudo obtener el contexto del portfolio desde DB:', dbErr.message);
+      }
     }
 
     const decision = makeDecision(marketMode, zones, marketData.price, userState, indicators, symbol.toUpperCase(), portfolioContext);
