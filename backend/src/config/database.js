@@ -6,21 +6,20 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Usar /tmp en producción (Render), data/ en local
-const dbPath = process.env.NODE_ENV === 'production'
-  ? '/tmp/decisions.db'
-  : path.join(__dirname, '../../data/decisions.db');
+// Prioridad: DATABASE_PATH env var → ./data/decisions.db (relativo al proceso)
+// Nunca usar /tmp: es efímero en Render y otros servicios cloud.
+// Para Render con disco persistente: DATABASE_PATH=/data/decisions.db
+const dbPath = process.env.DATABASE_PATH
+  || path.join(process.cwd(), 'data', 'decisions.db');
 
 let db = null;
 
 // Inicializa la base de datos y crea las tablas si no existen
 export function initDatabase() {
-  // Crear directorio si no existe (solo para local)
-  if (process.env.NODE_ENV !== 'production') {
-    const dataDir = path.dirname(dbPath);
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
-    }
+  // Crear directorio si no existe (siempre, en cualquier entorno)
+  const dataDir = path.dirname(dbPath);
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
   }
 
   db = new Database(dbPath);

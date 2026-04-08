@@ -118,7 +118,7 @@ router.post('/decision', async (req, res) => {
       totalCapital: parseFloat(totalCapital) || 0
     };
 
-    const decision = makeDecision(marketMode, zones, marketData.price, userState, indicators);
+    const decision = makeDecision(marketMode, zones, marketData.price, userState, indicators, symbol.toUpperCase());
 
     // Guardar en historial
     let savedToHistory = false;

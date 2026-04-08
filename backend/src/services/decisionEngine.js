@@ -6,8 +6,9 @@
  * @param {number} currentPrice
  * @param {object} userState   - { cashPercent, mode, totalCapital }
  * @param {object} indicators  - { rsi, atr, ema, trendShort, trendLong }
+ * @param {string} symbol      - e.g. 'BTC', 'PAXG'
  */
-export function makeDecision(marketMode, zones, currentPrice, userState, indicators = {}) {
+export function makeDecision(marketMode, zones, currentPrice, userState, indicators = {}, symbol = '') {
   const { cashPercent, mode: userMode, totalCapital = 0 } = userState;
   const { rsi = 50 } = indicators;
   const currentZone = zones.currentZone;
@@ -53,7 +54,7 @@ export function makeDecision(marketMode, zones, currentPrice, userState, indicat
     ({ action, strength, reason, recommendation, operations } = result);
   } else {
     // --- MODO INVERSIÓN: conservador, largo plazo, foco en zonas y EMA ---
-    const result = decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital);
+    const result = decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, symbol);
     ({ action, strength, reason, recommendation, operations } = result);
   }
 
@@ -61,8 +62,14 @@ export function makeDecision(marketMode, zones, currentPrice, userState, indicat
 }
 
 // ── Lógica modo INVERSIÓN ──────────────────────────────────────────────────────
-function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital) {
+
+// PAXG es oro tokenizado: la estrategia es acumulación de largo plazo sin vender.
+// Nunca se recomienda SELL para PAXG en modo inversión.
+const HODL_ASSETS = ['PAXG'];
+
+function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, symbol = '') {
   const currentZone = zones.currentZone;
+  const isHodlAsset = HODL_ASSETS.includes(symbol.toUpperCase());
 
   if (marketMode.mode === 'risk_on') {
     if (currentZone === 'buy' && cashPercent >= 30) {
@@ -71,11 +78,23 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
         action: 'BUY',
         strength: 'fuerte',
         reason: `Risk ON + zona de compra + ${cashPercent}% cash disponible`,
-        recommendation: 'Acumulación progresiva. Dividir entrada en 2-3 niveles para promediar precio.',
+        recommendation: isHodlAsset
+          ? 'Acumulación de largo plazo. Dividir entrada en 2-3 tramos. Estrategia: no vender, solo acumular.'
+          : 'Acumulación progresiva. Dividir entrada en 2-3 niveles para promediar precio.',
         operations
       };
     }
     if (currentZone === 'sell') {
+      // PAXG: nunca recomendar venta — mantener posición siempre
+      if (isHodlAsset) {
+        return {
+          action: 'WAIT',
+          strength: 'fuerte',
+          reason: 'Precio en zona de distribución — estrategia PAXG: mantener posición',
+          recommendation: 'Tu estrategia es holdear PAXG a largo plazo. No vender aunque el precio esté alto. Esperar oportunidad de acumulación adicional en zona de compra.',
+          operations: []
+        };
+      }
       const operations = generateSellOperations(currentPrice, zones, totalCapital, 'inversion');
       return {
         action: 'SELL',
@@ -89,7 +108,9 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
       action: 'WAIT',
       strength: 'débil',
       reason: 'Precio en zona neutral — sin setup claro',
-      recommendation: `Esperar pullback a zona de compra: ${formatPrice(zones.buy.min)} – ${formatPrice(zones.buy.max)}`,
+      recommendation: isHodlAsset
+        ? `Mantener posición actual. Aguardar pullback a zona de acumulación: ${formatPrice(zones.buy.min)} – ${formatPrice(zones.buy.max)}`
+        : `Esperar pullback a zona de compra: ${formatPrice(zones.buy.min)} – ${formatPrice(zones.buy.max)}`,
       operations: []
     };
   }
@@ -101,7 +122,9 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
         action: 'BUY',
         strength: 'moderado',
         reason: `Soporte con cash suficiente (${cashPercent}%), contexto mixto`,
-        recommendation: 'Compra reducida — máximo 50% del capital previsto. Contexto aún incierto.',
+        recommendation: isHodlAsset
+          ? 'Acumulación reducida — máximo 50% del capital previsto. Contexto aún incierto, pero PAXG es reserva de valor a largo plazo.'
+          : 'Compra reducida — máximo 50% del capital previsto. Contexto aún incierto.',
         operations
       };
     }
@@ -109,8 +132,12 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
       return {
         action: 'WAIT',
         strength: 'moderado',
-        reason: 'Zona de distribución sin contexto alcista claro',
-        recommendation: 'Considerar reducir exposición si hay ganancias. No agregar posición.',
+        reason: isHodlAsset
+          ? 'Zona de distribución — estrategia PAXG: mantener sin vender'
+          : 'Zona de distribución sin contexto alcista claro',
+        recommendation: isHodlAsset
+          ? 'Mantener posición. No vender. Esperar zona de compra para acumular más.'
+          : 'Considerar reducir exposición si hay ganancias. No agregar posición.',
         operations: []
       };
     }
@@ -118,12 +145,20 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
       action: 'WAIT',
       strength: 'moderado',
       reason: 'Contexto neutral + zona neutral',
-      recommendation: 'Esperar confirmación de dirección. No hay setup de alta probabilidad.',
+      recommendation: isHodlAsset
+        ? 'Mantener posición PAXG. Sin oportunidad de acumulación clara por ahora.'
+        : 'Esperar confirmación de dirección. No hay setup de alta probabilidad.',
       operations: []
     };
   }
 
-  return { action: 'WAIT', strength: 'débil', reason: 'Sin condiciones claras', recommendation: 'Monitorear.', operations: [] };
+  return {
+    action: 'WAIT',
+    strength: 'débil',
+    reason: 'Sin condiciones claras',
+    recommendation: isHodlAsset ? 'Mantener posición PAXG. Monitorear.' : 'Monitorear.',
+    operations: []
+  };
 }
 
 // ── Lógica modo TRADING ────────────────────────────────────────────────────────

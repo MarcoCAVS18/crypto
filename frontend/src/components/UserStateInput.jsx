@@ -77,12 +77,12 @@ export function UserStateInput({ onSubmit, initialCash = 50, initialMode = 'inve
 
       {/* Slider de Cash disponible */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Wallet className="w-4 h-4 text-gray-400" />
-            <span className="text-sm text-gray-400">% disponible en efectivo</span>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <Wallet className="w-4 h-4 text-gray-400 shrink-0" />
+            <span className="text-sm text-gray-400 truncate">% disponible en efectivo</span>
           </div>
-          <div className="text-right">
+          <div className="text-right shrink-0">
             <span className="text-xl font-bold text-white">{cashPercent}%</span>
             {cashAmount !== null && (
               <p className="text-xs text-blue-400">= ${cashAmount.toLocaleString('en-US', { maximumFractionDigits: 0 })}</p>
@@ -139,16 +139,16 @@ export function UserStateInput({ onSubmit, initialCash = 50, initialMode = 'inve
               key={m.id}
               onClick={() => setMode(m.id)}
               className={`
-                flex flex-col items-center gap-1 p-2.5 rounded-lg border transition-all
+                flex flex-col items-center gap-1 p-2 sm:p-2.5 rounded-lg border transition-all
                 ${mode === m.id
                   ? 'bg-blue-500/20 border-blue-500 text-blue-400'
                   : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'
                 }
               `}
             >
-              <m.icon className="w-4 h-4 sm:w-5 sm:h-5" />
-              <span className="text-xs sm:text-sm font-medium">{m.label}</span>
-              <span className="text-[10px] opacity-70 hidden sm:block">{m.description}</span>
+              <m.icon className="w-4 h-4" />
+              <span className="text-[11px] sm:text-xs font-medium leading-tight text-center">{m.label}</span>
+              <span className="text-[10px] opacity-70 hidden sm:block leading-tight">{m.description}</span>
             </button>
           ))}
         </div>
