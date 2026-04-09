@@ -154,34 +154,64 @@ export const useAppStore = create(
         set((state) => ({ portfolio: { ...state.portfolio, loading: true } }));
         try {
           const operations = await fsGetOperations();
-          // Ordenar por fecha desc para la vista (Firestore ya lo devuelve así)
-          const summary = computePortfolioSummary(operations);
+          const summary    = computePortfolioSummary(operations);
           set((state) => ({
             portfolio: { ...state.portfolio, operations, summary, loading: false }
           }));
         } catch (err) {
           set((state) => ({ portfolio: { ...state.portfolio, loading: false } }));
-          console.error('Error cargando portfolio desde Firestore:', err);
+          // Mostrar el error de Firestore en el banner principal de la app
+          set({ error: err.message });
         }
       },
 
+      // Optimistic add: muestra la operación de inmediato, sincroniza Firestore en fondo.
+      // Después del write exitoso recarga silenciosamente para obtener el ID real.
       addOperation: async (opData) => {
-        set((state) => ({ portfolio: { ...state.portfolio, loading: true } }));
+        const tempId  = `temp-${Date.now()}`;
+        const tempOp  = { id: tempId, ...opData };
+
+        // 1. Actualizar UI al instante
+        set((state) => {
+          const ops     = [tempOp, ...state.portfolio.operations];
+          return { portfolio: { ...state.portfolio, operations: ops, summary: computePortfolioSummary(ops) } };
+        });
+
         try {
+          // 2. Escribir en Firestore
           await fsAddOperation(opData);
-          await get().loadPortfolio();
+          // 3. Reemplazar temp por datos reales (sin spinner)
+          const operations = await fsGetOperations();
+          const summary    = computePortfolioSummary(operations);
+          set((state) => ({ portfolio: { ...state.portfolio, operations, summary } }));
         } catch (err) {
-          set((state) => ({ portfolio: { ...state.portfolio, loading: false } }));
+          // Revertir si falla
+          set((state) => {
+            const ops = state.portfolio.operations.filter(o => o.id !== tempId);
+            return { portfolio: { ...state.portfolio, operations: ops, summary: computePortfolioSummary(ops) } };
+          });
           throw err;
         }
       },
 
+      // Optimistic remove: elimina de la UI al instante, borra en Firestore en fondo.
       removeOperation: async (id) => {
+        const prevOps = get().portfolio.operations;
+        const newOps  = prevOps.filter(o => o.id !== id);
+
+        // 1. Actualizar UI al instante
+        set((state) => ({
+          portfolio: { ...state.portfolio, operations: newOps, summary: computePortfolioSummary(newOps) }
+        }));
+
         try {
+          // 2. Borrar en Firestore
           await fsDeleteOperation(id);
-          await get().loadPortfolio();
         } catch (err) {
-          console.error('Error eliminando operación:', err);
+          // Revertir si falla
+          set((state) => ({
+            portfolio: { ...state.portfolio, operations: prevOps, summary: computePortfolioSummary(prevOps) }
+          }));
           throw err;
         }
       }
