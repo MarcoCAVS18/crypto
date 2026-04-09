@@ -10,9 +10,9 @@ import { ZoneMap } from './components/ZoneMap';
 import { TechnicalAnalysis } from './components/TechnicalAnalysis';
 import { UserStateInput } from './components/UserStateInput';
 import { DecisionPanel } from './components/DecisionPanel';
-import { RulesDisplay } from './components/RulesDisplay';
+import { MacroContext } from './components/MacroContext';
 import { PortfolioSection } from './components/PortfolioSection';
-import { RefreshCw, AlertCircle, Menu, X, LayoutDashboard, Briefcase, AlertTriangle } from 'lucide-react';
+import { RefreshCw, AlertCircle, X, LayoutDashboard, Briefcase, AlertTriangle } from 'lucide-react';
 import { formatRelativeTime } from './utils/formatters';
 import { AUTO_REFRESH_INTERVAL } from './utils/constants';
 
@@ -22,7 +22,6 @@ const TABS = [
 ];
 
 function App() {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
 
   const {
@@ -104,13 +103,6 @@ function App() {
             >
               <RefreshCw className={`w-5 h-5 text-gray-400 ${loading ? 'animate-spin' : ''}`} />
             </button>
-            {/* Botón sidebar mobile */}
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition-colors lg:hidden"
-            >
-              {sidebarOpen ? <X className="w-5 h-5 text-gray-400" /> : <Menu className="w-5 h-5 text-gray-400" />}
-            </button>
           </div>
         </div>
 
@@ -162,102 +154,94 @@ function App() {
       <div className="max-w-6xl mx-auto px-4 py-6">
         {/* ── TAB: Dashboard ───────────────────────────────────────────── */}
         {activeTab === 'dashboard' && (
-          <div className="flex flex-col lg:flex-row gap-6">
-            <main className="flex-1 space-y-6 animate-fade-in">
-              {loading && !currentData ? (
-                <div className="flex items-center justify-center py-20">
-                  <Spinner size="lg" />
-                </div>
-              ) : currentData ? (
-                <>
-                  {/* Advertencia de velas sintéticas */}
-                  {currentData.candlesSource === 'synthetic' && (
-                    <div className="flex items-start gap-2 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-yellow-400 text-sm">
-                      <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-                      <span>Los indicadores técnicos (RSI, EMA) están basados en datos sintéticos porque la API de candles no respondió. Refrescar puede resolverlo.</span>
-                    </div>
-                  )}
+          <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
+            {loading && !currentData ? (
+              <div className="flex items-center justify-center py-20">
+                <Spinner size="lg" />
+              </div>
+            ) : currentData ? (
+              <>
+                {/* Advertencia de velas sintéticas */}
+                {currentData.candlesSource === 'synthetic' && (
+                  <div className="flex items-start gap-2 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-yellow-400 text-sm">
+                    <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                    <span>Los indicadores técnicos (RSI, EMA) están basados en datos sintéticos porque la API de candles no respondió. Refrescar puede resolverlo.</span>
+                  </div>
+                )}
 
-                  {/* Market Mode */}
-                  <Card>
-                    <MarketModeIndicator
-                      mode={currentData.marketMode?.mode}
-                      reasons={currentData.marketMode?.reasons}
-                    />
-                  </Card>
-
-                  {/* Precio */}
-                  <Card>
-                    <PriceDisplay
-                      symbol={selectedCrypto}
-                      price={currentData.price}
-                      change24h={currentData.change24h}
-                    />
-                  </Card>
-
-                  {/* Mapa de zonas */}
-                  {currentData.zones && (
-                    <Card>
-                      <h2 className="text-sm font-semibold text-gray-400 mb-4">Zonas de Precio</h2>
-                      <ZoneMap zones={currentData.zones} currentPrice={currentData.price} />
-                    </Card>
-                  )}
-
-                  {/* Análisis técnico */}
-                  {currentData.technicalAnalysis && (
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <h2 className="text-sm font-semibold text-gray-400">Análisis Técnico</h2>
-                        {currentData.technicalAnalysis.candlesCount && (
-                          <span className="text-xs text-gray-600">
-                            {currentData.technicalAnalysis.candlesCount} velas 1h
-                            {currentData.candlesSource === 'real' ? ' · datos reales' : ' · datos sintéticos'}
-                          </span>
-                        )}
-                      </div>
-                      <TechnicalAnalysis analysis={currentData.technicalAnalysis} />
-                    </div>
-                  )}
-
-                  {/* Input del usuario */}
-                  <Card>
-                    <h2 className="text-sm font-semibold text-gray-400 mb-4">Tu Estado Actual</h2>
-                    <UserStateInput
-                      onSubmit={handleUserStateSubmit}
-                      initialCash={userState.cashPercent}
-                      initialMode={userState.mode}
-                      initialCapital={userState.totalCapital}
-                    />
-                  </Card>
-
-                  {/* Panel de decisión */}
-                  {decisionLoading ? (
-                    <Card className="flex items-center justify-center py-8">
-                      <Spinner />
-                    </Card>
-                  ) : (
-                    <DecisionPanel decision={currentDecision} />
-                  )}
-                </>
-              ) : (
-                <Card className="text-center py-10">
-                  <p className="text-gray-400">
-                    No se pudieron cargar los datos. Intenta refrescar la página.
-                  </p>
+                {/* Market Mode */}
+                <Card>
+                  <MarketModeIndicator
+                    mode={currentData.marketMode?.mode}
+                    reasons={currentData.marketMode?.reasons}
+                  />
                 </Card>
-              )}
-            </main>
 
-            {/* Sidebar - Reglas */}
-            <aside className={`
-              lg:w-64 lg:block
-              ${sidebarOpen ? 'block' : 'hidden'}
-              fixed lg:static inset-0 top-16 z-40
-              lg:z-auto bg-gray-900/95 lg:bg-transparent
-              p-4 lg:p-0 overflow-auto
-            `}>
-              <RulesDisplay />
-            </aside>
+                {/* Contexto macro — solo PAXG */}
+                {selectedCrypto === 'PAXG' && currentData.marketMode?.goldContext && (
+                  <MacroContext goldContext={currentData.marketMode.goldContext} />
+                )}
+
+                {/* Precio */}
+                <Card>
+                  <PriceDisplay
+                    symbol={selectedCrypto}
+                    price={currentData.price}
+                    change24h={currentData.change24h}
+                  />
+                </Card>
+
+                {/* Mapa de zonas */}
+                {currentData.zones && (
+                  <Card>
+                    <h2 className="text-sm font-semibold text-gray-400 mb-4">Zonas de Precio</h2>
+                    <ZoneMap zones={currentData.zones} currentPrice={currentData.price} />
+                  </Card>
+                )}
+
+                {/* Análisis técnico */}
+                {currentData.technicalAnalysis && (
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <h2 className="text-sm font-semibold text-gray-400">Análisis Técnico</h2>
+                      {currentData.technicalAnalysis.candlesCount && (
+                        <span className="text-xs text-gray-600">
+                          {currentData.technicalAnalysis.candlesCount} velas 1h
+                          {currentData.candlesSource === 'real' ? ' · datos reales' : ' · datos sintéticos'}
+                        </span>
+                      )}
+                    </div>
+                    <TechnicalAnalysis analysis={currentData.technicalAnalysis} />
+                  </div>
+                )}
+
+                {/* Input del usuario */}
+                <Card>
+                  <h2 className="text-sm font-semibold text-gray-400 mb-4">Tu Estado Actual</h2>
+                  <UserStateInput
+                    onSubmit={handleUserStateSubmit}
+                    initialCash={userState.cashPercent}
+                    initialMode={userState.mode}
+                    initialCapital={userState.totalCapital}
+                  />
+                </Card>
+
+                {/* Panel de decisión */}
+                {decisionLoading ? (
+                  <Card className="flex items-center justify-center py-8">
+                    <Spinner />
+                  </Card>
+                ) : (
+                  <DecisionPanel decision={currentDecision} />
+                )}
+              </>
+            ) : (
+              <Card className="text-center py-10">
+                <p className="text-gray-400">
+                  No se pudieron cargar los datos. Intenta refrescar la página.
+                </p>
+              </Card>
+            )}
           </div>
         )}
 

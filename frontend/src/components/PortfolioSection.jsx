@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 
-const SUPPORTED_SYMBOLS = ['BTC', 'PAXG', 'ETH', 'USDT', 'USDC'];
+const SUPPORTED_SYMBOLS = ['BTC', 'PAXG'];
 const EXCHANGES = ['Binance', 'Coinbase', 'Kraken', 'OKX', 'Bybit', 'Manual'];
 
 const EMPTY_FORM = {
@@ -84,7 +84,7 @@ export function PortfolioSection() {
     try {
       await removeOperation(id);
     } catch (err) {
-      console.error(err);
+      setError(err.message);
     }
   };
 
@@ -203,8 +203,8 @@ export function PortfolioSection() {
             </FormField>
 
             {/* Fee */}
-            <FormField label="Fee / Comisión (USD)">
-              <NumericInput value={form.fee} prefix="$"
+            <FormField label={`Fee / Comisión (${form.symbol})`}>
+              <NumericInput value={form.fee}
                 onChange={v => handleFormChange('fee', v)} placeholder="0" />
             </FormField>
 

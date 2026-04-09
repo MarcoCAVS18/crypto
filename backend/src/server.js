@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import cryptoRoutes from './routes/crypto.js';
 import historyRoutes from './routes/history.js';
 import portfolioRoutes from './routes/portfolio.js';
+import goldContextRoutes from './routes/goldContext.js';
 import { initDatabase } from './config/database.js';
 import { startUpdateJob } from './jobs/updateData.js';
 
@@ -20,6 +21,7 @@ app.use(express.json());
 app.use('/api/crypto', cryptoRoutes);
 app.use('/api', historyRoutes);
 app.use('/api/portfolio', portfolioRoutes);
+app.use('/api/gold-context', goldContextRoutes);
 
 // Ruta de health check
 app.get('/api/health', (req, res) => {

@@ -11,7 +11,7 @@
  */
 export function makeDecision(marketMode, zones, currentPrice, userState, indicators = {}, symbol = '', portfolioContext = null) {
   const { cashPercent, mode: userMode, totalCapital = 0 } = userState;
-  const { rsi = 50 } = indicators;
+  const { rsi = 50, atr = null } = indicators;
   const currentZone = zones.currentZone;
 
   // Sin cash suficiente = esperar siempre
@@ -55,7 +55,7 @@ export function makeDecision(marketMode, zones, currentPrice, userState, indicat
     ({ action, strength, reason, recommendation, operations } = result);
   } else {
     // --- MODO INVERSIÓN: conservador, largo plazo, usa P&L real del portfolio ---
-    const result = decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, portfolioContext);
+    const result = decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, portfolioContext, indicators);
     ({ action, strength, reason, recommendation, operations } = result);
   }
 
@@ -75,15 +75,45 @@ export function makeDecision(marketMode, zones, currentPrice, userState, indicat
 //   ≥ 25%      → ganancia significativa + zona de venta → toma parcial de ganancias
 //   ≥ 40%      → ganancia fuerte + zona de venta → toma parcial más agresiva
 
-function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, portfolioCtx = null) {
+function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, portfolioCtx = null, indicators = {}) {
   const currentZone = zones.currentZone;
 
   // ── Contexto del portfolio ──────────────────────────────────────────────────
   const hasPosition = portfolioCtx?.hasPosition ?? false;
   const avgBuyPrice = portfolioCtx?.avgBuyPrice ?? 0;
+  const netInvested = portfolioCtx?.netInvested ?? 0;
   const pnlPercent = hasPosition && avgBuyPrice > 0
     ? ((currentPrice - avgBuyPrice) / avgBuyPrice) * 100
     : null;
+
+  // Peso de la posición sobre el capital total
+  const allocationPercent = hasPosition && totalCapital > 0 && netInvested > 0
+    ? Math.min((netInvested / totalCapital) * 100, 100)
+    : null;
+  const isHighlyConcentrated = allocationPercent !== null && allocationPercent > 70;
+  const isLightlyExposed     = allocationPercent !== null && allocationPercent < 20;
+
+  // R/R ratio usando ATR como medida de riesgo
+  const atr = indicators?.atr ?? null;
+  const atrPct = atr && currentPrice ? (atr / currentPrice) * 100 : null;
+  const rrTarget = zones?.sell?.min ?? null;
+  const rrStop   = zones?.buy?.min ?? null;
+  let rrRatio = null;
+  let rrLine  = '';
+  if (rrTarget && rrStop && currentPrice && rrTarget > currentPrice && rrStop < currentPrice) {
+    const upside   = ((rrTarget - currentPrice) / currentPrice) * 100;
+    const downside = ((currentPrice - rrStop)   / currentPrice) * 100;
+    rrRatio = downside > 0 ? upside / downside : null;
+    if (rrRatio !== null) {
+      rrLine = ` · R/R estimado ${rrRatio.toFixed(1)}:1 (objetivo ${formatPrice(rrTarget)}, soporte ${formatPrice(rrStop)})`;
+    }
+  } else if (atrPct) {
+    rrLine = ` · Volatilidad ATR: ±${atrPct.toFixed(1)}% por vela`;
+  }
+
+  const allocationLine = allocationPercent !== null
+    ? ` · ${allocationPercent.toFixed(0)}% de tu capital en esta posición`
+    : '';
 
   // Flags derivados del P&L
   const isBelowAvg       = pnlPercent !== null && pnlPercent < 0;
@@ -115,15 +145,20 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
     if (buyZoneOk || dcaOpportunity) {
       const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion');
       const isDca = dcaOpportunity && !buyZoneOk;
+      const concentrationNote = isHighlyConcentrated
+        ? ' ⚠️ Posición ya concentrada (>70% del capital) — entrar con tramos pequeños.'
+        : isLightlyExposed
+        ? ' Posición leve — buena oportunidad para construir posición.'
+        : '';
       return {
         action: 'BUY',
         strength: 'fuerte',
         reason: isDca
-          ? `Precio por debajo del promedio de compra${pnlTag}`
-          : `Risk ON + zona de compra + ${cashPercent}% cash disponible${pnlTag}`,
+          ? `Precio por debajo del promedio de compra${pnlTag}${allocationLine}`
+          : `Risk ON + zona de compra + ${cashPercent}% cash disponible${pnlTag}${allocationLine}`,
         recommendation: isDca
-          ? `Oportunidad de DCA: el precio está ${Math.abs(pnlPercent).toFixed(1)}% por debajo de tu promedio (${formatPrice(avgBuyPrice)}). Acumular en tramos reduce el precio promedio.`
-          : 'Acumulación progresiva. Dividir entrada en 2-3 tramos para promediar precio.',
+          ? `Oportunidad de DCA: el precio está ${Math.abs(pnlPercent).toFixed(1)}% por debajo de tu promedio (${formatPrice(avgBuyPrice)}). Acumular en tramos reduce el precio promedio.${concentrationNote}${rrLine}`
+          : `Acumulación progresiva. Dividir entrada en 2-3 tramos para promediar precio.${concentrationNote}${rrLine}`,
         operations: ops
       };
     }
@@ -136,8 +171,8 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
         return {
           action: 'SELL',
           strength: isStrongProfit ? 'fuerte' : 'moderado',
-          reason: `Zona de distribución con ganancia significativa${pnlTag}`,
-          recommendation: `Toma de ganancias parcial recomendada: ${pctSell}% de la posición. Mantener el resto como núcleo de largo plazo. No salir completamente.`,
+          reason: `Zona de distribución con ganancia significativa${pnlTag}${allocationLine}`,
+          recommendation: `Toma de ganancias parcial recomendada: ${pctSell}% de la posición. Mantener el resto como núcleo de largo plazo. No salir completamente.${rrLine}`,
           operations: ops
         };
       }
@@ -148,10 +183,10 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
         action: 'WAIT',
         strength: 'moderado',
         reason: pnlPercent !== null
-          ? `Zona de distribución — ganancia aún insuficiente para vender${pnlTag}`
+          ? `Zona de distribución — ganancia aún insuficiente para vender${pnlTag}${allocationLine}`
           : `Zona de distribución — sin datos de portfolio para evaluar${noPortfolioMsg}`,
         recommendation: gapTo25
-          ? `Mantener posición. El precio debería subir un ${gapTo25}% adicional desde tu promedio para considerar toma de ganancias.`
+          ? `Mantener posición. El precio debería subir un ${gapTo25}% adicional desde tu promedio para considerar toma de ganancias.${rrLine}`
           : 'Mantener posición. Registra tus operaciones para ver cuándo tiene sentido vender.',
         operations: []
       };
@@ -161,8 +196,8 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
     return {
       action: 'WAIT',
       strength: 'débil',
-      reason: `Precio en zona neutral${pnlTag}`,
-      recommendation: `Mantener posición y aguardar. Acumular si baja a ${formatPrice(zones.buy.min)} – ${formatPrice(zones.buy.max)}.${noPortfolioMsg}`,
+      reason: `Precio en zona neutral${pnlTag}${allocationLine}`,
+      recommendation: `Mantener posición y aguardar. Acumular si baja a ${formatPrice(zones.buy.min)} – ${formatPrice(zones.buy.max)}.${noPortfolioMsg}${rrLine}`,
       operations: []
     };
   }

@@ -3,6 +3,8 @@ import { getCryptoData } from '../services/marketData.js';
 import { calculateAllIndicators, analyzeVolume } from '../services/technicalAnalysis.js';
 import { calculateZones } from '../services/zoneCalculator.js';
 import { determineMarketMode } from '../services/marketMode.js';
+import { determineGoldMarketMode } from '../services/goldMarketMode.js';
+import { getGoldContext } from '../services/goldContext.js';
 import { makeDecision } from '../services/decisionEngine.js';
 import { saveDecision, getPortfolioSummaryBySymbol } from '../config/database.js';
 
@@ -35,8 +37,19 @@ router.get('/:symbol', async (req, res) => {
     // Calcular zonas
     const zones = calculateZones(marketData.price, marketData.candles, indicators);
 
-    // Determinar market mode
-    const marketMode = determineMarketMode(marketData.price, indicators, volumeAnalysis);
+    // Determinar market mode (PAXG usa lógica macro de oro)
+    let marketMode;
+    if (symbol.toUpperCase() === 'PAXG') {
+      try {
+        const goldCtx = await getGoldContext();
+        marketMode = determineGoldMarketMode(marketData.price, indicators, volumeAnalysis, goldCtx);
+      } catch (goldErr) {
+        console.warn('[crypto route] Gold context fallback:', goldErr.message);
+        marketMode = determineMarketMode(marketData.price, indicators, volumeAnalysis);
+      }
+    } else {
+      marketMode = determineMarketMode(marketData.price, indicators, volumeAnalysis);
+    }
 
     res.json({
       symbol: symbol.toUpperCase(),
@@ -109,7 +122,18 @@ router.post('/decision', async (req, res) => {
 
     // Calcular zonas y market mode
     const zones = calculateZones(marketData.price, marketData.candles, indicators);
-    const marketMode = determineMarketMode(marketData.price, indicators, volumeAnalysis);
+    let marketMode;
+    if (symbol.toUpperCase() === 'PAXG') {
+      try {
+        const goldCtx = await getGoldContext();
+        marketMode = determineGoldMarketMode(marketData.price, indicators, volumeAnalysis, goldCtx);
+      } catch (goldErr) {
+        console.warn('[decision] Gold context fallback:', goldErr.message);
+        marketMode = determineMarketMode(marketData.price, indicators, volumeAnalysis);
+      }
+    } else {
+      marketMode = determineMarketMode(marketData.price, indicators, volumeAnalysis);
+    }
 
     // Generar decisión
     const userState = {
