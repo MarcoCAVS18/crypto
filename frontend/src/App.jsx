@@ -10,9 +10,8 @@ import { ZoneMap } from './components/ZoneMap';
 import { TechnicalAnalysis } from './components/TechnicalAnalysis';
 import { UserStateInput } from './components/UserStateInput';
 import { DecisionPanel } from './components/DecisionPanel';
-import { RulesDisplay } from './components/RulesDisplay';
 import { PortfolioSection } from './components/PortfolioSection';
-import { RefreshCw, AlertCircle, Menu, X, LayoutDashboard, Briefcase, AlertTriangle } from 'lucide-react';
+import { RefreshCw, AlertCircle, X, LayoutDashboard, Briefcase, AlertTriangle } from 'lucide-react';
 import { formatRelativeTime } from './utils/formatters';
 import { AUTO_REFRESH_INTERVAL } from './utils/constants';
 
@@ -22,7 +21,6 @@ const TABS = [
 ];
 
 function App() {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
 
   const {
@@ -104,13 +102,6 @@ function App() {
             >
               <RefreshCw className={`w-5 h-5 text-gray-400 ${loading ? 'animate-spin' : ''}`} />
             </button>
-            {/* Botón sidebar mobile */}
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition-colors lg:hidden"
-            >
-              {sidebarOpen ? <X className="w-5 h-5 text-gray-400" /> : <Menu className="w-5 h-5 text-gray-400" />}
-            </button>
           </div>
         </div>
 
@@ -162,8 +153,7 @@ function App() {
       <div className="max-w-6xl mx-auto px-4 py-6">
         {/* ── TAB: Dashboard ───────────────────────────────────────────── */}
         {activeTab === 'dashboard' && (
-          <div className="flex flex-col lg:flex-row gap-6">
-            <main className="flex-1 space-y-6 animate-fade-in">
+          <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
               {loading && !currentData ? (
                 <div className="flex items-center justify-center py-20">
                   <Spinner size="lg" />
@@ -246,18 +236,6 @@ function App() {
                   </p>
                 </Card>
               )}
-            </main>
-
-            {/* Sidebar - Reglas */}
-            <aside className={`
-              lg:w-64 lg:block
-              ${sidebarOpen ? 'block' : 'hidden'}
-              fixed lg:static inset-0 top-16 z-40
-              lg:z-auto bg-gray-900/95 lg:bg-transparent
-              p-4 lg:p-0 overflow-auto
-            `}>
-              <RulesDisplay />
-            </aside>
           </div>
         )}
 
