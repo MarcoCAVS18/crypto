@@ -1,102 +1,94 @@
-// Mapa visual de zonas de precio (compra/neutral/venta)
+import { motion } from 'framer-motion';
 import { formatPrice } from '../utils/formatters';
 
+const ZONE_CFG = {
+  buy:     { label: 'Acumulación', color: 'text-emerald-400', bg: 'bg-emerald-500/25', dotBg: 'bg-emerald-400' },
+  neutral: { label: 'Neutral',     color: 'text-amber-400',   bg: 'bg-amber-500/25',   dotBg: 'bg-amber-400'   },
+  sell:    { label: 'Distribución', color: 'text-red-400',    bg: 'bg-red-500/25',     dotBg: 'bg-red-400'     }
+};
+
 export function ZoneMap({ zones, currentPrice }) {
-  // Calcular posición relativa del precio actual
   const totalRange = zones.sell.max - zones.buy.min;
   const pricePosition = ((currentPrice - zones.buy.min) / totalRange) * 100;
-  const clampedPosition = Math.max(0, Math.min(100, pricePosition));
+  const clampedPos = Math.max(1, Math.min(99, pricePosition));
 
-  // Calcular anchos proporcionales de cada zona
-  const buyWidth = ((zones.buy.max - zones.buy.min) / totalRange) * 100;
+  const buyWidth     = ((zones.buy.max     - zones.buy.min)     / totalRange) * 100;
   const neutralWidth = ((zones.neutral.max - zones.neutral.min) / totalRange) * 100;
-  const sellWidth = ((zones.sell.max - zones.sell.min) / totalRange) * 100;
+  const sellWidth    = ((zones.sell.max    - zones.sell.min)    / totalRange) * 100;
+
+  const zoneCfg = ZONE_CFG[zones.currentZone] ?? ZONE_CFG.neutral;
 
   return (
-    <div className="w-full">
-      <div className="mb-4 text-center">
-        <span className="text-sm text-gray-400">Zona actual: </span>
-        <span className={`font-semibold ${getZoneColor(zones.currentZone)}`}>
-          {getZoneLabel(zones.currentZone)}
-        </span>
+    <div className="w-full space-y-4">
+      {/* Current zone label */}
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-slate-500 uppercase tracking-widest">Posición en rango</span>
+        <div className={`flex items-center gap-1.5 text-sm font-semibold ${zoneCfg.color}`}>
+          <span className={`w-2 h-2 rounded-full ${zoneCfg.dotBg}`} />
+          {zoneCfg.label}
+        </div>
       </div>
 
-      {/* Barra de zonas */}
-      <div className="relative h-12 rounded-lg overflow-hidden flex mb-2">
-        {/* Zona de compra */}
-        <div
-          className="bg-green-500/40 border-r border-gray-700 flex items-center justify-center"
-          style={{ width: `${buyWidth}%` }}
+      {/* Zone bar */}
+      <div className="relative">
+        {/* Price label above indicator */}
+        <motion.div
+          className="absolute -top-7 z-10"
+          animate={{ left: `${clampedPos}%` }}
+          transition={{ type: 'spring', stiffness: 120, damping: 20 }}
+          style={{ translateX: '-50%' }}
         >
-          <span className="text-xs text-green-300 font-medium">COMPRA</span>
-        </div>
-
-        {/* Zona neutral */}
-        <div
-          className="bg-yellow-500/40 border-r border-gray-700 flex items-center justify-center"
-          style={{ width: `${neutralWidth}%` }}
-        >
-          <span className="text-xs text-yellow-300 font-medium">NEUTRAL</span>
-        </div>
-
-        {/* Zona de venta */}
-        <div
-          className="bg-red-500/40 flex items-center justify-center"
-          style={{ width: `${sellWidth}%` }}
-        >
-          <span className="text-xs text-red-300 font-medium">VENTA</span>
-        </div>
-
-        {/* Marcador del precio actual */}
-        <div
-          className="absolute top-0 bottom-0 w-1 bg-white shadow-lg shadow-white/50"
-          style={{ left: `${clampedPosition}%`, transform: 'translateX(-50%)' }}
-        >
-          <div className="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap">
-            <span className="bg-white text-gray-900 px-2 py-1 rounded text-xs font-bold">
-              ${formatPrice(currentPrice)}
-            </span>
+          <div className="bg-white text-slate-900 text-[11px] font-bold px-2 py-0.5 rounded-md whitespace-nowrap shadow-lg">
+            ${formatPrice(currentPrice)}
           </div>
+          <div className="w-px h-2 bg-white/70 mx-auto" />
+        </motion.div>
+
+        {/* Bar */}
+        <div className="relative h-8 rounded-xl overflow-hidden flex">
+          <div className="bg-emerald-500/30 border-r border-slate-800 flex items-center justify-center"
+            style={{ width: `${buyWidth}%` }}>
+            <span className="text-[10px] font-semibold text-emerald-300 uppercase tracking-wide">Compra</span>
+          </div>
+          <div className="bg-amber-500/25 border-r border-slate-800 flex items-center justify-center"
+            style={{ width: `${neutralWidth}%` }}>
+            <span className="text-[10px] font-semibold text-amber-300 uppercase tracking-wide">Neutral</span>
+          </div>
+          <div className="bg-red-500/25 flex items-center justify-center"
+            style={{ width: `${sellWidth}%` }}>
+            <span className="text-[10px] font-semibold text-red-300 uppercase tracking-wide">Venta</span>
+          </div>
+
+          {/* Position indicator line */}
+          <motion.div
+            className="absolute top-0 bottom-0 w-0.5 bg-white shadow-[0_0_6px_rgba(255,255,255,0.8)]"
+            animate={{ left: `${clampedPos}%` }}
+            transition={{ type: 'spring', stiffness: 120, damping: 20 }}
+          />
+        </div>
+
+        {/* Price range labels */}
+        <div className="flex justify-between mt-2 text-[10px] text-slate-600 tabular px-0.5">
+          <span>${formatPrice(zones.buy.min)}</span>
+          <span className="hidden sm:block">${formatPrice(zones.buy.max)}</span>
+          <span className="hidden sm:block">${formatPrice(zones.sell.min)}</span>
+          <span>${formatPrice(zones.sell.max)}</span>
         </div>
       </div>
 
-      {/* Labels de precios */}
-      <div className="flex justify-between text-[10px] sm:text-xs text-gray-500 px-1">
-        <span>${formatPrice(zones.buy.min)}</span>
-        <span className="hidden sm:inline">${formatPrice(zones.buy.max)}</span>
-        <span className="hidden sm:inline">${formatPrice(zones.sell.min)}</span>
-        <span>${formatPrice(zones.sell.max)}</span>
-      </div>
-
-      {/* Razones de las zonas */}
-      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 text-xs">
-        <div className="text-green-400">
-          <span className="font-medium">Zona compra: </span>
-          <span className="text-gray-400">{zones.buy.reason}</span>
+      {/* Zone reasoning */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+        <div className="flex items-start gap-2 text-xs">
+          <span className="mt-0.5 w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+          <span className="text-slate-400">{zones.buy.reason}</span>
         </div>
-        <div className="text-red-400">
-          <span className="font-medium">Zona venta: </span>
-          <span className="text-gray-400">{zones.sell.reason}</span>
+        <div className="flex items-start gap-2 text-xs">
+          <span className="mt-0.5 w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
+          <span className="text-slate-400">{zones.sell.reason}</span>
         </div>
       </div>
     </div>
   );
-}
-
-function getZoneColor(zone) {
-  switch (zone) {
-    case 'buy': return 'text-green-400';
-    case 'sell': return 'text-red-400';
-    default: return 'text-yellow-400';
-  }
-}
-
-function getZoneLabel(zone) {
-  switch (zone) {
-    case 'buy': return 'Zona de Compra';
-    case 'sell': return 'Zona de Venta';
-    default: return 'Zona Neutral';
-  }
 }
 
 export default ZoneMap;

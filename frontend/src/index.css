@@ -1,48 +1,115 @@
 @import "tailwindcss";
 
-/* Colores personalizados para el proyecto */
+/* ── Design tokens ────────────────────────────────────────────────────────── */
 @theme {
-  --color-risk-on: #10b981;
+  --color-risk-on:      #10b981;
   --color-risk-neutral: #f59e0b;
-  --color-risk-off: #ef4444;
-  --color-zone-buy: #34d399;
+  --color-risk-off:     #ef4444;
+  --color-zone-buy:     #34d399;
   --color-zone-neutral: #fbbf24;
-  --color-zone-sell: #f87171;
+  --color-zone-sell:    #f87171;
 }
 
-/* Estilos base */
+/* ── Base ─────────────────────────────────────────────────────────────────── */
+html {
+  color-scheme: dark;
+}
+
 body {
-  @apply bg-gray-900 text-gray-100 min-h-screen;
+  background-color: #080c18;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(37,99,235,0.08), transparent),
+    linear-gradient(to bottom, transparent 80%, rgba(0,0,0,0.4));
+  color: #e2e8f0;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
+  min-height: 100svh;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Evitar zoom automático en iOS al hacer foco en inputs (requiere font-size >= 16px) */
+/* iOS zoom fix: font-size ≥ 16px */
 input, select, textarea {
   font-size: 16px;
 }
 
-/* Animaciones sutiles */
+/* ── Range input styling ───────────────────────────────────────────────────── */
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 9999px;
+  outline: none;
+  cursor: pointer;
+}
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #3b82f6;
+  border: 2px solid rgba(59,130,246,0.4);
+  box-shadow: 0 0 8px rgba(59,130,246,0.5);
+  cursor: pointer;
+  transition: box-shadow 0.15s;
+}
+input[type='range']::-webkit-slider-thumb:hover {
+  box-shadow: 0 0 14px rgba(59,130,246,0.7);
+}
+input[type='range']::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #3b82f6;
+  border: 2px solid rgba(59,130,246,0.4);
+  cursor: pointer;
+}
+
+/* ── Animations ───────────────────────────────────────────────────────────── */
 .animate-fade-in {
-  animation: fadeIn 0.3s ease-in-out;
+  animation: fadeIn 0.4s ease-out both;
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Scrollbar personalizado */
+@keyframes pulse-ring {
+  0%   { box-shadow: 0 0 0 0 currentColor; opacity: 0.6; }
+  70%  { box-shadow: 0 0 0 10px currentColor; opacity: 0; }
+  100% { box-shadow: 0 0 0 0 currentColor; opacity: 0; }
+}
+
+.pulse-ring {
+  animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* ── Custom scrollbar ─────────────────────────────────────────────────────── */
 ::-webkit-scrollbar {
-  width: 8px;
+  width: 6px;
 }
-
 ::-webkit-scrollbar-track {
-  @apply bg-gray-800;
+  background: transparent;
 }
-
 ::-webkit-scrollbar-thumb {
-  @apply bg-gray-600 rounded;
+  background: rgba(255,255,255,0.1);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.18);
 }
 
-::-webkit-scrollbar-thumb:hover {
-  @apply bg-gray-500;
+/* ── Glass card ───────────────────────────────────────────────────────────── */
+.glass {
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* ── Tabular numbers everywhere financial data appears ────────────────────── */
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
 }
