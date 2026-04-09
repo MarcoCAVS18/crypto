@@ -84,7 +84,7 @@ export function PortfolioSection() {
     try {
       await removeOperation(id);
     } catch (err) {
-      console.error(err);
+      setError(err.message);
     }
   };
 
