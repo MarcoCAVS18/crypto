@@ -123,7 +123,8 @@ export function determineGoldMarketMode(currentPrice, indicators, volumeAnalysis
       keyFactors: analysis?.keyFactors ?? [],
       headlines: goldContext.headlines ?? [],
       fetchedAt: goldContext.fetchedAt,
-      fromCache: goldContext.fromCache ?? false
+      fromCache: goldContext.fromCache ?? false,
+      analysisError: goldContext.analysisError ?? null
     }
   };
 }
