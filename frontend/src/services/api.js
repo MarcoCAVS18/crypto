@@ -40,5 +40,10 @@ export async function checkHealth() {
   return response.data;
 }
 
+export async function refreshGoldContext() {
+  const response = await api.post('/gold-context/refresh');
+  return response.data;
+}
+
 
 export default api;

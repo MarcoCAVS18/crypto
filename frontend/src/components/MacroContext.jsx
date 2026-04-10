@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { TrendingUp, TrendingDown, Minus, Newspaper, BrainCircuit, Clock } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Newspaper, BrainCircuit, Clock, RefreshCw } from 'lucide-react';
+import { refreshGoldContext } from '../services/api';
 
 const SENTIMENT = {
   bullish: { label: 'Alcista',  color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20', Icon: TrendingUp,  dot: 'bg-emerald-400' },
@@ -42,11 +44,35 @@ function relativeTime(iso) {
   return `${Math.floor(min / 60)}h`;
 }
 
-export function MacroContext({ goldContext }) {
-  if (!goldContext) return null;
-  const { macro, sentiment, reasoning, keyFactors = [], headlines = [], fetchedAt, fromCache } = goldContext;
+export function MacroContext({ goldContext: initialContext }) {
+  const [context, setContext] = useState(initialContext);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState(null);
+
+  // Sync when parent prop changes (e.g. on page refresh)
+  if (initialContext !== context && !refreshing) {
+    setContext(initialContext);
+  }
+
+  if (!context) return null;
+
+  const { macro, sentiment, reasoning, keyFactors = [], headlines = [], fetchedAt, fromCache } = context;
   const s = SENTIMENT[sentiment] ?? SENTIMENT.neutral;
   const SentIcon = s.Icon;
+  const groqMissing = reasoning?.includes('no configurado') || reasoning?.includes('error temporal');
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    setRefreshError(null);
+    try {
+      const fresh = await refreshGoldContext();
+      setContext(fresh);
+    } catch (err) {
+      setRefreshError('No se pudo actualizar. Intenta de nuevo.');
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   return (
     <motion.div
@@ -61,35 +87,66 @@ export function MacroContext({ goldContext }) {
           <BrainCircuit className="w-3.5 h-3.5 text-blue-400" />
           <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Contexto Macro · Oro</span>
         </div>
-        <div className="flex items-center gap-1.5 text-[10px] text-slate-600">
-          {fromCache && <Clock className="w-3 h-3" />}
-          <span>{relativeTime(fetchedAt)}</span>
+        <div className="flex items-center gap-2">
+          {fetchedAt && (
+            <div className="flex items-center gap-1 text-[10px] text-slate-600">
+              {fromCache && <Clock className="w-3 h-3" />}
+              <span>{relativeTime(fetchedAt)}</span>
+            </div>
+          )}
+          <motion.button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            whileTap={{ scale: 0.9 }}
+            title="Forzar actualización (ignora caché)"
+            className="w-6 h-6 flex items-center justify-center rounded-lg hover:bg-white/[0.06] transition-colors disabled:opacity-40"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-slate-500 ${refreshing ? 'animate-spin' : ''}`} />
+          </motion.button>
         </div>
       </div>
 
       <div className="p-5 space-y-5">
+        {/* Error de refresh */}
+        {refreshError && (
+          <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+            {refreshError}
+          </p>
+        )}
+
         {/* AI sentiment block */}
         <div className={`flex items-start gap-3.5 p-4 rounded-xl border ${s.bg}`}>
           <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border ${s.bg}`}>
             <SentIcon className={`w-4 h-4 ${s.color}`} />
           </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 mb-1.5">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-2 mb-1.5">
               <span className={`text-sm font-bold ${s.color}`}>Oro {s.label}</span>
               <span className="text-[10px] text-slate-600 uppercase tracking-wider">análisis IA</span>
             </div>
-            {reasoning && (
-              <p className="text-xs text-slate-300 leading-relaxed mb-2">{reasoning}</p>
-            )}
-            {keyFactors.length > 0 && (
-              <ul className="space-y-1">
-                {keyFactors.map((f, i) => (
-                  <li key={i} className="flex items-start gap-1.5 text-xs text-slate-500">
-                    <span className={`mt-1 w-1 h-1 rounded-full shrink-0 ${s.dot}`} />
-                    {f}
-                  </li>
-                ))}
-              </ul>
+
+            {groqMissing ? (
+              <div className="space-y-1.5">
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Groq no respondió todavía. Presioná el botón ↻ arriba para forzar el análisis.
+                </p>
+              </div>
+            ) : (
+              <>
+                {reasoning && (
+                  <p className="text-xs text-slate-300 leading-relaxed mb-2">{reasoning}</p>
+                )}
+                {keyFactors.length > 0 && (
+                  <ul className="space-y-1">
+                    {keyFactors.map((f, i) => (
+                      <li key={i} className="flex items-start gap-1.5 text-xs text-slate-500">
+                        <span className={`mt-1 w-1 h-1 rounded-full shrink-0 ${s.dot}`} />
+                        {f}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
             )}
           </div>
         </div>
