@@ -35,10 +35,15 @@ export default function App() {
     selectedCrypto, cryptoData, userState, currentDecision,
     loading, decisionLoading, error, serverWaking, lastUpdate,
     setSelectedCrypto, loadCryptoData, updateUserState,
-    getDecision, refreshData, clearError
+    getDecision, refreshData, clearError, loadPortfolio
   } = useAppStore();
 
-  useEffect(() => { loadCryptoData(selectedCrypto); }, []);
+  // Carga datos de mercado Y portfolio al iniciar — el engine de decisión
+  // necesita el portfolio aunque el usuario no haya visitado la tab Portfolio
+  useEffect(() => {
+    loadCryptoData(selectedCrypto);
+    loadPortfolio();
+  }, []);
 
   useEffect(() => {
     const t = setInterval(refreshData, AUTO_REFRESH_INTERVAL);
