@@ -56,10 +56,10 @@ export function MacroContext({ goldContext: initialContext }) {
 
   if (!context) return null;
 
-  const { macro, sentiment, reasoning, keyFactors = [], headlines = [], fetchedAt, fromCache } = context;
+  const { macro, sentiment, reasoning, keyFactors = [], headlines = [], fetchedAt, fromCache, analysisError } = context;
   const s = SENTIMENT[sentiment] ?? SENTIMENT.neutral;
   const SentIcon = s.Icon;
-  const groqMissing = reasoning?.includes('no configurado') || reasoning?.includes('error temporal');
+  const groqMissing = !!analysisError;
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -127,9 +127,11 @@ export function MacroContext({ goldContext: initialContext }) {
 
             {groqMissing ? (
               <div className="space-y-1.5">
-                <p className="text-xs text-slate-500 leading-relaxed">
-                  Groq no respondió todavía. Presioná el botón ↻ arriba para forzar el análisis.
+                <p className="text-xs text-amber-400/80 font-medium">Error al contactar Groq:</p>
+                <p className="text-xs text-slate-400 font-mono bg-slate-800/60 rounded-lg px-2.5 py-2 leading-relaxed break-all">
+                  {analysisError}
                 </p>
+                <p className="text-xs text-slate-600">Presioná ↻ para reintentar.</p>
               </div>
             ) : (
               <>

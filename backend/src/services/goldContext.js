@@ -58,10 +58,12 @@ export async function getGoldContext(forceRefresh = false) {
     keyFactors: []
   };
 
+  let analysisError = null;
   try {
     analysis = await analyzeGoldSentiment(headlines, macro);
     console.log(`[GoldContext] Groq: ${analysis.sentiment} (score: ${analysis.score})`);
   } catch (groqErr) {
+    analysisError = groqErr.message;
     console.warn('[GoldContext] Groq analysis failed:', groqErr.message);
   }
 
@@ -70,7 +72,8 @@ export async function getGoldContext(forceRefresh = false) {
     fromCache: false,
     macro,
     headlines: headlines.slice(0, 10),
-    analysis
+    analysis,
+    analysisError  // null si Groq funcionó, string con el error si falló
   };
 
   // ── Persist to cache ───────────────────────────────────────────────────────
