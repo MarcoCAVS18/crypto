@@ -6,7 +6,9 @@ import { determineMarketMode } from '../services/marketMode.js';
 import { determineGoldMarketMode } from '../services/goldMarketMode.js';
 import { getGoldContext } from '../services/goldContext.js';
 import { makeDecision } from '../services/decisionEngine.js';
-import { saveDecision, getPortfolioSummaryBySymbol } from '../config/database.js';
+import { analyzeCalendarRisk } from '../services/groqAnalyzer.js';
+import { getUpcomingEvents } from '../data/macroCalendar.js';
+import { saveDecision, getPortfolioSummaryBySymbol, getAiCache, setAiCache } from '../config/database.js';
 
 const router = express.Router();
 
@@ -153,7 +155,48 @@ router.post('/decision', async (req, res) => {
       }
     }
 
-    const decision = makeDecision(marketMode, zones, marketData.price, userState, indicators, symbol.toUpperCase(), portfolioContext);
+    let decision = makeDecision(marketMode, zones, marketData.price, userState, indicators, symbol.toUpperCase(), portfolioContext);
+
+    // ── Modulación por calendario macro (solo en BUY, via Groq) ───────────────
+    // Solo llamamos a Groq si la señal es BUY y hay eventos críticos en 7 días.
+    // El resultado se cachea 4h por (asset + action + conjunto de eventos próximos).
+    if (decision.action === 'BUY' && process.env.GROQ_API_KEY) {
+      try {
+        const upcomingEvents = getUpcomingEvents(7, symbol.toUpperCase());
+        if (upcomingEvents.length > 0) {
+          // Clave de caché determinista: depende del activo, acción, intensidad
+          // y qué eventos están próximos (no de precios — el riesgo de calendario
+          // es el mismo para cualquier señal BUY del mismo día)
+          const eventsKey    = upcomingEvents.map(e => `${e.name}:${e.daysUntil}`).join(',');
+          const cacheKey     = `calrisk_${symbol}_${decision.action}_${decision.strength}_${eventsKey}`;
+          let   calendarRisk = getAiCache(cacheKey);
+
+          if (!calendarRisk) {
+            console.log(`[CalendarRisk] Calling Groq for ${symbol} BUY — events: ${eventsKey}`);
+            const marketCtx = {
+              mode:          marketMode.mode,
+              currentZone:   zones.currentZone,
+              rsi:           indicators.rsi,
+              goldSentiment: marketMode.goldContext?.sentiment ?? null
+            };
+            calendarRisk = await analyzeCalendarRisk(
+              symbol.toUpperCase(), decision, upcomingEvents, marketCtx
+            );
+            setAiCache(cacheKey, calendarRisk, 4);
+            console.log(`[CalendarRisk] modulate=${calendarRisk.modulate}, capitalFraction=${calendarRisk.capitalFraction}`);
+          } else {
+            console.log(`[CalendarRisk] Cache hit for ${symbol}`);
+          }
+
+          if (calendarRisk.modulate) {
+            decision = applyCalendarModulation(decision, calendarRisk);
+          }
+        }
+      } catch (calErr) {
+        // No interrumpir la señal principal si el calendario falla
+        console.warn('[CalendarRisk] Error:', calErr.message);
+      }
+    }
 
     // Guardar en historial
     let savedToHistory = false;
@@ -188,5 +231,48 @@ router.post('/decision', async (req, res) => {
     });
   }
 });
+
+// ── Helper: aplica la modulación de calendario a una decisión ─────────────────
+function applyCalendarModulation(decision, calendarRisk) {
+  const { action, strength, capitalFraction, reasoning, calendarNote } = calendarRisk;
+  const changed = action !== decision.action || strength !== decision.strength || capitalFraction < 1;
+
+  if (!changed) return decision;
+
+  // Si la acción cambia a WAIT, vaciar operaciones
+  const newOperations = action === 'WAIT'
+    ? []
+    : decision.operations.map(op => ({
+        ...op,
+        usdAmount: op.usdAmount != null
+          ? Math.round(op.usdAmount * capitalFraction * 100) / 100
+          : null,
+        units: op.units != null
+          ? op.units * capitalFraction
+          : null,
+        // Flag para que el frontend sepa que fue reducido por calendario
+        calendarReduced: capitalFraction < 1
+      }));
+
+  // Construir nota de modulación
+  const notePrefix = capitalFraction === 0
+    ? '⚠️ Entrada pausada por evento macro'
+    : capitalFraction < 0.6
+    ? `⚠️ Entrada reducida al ${Math.round(capitalFraction * 100)}% por evento macro`
+    : `⚠️ Posición reducida al ${Math.round(capitalFraction * 100)}% por precaución`;
+
+  const modNote = calendarNote
+    ? `${notePrefix}: ${calendarNote}`
+    : notePrefix;
+
+  return {
+    ...decision,
+    action,
+    strength,
+    operations: newOperations,
+    recommendation: `${modNote} · ${decision.recommendation}`,
+    calendarRisk: { capitalFraction, reasoning, calendarNote, originalAction: decision.action }
+  };
+}
 
 export default router;

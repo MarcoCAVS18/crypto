@@ -1,5 +1,6 @@
-// Análisis de sentimiento para oro usando Groq (Llama 3.1 70B, free tier)
-// Free tier: ~14,400 req/día — más que suficiente con caché de 6h
+// Análisis con Groq (Llama 3.3 70B, free tier ~14,400 req/día)
+// 1. analyzeGoldSentiment   — sentimiento macro para oro/PAXG (caché 6h)
+// 2. analyzeCalendarRisk    — modulación de decisión por eventos macro (caché 4h)
 
 import Groq from 'groq-sdk';
 
@@ -86,5 +87,89 @@ Responde SOLO con un objeto JSON válido (sin markdown, sin texto extra):
     score: typeof parsed.score === 'number' ? Math.max(-1, Math.min(1, parsed.score)) : 0,
     reasoning: typeof parsed.reasoning === 'string' ? parsed.reasoning : '',
     keyFactors: Array.isArray(parsed.keyFactors) ? parsed.keyFactors.slice(0, 3) : []
+  };
+}
+
+/**
+ * Evalúa si una señal de inversión debe modularse por eventos macro próximos.
+ * Llama razona sobre el contexto completo y devuelve instrucciones concretas.
+ *
+ * @param {string}   asset          - 'BTC' | 'PAXG'
+ * @param {object}   decision       - { action, strength, reason }
+ * @param {Array}    upcomingEvents - eventos de macroCalendar dentro de 7 días
+ * @param {object}   marketCtx      - { mode, currentZone, rsi, goldSentiment? }
+ * @returns {{ modulate, action, strength, capitalFraction, reasoning, calendarNote }}
+ */
+export async function analyzeCalendarRisk(asset, decision, upcomingEvents, marketCtx = {}) {
+  const client = getClient();
+
+  const assetDesc = asset === 'PAXG'
+    ? 'PAXG (oro tokenizado — sensible a tasas, dólar e inflación)'
+    : 'BTC (Bitcoin — sensible a liquidez global y risk-off)';
+
+  const eventsText = upcomingEvents
+    .map(e => `  • ${e.fullName} en ${e.daysUntil} día${e.daysUntil === 1 ? '' : 's'} (impacto: ${e.impact === 'critical' ? 'CRÍTICO' : 'ALTO'})`)
+    .join('\n');
+
+  const mktText = [
+    marketCtx.mode      && `Modo de mercado: ${marketCtx.mode}`,
+    marketCtx.currentZone && `Zona actual: ${marketCtx.currentZone}`,
+    marketCtx.rsi != null && `RSI: ${marketCtx.rsi.toFixed(1)}`,
+    marketCtx.goldSentiment && `Sentimiento IA sobre oro: ${marketCtx.goldSentiment}`
+  ].filter(Boolean).join(' | ');
+
+  const prompt = `Sos un gestor de riesgo especializado en inversiones en criptoactivos y oro tokenizado.
+
+ACTIVO: ${assetDesc}
+CONTEXTO DE MERCADO: ${mktText || 'No disponible'}
+SEÑAL TÉCNICA DEL SISTEMA: ${decision.action} (intensidad: ${decision.strength})
+MOTIVO DE LA SEÑAL: ${decision.reason}
+
+EVENTOS MACRO PRÓXIMOS (EE.UU.) QUE PODRÍAN AFECTAR ESTE ACTIVO:
+${eventsText}
+
+Teniendo en cuenta ÚNICAMENTE el riesgo que estos eventos representan para la ejecución de esta señal, respondé SOLO con JSON válido (sin markdown):
+{
+  "modulate": <true si recomendás cambiar algo, false si la señal está bien tal cual>,
+  "action": "${decision.action}",
+  "strength": "${decision.strength}",
+  "capitalFraction": <1.0 sin cambio, 0.5 para reducir a la mitad, 0.0 para no entrar>,
+  "reasoning": "<1 oración en español: por qué sí o por qué no modulás>",
+  "calendarNote": "<aviso concreto para el inversor, máx 90 caracteres, en español. Vacío si modulate=false>"
+}
+
+Guía de criterio:
+- FOMC mañana o hoy → modulate=true, capitalFraction=0.0 (WAIT total) o 0.3 (entrada mínima)
+- CPI/NFP en 1-2 días → modulate=true, capitalFraction=0.4-0.6
+- Cualquier evento en 3-5 días → modulate=true, capitalFraction=0.6-0.8 si la señal es fuerte
+- Eventos en 6-7 días con señal débil → modulate=true, capitalFraction=0.7
+- Sin eventos inminentes o señal débil existente → modulate=false`;
+
+  const completion = await client.chat.completions.create({
+    model: 'llama-3.3-70b-versatile',
+    messages: [{ role: 'user', content: prompt }],
+    temperature: 0.15,   // baja temperatura: queremos juicio consistente
+    max_tokens: 250
+  });
+
+  const content = completion.choices[0]?.message?.content ?? '';
+  const jsonMatch = content.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    throw new Error(`Calendar risk response has no JSON. Raw: ${content.slice(0, 200)}`);
+  }
+
+  const p = JSON.parse(jsonMatch[0]);
+  const validActions   = ['BUY', 'WAIT', 'SELL'];
+  const validStrengths = ['fuerte', 'moderado', 'débil'];
+
+  return {
+    modulate:        p.modulate === true,
+    action:          validActions.includes(p.action)    ? p.action    : decision.action,
+    strength:        validStrengths.includes(p.strength) ? p.strength  : decision.strength,
+    capitalFraction: typeof p.capitalFraction === 'number'
+                       ? Math.max(0, Math.min(1, p.capitalFraction))
+                       : 1.0,
+    reasoning:    typeof p.reasoning    === 'string' ? p.reasoning    : '',
+    calendarNote: typeof p.calendarNote === 'string' ? p.calendarNote : ''
   };
 }
