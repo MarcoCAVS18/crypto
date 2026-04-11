@@ -11,6 +11,7 @@ import { TechnicalAnalysis } from './components/TechnicalAnalysis';
 import { UserStateInput } from './components/UserStateInput';
 import { DecisionPanel } from './components/DecisionPanel';
 import { MacroContext } from './components/MacroContext';
+import { MacroCalendarBanner } from './components/MacroCalendarBanner';
 import { PortfolioSection } from './components/PortfolioSection';
 import { RefreshCw, AlertCircle, X, LayoutDashboard, Briefcase, AlertTriangle } from 'lucide-react';
 import { formatRelativeTime } from './utils/formatters';
@@ -34,6 +35,7 @@ export default function App() {
   const {
     selectedCrypto, cryptoData, userState, currentDecision,
     loading, decisionLoading, error, serverWaking, lastUpdate,
+    portfolio,
     setSelectedCrypto, loadCryptoData, updateUserState,
     getDecision, refreshData, clearError, loadPortfolio
   } = useAppStore();
@@ -57,6 +59,9 @@ export default function App() {
   };
 
   const currentData = cryptoData[selectedCrypto];
+
+  // Portfolio del símbolo activo para el preview DCA en DecisionPanel
+  const portfolioSummary = portfolio.summary.find(s => s.symbol === selectedCrypto) ?? null;
 
   return (
     <div className="min-h-svh">
@@ -191,6 +196,9 @@ export default function App() {
                 </div>
               ) : currentData ? (
                 <>
+                  {/* Calendario macro — eventos próximos que pueden generar volatilidad */}
+                  <MacroCalendarBanner symbol={selectedCrypto} />
+
                   {currentData.candlesSource === 'synthetic' && (
                     <div className="flex items-start gap-2.5 p-3.5 bg-amber-500/[0.08] border border-amber-500/20 rounded-xl text-amber-400 text-sm">
                       <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
@@ -271,7 +279,7 @@ export default function App() {
                       </div>
                     </Card>
                   ) : (
-                    <DecisionPanel decision={currentDecision} />
+                    <DecisionPanel decision={currentDecision} portfolioSummary={portfolioSummary} />
                   )}
                 </>
               ) : (

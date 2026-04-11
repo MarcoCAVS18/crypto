@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowUpCircle, Clock, ArrowDownCircle, Lightbulb, ShoppingCart, TrendingDown } from 'lucide-react';
+import { ArrowUpCircle, Clock, ArrowDownCircle, Lightbulb, ShoppingCart, TrendingDown, ArrowRight } from 'lucide-react';
 
 const ACTION = {
   BUY: {
@@ -42,7 +42,27 @@ const ACTION = {
 
 const strengthDots = { fuerte: 3, moderado: 2, débil: 1 };
 
-export function DecisionPanel({ decision }) {
+/**
+ * Calcula el efecto DCA de comprar un tramo sobre el portfolio existente.
+ * Devuelve null si no hay posición activa o si faltan datos.
+ */
+function calcDcaEffect(op, portfolioSummary) {
+  if (!portfolioSummary?.hasPosition) return null;
+  if (!portfolioSummary.avgBuyPrice || !portfolioSummary.units) return null;
+  if (!op.usdAmount || !op.price) return null;
+
+  const addedUnits   = op.usdAmount / op.price;
+  const newUnits     = portfolioSummary.units + addedUnits;
+  const newInvested  = (portfolioSummary.netInvested ?? 0) + op.usdAmount;
+  const newAvg       = newInvested / newUnits;
+  const avgDelta     = newAvg - portfolioSummary.avgBuyPrice;
+  const avgDeltaPct  = (avgDelta / portfolioSummary.avgBuyPrice) * 100;
+  const improves     = avgDelta < 0;
+
+  return { newAvg, avgDelta, avgDeltaPct, improves };
+}
+
+export function DecisionPanel({ decision, portfolioSummary }) {
   if (!decision) {
     return (
       <div className="bg-slate-900/50 border border-white/[0.05] rounded-2xl p-6 text-center backdrop-blur-sm">
@@ -56,7 +76,7 @@ export function DecisionPanel({ decision }) {
   const cfg = ACTION[action] ?? ACTION.WAIT;
   const { Icon } = cfg;
   const dots = strengthDots[strength] ?? 1;
-  const buyOps = operations.filter(o => o.type === 'BUY');
+  const buyOps  = operations.filter(o => o.type === 'BUY');
   const sellOps = operations.filter(o => o.type === 'SELL');
 
   return (
@@ -114,8 +134,8 @@ export function DecisionPanel({ decision }) {
             Icon={ShoppingCart}
             iconColor="text-emerald-400"
             ops={buyOps}
-            color="emerald"
             cfg={ACTION.BUY}
+            portfolioSummary={portfolioSummary}
           />
         )}
 
@@ -126,8 +146,8 @@ export function DecisionPanel({ decision }) {
             Icon={TrendingDown}
             iconColor="text-red-400"
             ops={sellOps}
-            color="red"
             cfg={ACTION.SELL}
+            portfolioSummary={null}
           />
         )}
       </motion.div>
@@ -135,7 +155,7 @@ export function DecisionPanel({ decision }) {
   );
 }
 
-function OperationGroup({ title, Icon, iconColor, ops, cfg }) {
+function OperationGroup({ title, Icon, iconColor, ops, cfg, portfolioSummary }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -149,36 +169,45 @@ function OperationGroup({ title, Icon, iconColor, ops, cfg }) {
       </div>
 
       <div className="space-y-2">
-        {ops.map((op, i) => (
-          <motion.div
-            key={op.level}
-            initial={{ opacity: 0, x: -8 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.2 + i * 0.07, duration: 0.2 }}
-            className={`flex flex-col sm:flex-row sm:items-center gap-2 p-3 rounded-xl border ${cfg.rowBorder} ${cfg.rowBg}`}
-          >
-            {/* Level badge + label */}
-            <div className="flex items-center gap-2.5 flex-1 min-w-0">
-              <span className={`
-                w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center shrink-0
-                border ${cfg.rowBorder} ${cfg.color}
-              `}>{op.level}</span>
-              <span className="text-sm text-slate-300 truncate">{op.label}</span>
-            </div>
+        {ops.map((op, i) => {
+          const dca = op.type === 'BUY' ? calcDcaEffect(op, portfolioSummary) : null;
+          return (
+            <motion.div
+              key={op.level}
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.2 + i * 0.07, duration: 0.2 }}
+              className={`flex flex-col gap-2 p-3 rounded-xl border ${cfg.rowBorder} ${cfg.rowBg}`}
+            >
+              {/* Level badge + label + metrics */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                  <span className={`
+                    w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center shrink-0
+                    border ${cfg.rowBorder} ${cfg.color}
+                  `}>{op.level}</span>
+                  <span className="text-sm text-slate-300 truncate">{op.label}</span>
+                </div>
 
-            {/* Metrics */}
-            <div className="flex items-center gap-4 shrink-0 ml-7 sm:ml-0 text-right">
-              <Metric label="Precio" value={`$${fmtOp(op.price)}`} mono />
-              {op.usdAmount != null && (
-                <Metric label="Monto" value={`$${Math.round(op.usdAmount).toLocaleString('en-US')}`} color={cfg.color} mono />
+                <div className="flex items-center gap-4 shrink-0 ml-7 sm:ml-0 text-right">
+                  <Metric label="Precio"   value={`$${fmtOp(op.price)}`} mono />
+                  {op.usdAmount != null && (
+                    <Metric label="Monto"  value={`$${Math.round(op.usdAmount).toLocaleString('en-US')}`} color={cfg.color} mono />
+                  )}
+                  {op.units != null && (
+                    <Metric label="Unidades" value={fmtUnits(op.units)} mono />
+                  )}
+                  <Metric label="% cap." value={`${op.percentage}%`} color={cfg.color} />
+                </div>
+              </div>
+
+              {/* DCA preview — solo si hay posición y capital conocido */}
+              {dca && (
+                <DcaPreview dca={dca} portfolioSummary={portfolioSummary} />
               )}
-              {op.units != null && (
-                <Metric label="Unidades" value={fmtUnits(op.units)} mono />
-              )}
-              <Metric label="% cap." value={`${op.percentage}%`} color={cfg.color} />
-            </div>
-          </motion.div>
-        ))}
+            </motion.div>
+          );
+        })}
       </div>
 
       {ops.some(o => o.type === 'SELL' && o.note) && (
@@ -187,6 +216,31 @@ function OperationGroup({ title, Icon, iconColor, ops, cfg }) {
         </p>
       )}
     </motion.div>
+  );
+}
+
+function DcaPreview({ dca, portfolioSummary }) {
+  const { newAvg, avgDeltaPct, improves } = dca;
+  const sign   = avgDeltaPct >= 0 ? '+' : '';
+  const color  = improves ? 'text-emerald-400' : 'text-amber-400';
+  const bgLine = improves ? 'bg-emerald-500/5 border-emerald-500/15' : 'bg-amber-500/5 border-amber-500/15';
+
+  return (
+    <div className={`ml-7 flex items-center gap-2 px-2.5 py-1.5 rounded-lg border ${bgLine}`}>
+      <span className="text-[10px] text-slate-600 uppercase tracking-wider shrink-0">Promedio tras compra</span>
+      <div className="flex items-center gap-1.5 ml-auto">
+        <span className="text-xs text-slate-500 tabular font-mono">
+          ${fmtOp(portfolioSummary.avgBuyPrice)}
+        </span>
+        <ArrowRight className="w-3 h-3 text-slate-600 shrink-0" />
+        <span className={`text-xs font-semibold tabular font-mono ${color}`}>
+          ${fmtOp(newAvg)}
+        </span>
+        <span className={`text-[11px] ${color} tabular`}>
+          ({sign}{avgDeltaPct.toFixed(1)}%)
+        </span>
+      </div>
+    </div>
   );
 }
 
