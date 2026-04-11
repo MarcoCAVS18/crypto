@@ -113,7 +113,15 @@ export const useAppStore = create(
         const allSummary      = computePortfolioSummary(portfolio.operations);
         const symbolSummary   = allSummary.find(s => s.symbol === selectedCrypto) || null;
         const portfolioContext = symbolSummary
-          ? { ...symbolSummary, hasPosition: symbolSummary.units > 0 && symbolSummary.avgBuyPrice > 0 }
+          ? {
+              ...symbolSummary,
+              hasPosition: symbolSummary.units > 0 && symbolSummary.avgBuyPrice > 0,
+              // Incluir todas las compras registradas para que el motor filtre
+              // tramos ya ejecutados a precios similares
+              executedBuys: portfolio.operations
+                .filter(op => op.symbol === selectedCrypto && op.type === 'BUY')
+                .map(op => ({ price: op.price, amount_usd: op.amount_usd }))
+            }
           : null;
 
         try {

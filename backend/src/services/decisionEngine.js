@@ -51,7 +51,7 @@ export function makeDecision(marketMode, zones, currentPrice, userState, indicat
 
   if (userMode === 'trading') {
     // --- MODO TRADING: más agresivo, usa RSI como confirmación adicional ---
-    const result = decideTradingMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital);
+    const result = decideTradingMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, portfolioContext);
     ({ action, strength, reason, recommendation, operations } = result);
   } else {
     // --- MODO INVERSIÓN: conservador, largo plazo, usa P&L real del portfolio ---
@@ -79,6 +79,7 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
   const currentZone = zones.currentZone;
 
   // ── Contexto del portfolio ──────────────────────────────────────────────────
+  const executedBuys = portfolioCtx?.executedBuys ?? [];
   const hasPosition = portfolioCtx?.hasPosition ?? false;
   const avgBuyPrice = portfolioCtx?.avgBuyPrice ?? 0;
   const netInvested = portfolioCtx?.netInvested ?? 0;
@@ -143,13 +144,25 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
     const buyZoneOk      = currentZone === 'buy' && cashPercent >= 30;
 
     if (buyZoneOk || dcaOpportunity) {
-      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion');
+      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', 1.0, executedBuys);
       const isDca = dcaOpportunity && !buyZoneOk;
       const concentrationNote = isHighlyConcentrated
         ? ' ⚠️ Posición ya concentrada (>70% del capital) — entrar con tramos pequeños.'
         : isLightlyExposed
         ? ' Posición leve — buena oportunidad para construir posición.'
         : '';
+
+      // Todos los tramos ya fueron ejecutados a precios similares
+      if (ops.length === 0) {
+        return {
+          action: 'WAIT',
+          strength: 'débil',
+          reason: `Tramos planificados ya ejecutados${pnlTag}${allocationLine}`,
+          recommendation: `Posición completa según el plan de compras. Aguardar evolución. Próxima acumulación solo si cae a ${formatPrice(zones.buy.min)} o más.${rrLine}`,
+          operations: []
+        };
+      }
+
       return {
         action: 'BUY',
         strength: 'fuerte',
@@ -210,7 +223,7 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
     const normalBuy = currentZone === 'buy' && cashPercent >= 50;
 
     if (strongDca || normalBuy) {
-      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', 0.5);
+      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', 0.5, executedBuys);
       return {
         action: 'BUY',
         strength: 'moderado',
@@ -252,15 +265,16 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
 }
 
 // ── Lógica modo TRADING ────────────────────────────────────────────────────────
-function decideTradingMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital) {
+function decideTradingMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, portfolioCtx = null) {
   const currentZone = zones.currentZone;
   const rsiOversold = rsi < 35;
   const rsiOverbought = rsi > 65;
+  const executedBuys = portfolioCtx?.executedBuys ?? [];
 
   if (marketMode.mode === 'risk_on') {
     // Compra fuerte: zona compra O RSI muy sobrevendido con cash suficiente
     if ((currentZone === 'buy' || rsiOversold) && cashPercent >= 20) {
-      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'trading');
+      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'trading', 1.0, executedBuys);
       const rsiContext = rsiOversold ? ` + RSI sobrevendido (${rsi.toFixed(1)})` : '';
       return {
         action: 'BUY',
@@ -293,7 +307,7 @@ function decideTradingMode(marketMode, zones, currentPrice, cashPercent, rsi, to
 
   if (marketMode.mode === 'neutral') {
     if (rsiOversold && cashPercent >= 30) {
-      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'trading', 0.4);
+      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'trading', 0.4, executedBuys);
       return {
         action: 'BUY',
         strength: 'moderado',
@@ -327,10 +341,13 @@ function decideTradingMode(marketMode, zones, currentPrice, cashPercent, rsi, to
 // ── Generadores de operaciones específicas ─────────────────────────────────────
 
 /**
- * Genera una lista de órdenes de compra escalonadas.
+ * Genera una lista de órdenes de compra escalonadas, filtrando niveles ya
+ * ejecutados según compras registradas en el portfolio (tolerancia ±1.5%).
+ *
  * @param {number} capitalFraction - fracción del capital disponible a usar (0-1)
+ * @param {Array}  executedBuys    - [{ price, amount_usd }] del portfolio
  */
-function generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, mode, capitalFraction = 1.0) {
+function generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, mode, capitalFraction = 1.0, executedBuys = []) {
   const capitalDisponible = totalCapital > 0 ? totalCapital * (cashPercent / 100) : 0;
   const capitalAUsar = capitalDisponible * capitalFraction;
   const hasCapital = capitalAUsar > 0;
@@ -339,27 +356,40 @@ function generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, m
   const level2Price = currentPrice * 0.98;
   const level3Price = zones.buy.min;
 
+  // Devuelve true si ya existe una compra registrada a ±1.5% del precio del tramo
+  const alreadyDone = (tramoPx) =>
+    executedBuys.some(b => b.price > 0 && Math.abs(b.price - tramoPx) / tramoPx < 0.015);
+
+  const TRAMO_LABELS = ['Primer', 'Segundo', 'Tercer'];
+
   if (mode === 'trading') {
-    // Trading: 2 niveles más concentrados
-    const pct1 = 0.5, pct2 = 0.5;
-    return [
-      buildBuyOp(1, 'Entrada táctica ahora', level1Price, capitalAUsar * pct1, hasCapital, pct1 * 100),
-      buildBuyOp(2, `Si corrige a ${formatPrice(level2Price)}`, level2Price, capitalAUsar * pct2, hasCapital, pct2 * 100)
+    const candidates = [
+      buildBuyOp(0, 'Entrada táctica ahora', level1Price, capitalAUsar * 0.5, hasCapital, 50),
+      buildBuyOp(0, `Si corrige a ${formatPrice(level2Price)}`, level2Price, capitalAUsar * 0.5, hasCapital, 50)
     ];
+    const pending = candidates.filter(op => !alreadyDone(op.price));
+    return pending.map((op, i) => ({ ...op, level: i + 1 }));
   }
 
-  // Inversión: 3 niveles escalonados
-  if (cashPercent >= 60) {
-    return [
-      buildBuyOp(1, 'Primer tramo — ahora', level1Price, capitalAUsar * 0.30, hasCapital, 30),
-      buildBuyOp(2, `Segundo tramo — si baja a ${formatPrice(level2Price)}`, level2Price, capitalAUsar * 0.30, hasCapital, 30),
-      buildBuyOp(3, `Tercer tramo — mínimo de zona (${formatPrice(level3Price)})`, level3Price, capitalAUsar * 0.40, hasCapital, 40)
-    ];
-  }
-  return [
-    buildBuyOp(1, 'Primer tramo — ahora', level1Price, capitalAUsar * 0.40, hasCapital, 40),
-    buildBuyOp(2, `Segundo tramo — si baja a ${formatPrice(level2Price)}`, level2Price, capitalAUsar * 0.60, hasCapital, 60)
-  ];
+  // Inversión: 3 o 2 niveles según cash disponible
+  const candidates = cashPercent >= 60
+    ? [
+        buildBuyOp(0, 'tramo — ahora', level1Price, capitalAUsar * 0.30, hasCapital, 30),
+        buildBuyOp(0, `tramo — si baja a ${formatPrice(level2Price)}`, level2Price, capitalAUsar * 0.30, hasCapital, 30),
+        buildBuyOp(0, `tramo — mínimo de zona (${formatPrice(level3Price)})`, level3Price, capitalAUsar * 0.40, hasCapital, 40)
+      ]
+    : [
+        buildBuyOp(0, 'tramo — ahora', level1Price, capitalAUsar * 0.40, hasCapital, 40),
+        buildBuyOp(0, `tramo — si baja a ${formatPrice(level2Price)}`, level2Price, capitalAUsar * 0.60, hasCapital, 60)
+      ];
+
+  const pending = candidates.filter(op => !alreadyDone(op.price));
+  // Renumerar y asignar etiqueta con ordinal correcto
+  return pending.map((op, i) => ({
+    ...op,
+    level: i + 1,
+    label: `${TRAMO_LABELS[i] ?? `Tramo ${i + 1}`} ${op.label}`
+  }));
 }
 
 function buildBuyOp(level, label, price, usdAmount, hasCapital, pct) {
