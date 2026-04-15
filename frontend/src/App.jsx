@@ -30,9 +30,16 @@ const tabVariants = {
   exit:    (dir) => ({ opacity: 0, x: dir > 0 ? -24 : 24, transition: { duration: 0.2 } })
 };
 
+// ── Root: solo decide qué mostrar según auth ──────────────────────────────────
 export default function App() {
+  const currentUser = useAuthStore((s) => s.currentUser);
+  return currentUser ? <AuthenticatedApp /> : <ProfileSelector />;
+}
+
+// ── App autenticada: todos los hooks siempre se ejecutan ──────────────────────
+function AuthenticatedApp() {
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [tabDir, setTabDir] = useState(1);
+  const [tabDir, setTabDir]       = useState(1);
 
   const {
     selectedCrypto, cryptoData, userState, currentDecision,
@@ -44,19 +51,11 @@ export default function App() {
 
   const { currentUser, logout } = useAuthStore();
 
-  // Si no hay usuario autenticado, mostrar pantalla de selección de perfil
-  if (!currentUser) {
-    return <ProfileSelector />;
-  }
-
-  // Guardar cryptos válidas para el perfil activo
   const profileCryptos = currentUser.cryptos ?? ['BTC', 'PAXG'];
 
   // Carga datos de mercado Y portfolio cuando el usuario cambia
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
     setUserId(currentUser.id);
-    // Si la crypto seleccionada no está en el perfil, resetear a la primera
     const activeCrypto = profileCryptos.includes(selectedCrypto)
       ? selectedCrypto
       : profileCryptos[0];
@@ -65,18 +64,20 @@ export default function App() {
     }
     loadCryptoData(activeCrypto);
     loadPortfolio();
-  }, [currentUser?.id]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser.id]);
+
+  // Auto-refresh periódico
+  useEffect(() => {
+    const t = setInterval(refreshData, AUTO_REFRESH_INTERVAL);
+    return () => clearInterval(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCrypto]);
 
   const handleLogout = () => {
     setUserId(null);
     logout();
   };
-
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  useEffect(() => {
-    const t = setInterval(refreshData, AUTO_REFRESH_INTERVAL);
-    return () => clearInterval(t);
-  }, [selectedCrypto]);
 
   const switchTab = (id) => {
     const ids = TABS.map(t => t.id);
@@ -84,9 +85,7 @@ export default function App() {
     setActiveTab(id);
   };
 
-  const currentData = cryptoData[selectedCrypto];
-
-  // Portfolio del símbolo activo para el preview DCA en DecisionPanel
+  const currentData      = cryptoData[selectedCrypto];
   const portfolioSummary = portfolio.summary.find(s => s.symbol === selectedCrypto) ?? null;
 
   return (
