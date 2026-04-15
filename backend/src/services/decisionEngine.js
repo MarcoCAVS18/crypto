@@ -152,14 +152,27 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
         ? ' Posición leve — buena oportunidad para construir posición.'
         : '';
 
-      // Todos los tramos ya fueron ejecutados a precios similares
+      // Todos los tramos del ciclo actual ya fueron ejecutados a precios similares.
+      // En vez de bloquear, ofrecemos una acumulación adicional pequeña (20%)
+      // mientras el contexto siga siendo favorable.
       if (ops.length === 0) {
+        const capitalDisponible = totalCapital > 0 ? totalCapital * (cashPercent / 100) : 0;
+        const addlAmount = capitalDisponible * 0.20;
+        const addlOp = addlAmount > 0 ? [{
+          level: 1,
+          type: 'BUY',
+          label: 'Acumulación adicional — ciclo DCA completo',
+          price: currentPrice,
+          usdAmount: Math.round(addlAmount),
+          units: addlAmount / currentPrice,
+          percentage: 20
+        }] : [];
         return {
-          action: 'WAIT',
+          action: 'BUY',
           strength: 'débil',
-          reason: `Tramos planificados ya ejecutados${pnlTag}${allocationLine}`,
-          recommendation: `Posición completa según el plan de compras. Aguardar evolución. Próxima acumulación solo si cae a ${formatPrice(zones.buy.min)} o más.${rrLine}`,
-          operations: []
+          reason: `Ciclo DCA completo — acumulación adicional disponible${pnlTag}${allocationLine}`,
+          recommendation: `El plan de tramos de este ciclo ya fue ejecutado. Podés seguir acumulando en pequeñas porciones (20% del capital disponible) si el contexto se mantiene favorable.${concentrationNote}${rrLine}`,
+          operations: addlOp
         };
       }
 

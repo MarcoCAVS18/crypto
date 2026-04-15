@@ -116,11 +116,18 @@ export const useAppStore = create(
           ? {
               ...symbolSummary,
               hasPosition: symbolSummary.units > 0 && symbolSummary.avgBuyPrice > 0,
-              // Incluir todas las compras registradas para que el motor filtre
-              // tramos ya ejecutados a precios similares
-              executedBuys: portfolio.operations
-                .filter(op => op.symbol === selectedCrypto && op.type === 'BUY')
-                .map(op => ({ price: op.price, amount_usd: op.amount_usd }))
+              // Solo compras de los últimos 14 días: evita que buys de ciclos
+              // anteriores bloqueen tramos en una nueva oportunidad de mercado
+              executedBuys: (() => {
+                const cutoff = Date.now() - 14 * 24 * 3600 * 1000;
+                return portfolio.operations
+                  .filter(op =>
+                    op.symbol === selectedCrypto &&
+                    op.type === 'BUY' &&
+                    new Date(op.date).getTime() >= cutoff
+                  )
+                  .map(op => ({ price: op.price, amount_usd: op.amount_usd, date: op.date }));
+              })()
             }
           : null;
 
