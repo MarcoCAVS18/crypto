@@ -116,10 +116,12 @@ export const useAppStore = create(
           ? {
               ...symbolSummary,
               hasPosition: symbolSummary.units > 0 && symbolSummary.avgBuyPrice > 0,
-              // Solo compras de los últimos 14 días: evita que buys de ciclos
-              // anteriores bloqueen tramos en una nueva oportunidad de mercado
+              // Ventana de ciclo activo: 4 días.
+              // Solo los buys de este período bloquean la repetición de tramos.
+              // Toda la historia completa vive en Firestore sin límite de tiempo
+              // y siempre se usa para calcular P&L, promedio y unidades totales.
               executedBuys: (() => {
-                const cutoff = Date.now() - 14 * 24 * 3600 * 1000;
+                const cutoff = Date.now() - 4 * 24 * 3600 * 1000;
                 return portfolio.operations
                   .filter(op =>
                     op.symbol === selectedCrypto &&
