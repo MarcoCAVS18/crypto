@@ -45,6 +45,7 @@ export const useAppStore = create(
       // Datos del crypto actual
       cryptoData: {
         BTC:  null,
+        ETH:  null,
         PAXG: null
       },
 
@@ -71,8 +72,15 @@ export const useAppStore = create(
       error:           null,
       serverWaking:    false,
 
+      // Usuario activo
+      userId: null,
+
       // Última actualización
       lastUpdate: null,
+
+      // ── Acciones de usuario ───────────────────────────────────────────────
+
+      setUserId: (id) => set({ userId: id }),
 
       // ── Acciones de crypto ────────────────────────────────────────────────
 
@@ -170,7 +178,8 @@ export const useAppStore = create(
       loadPortfolio: async () => {
         set((state) => ({ portfolio: { ...state.portfolio, loading: true } }));
         try {
-          const operations = await fsGetOperations();
+          const userId = get().userId;
+          const operations = await fsGetOperations(null, userId);
           // Ordenar por fecha desc para la vista (Firestore ya lo devuelve así)
           const summary = computePortfolioSummary(operations);
           set((state) => ({
@@ -185,7 +194,8 @@ export const useAppStore = create(
       addOperation: async (opData) => {
         set((state) => ({ portfolio: { ...state.portfolio, loading: true } }));
         try {
-          await fsAddOperation(opData);
+          const userId = get().userId;
+          await fsAddOperation(opData, userId);
           await get().loadPortfolio();
         } catch (err) {
           set((state) => ({ portfolio: { ...state.portfolio, loading: false } }));

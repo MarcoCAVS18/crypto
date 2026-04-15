@@ -10,7 +10,7 @@ const COL = 'portfolio_operations';
 
 // ── Agregar operación ────────────────────────────────────────────────────────
 
-export async function fsAddOperation(op) {
+export async function fsAddOperation(op, userId) {
   const docRef = await addDoc(collection(db, COL), {
     date:       op.date,
     symbol:     op.symbol.toUpperCase(),
@@ -21,6 +21,7 @@ export async function fsAddOperation(op) {
     fee:        Number(op.fee) || 0,
     exchange:   op.exchange || 'Binance',
     notes:      op.notes || '',
+    userId:     userId || 'marco',
     created_at: serverTimestamp(),
   });
   return docRef.id;
@@ -28,24 +29,31 @@ export async function fsAddOperation(op) {
 
 // ── Obtener operaciones ──────────────────────────────────────────────────────
 
-export async function fsGetOperations(symbolFilter = null, limitCount = 200) {
-  let q;
-  if (symbolFilter) {
-    q = query(
-      collection(db, COL),
-      where('symbol', '==', symbolFilter.toUpperCase()),
-      orderBy('date', 'desc'),
-      limit(limitCount)
-    );
-  } else {
-    q = query(
-      collection(db, COL),
-      orderBy('date', 'desc'),
-      limit(limitCount)
-    );
-  }
+export async function fsGetOperations(symbolFilter = null, userId = null, limitCount = 200) {
+  // Siempre traemos todas las operaciones y filtramos client-side por userId
+  const q = query(
+    collection(db, COL),
+    orderBy('date', 'desc'),
+    limit(limitCount)
+  );
   const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  let ops = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  // Filtro por usuario
+  if (userId === 'marco') {
+    // Operaciones sin userId (legacy) pertenecen a Marco
+    ops = ops.filter(op => !op.userId || op.userId === 'marco');
+  } else if (userId) {
+    ops = ops.filter(op => op.userId === userId);
+  }
+  // Si no hay userId: sin filtro (backward compat)
+
+  // Filtro por símbolo (post userId)
+  if (symbolFilter) {
+    ops = ops.filter(op => op.symbol === symbolFilter.toUpperCase());
+  }
+
+  return ops;
 }
 
 // ── Eliminar operación ────────────────────────────────────────────────────────

@@ -2,11 +2,13 @@
 
 const COINBASE_IDS = {
   BTC: 'BTC-USD',
+  ETH: 'ETH-USD',
   PAXG: 'PAXG-USD'
 };
 
 const cache = {
   BTC: null,
+  ETH: null,
   PAXG: null,
   lastUpdate: null
 };

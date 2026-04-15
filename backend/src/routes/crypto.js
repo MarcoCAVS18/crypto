@@ -19,7 +19,7 @@ router.get('/:symbol', async (req, res) => {
     const { timeframe = '4h' } = req.query;
 
     // Validar símbolo
-    const validSymbols = ['BTC', 'PAXG'];
+    const validSymbols = ['BTC', 'ETH', 'PAXG'];
     if (!validSymbols.includes(symbol.toUpperCase())) {
       return res.status(400).json({
         error: 'Símbolo no válido',
@@ -99,9 +99,9 @@ router.post('/decision', async (req, res) => {
       return res.status(400).json({ error: 'El símbolo es requerido' });
     }
 
-    const validSymbols = ['BTC', 'PAXG'];
+    const validSymbols = ['BTC', 'ETH', 'PAXG'];
     if (!validSymbols.includes(symbol.toUpperCase())) {
-      return res.status(400).json({ error: 'Símbolo no válido. Usa BTC o PAXG' });
+      return res.status(400).json({ error: 'Símbolo no válido. Usa BTC, ETH o PAXG' });
     }
 
     const validModes = ['inversion', 'trading', 'observacion'];

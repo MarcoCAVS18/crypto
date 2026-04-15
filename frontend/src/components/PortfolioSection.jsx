@@ -8,8 +8,7 @@ import {
   BarChart3, RefreshCw, ChevronDown, ChevronUp, AlertCircle
 } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
-
-const SUPPORTED_SYMBOLS = ['BTC', 'PAXG'];
+import { useAuthStore } from '../store/authStore';
 const EXCHANGES = ['Binance', 'Coinbase', 'Kraken', 'OKX', 'Bybit', 'Manual'];
 
 const EMPTY_FORM = {
@@ -26,6 +25,8 @@ const EMPTY_FORM = {
 
 export function PortfolioSection() {
   const { portfolio, loadPortfolio, addOperation, removeOperation, cryptoData } = useAppStore();
+  const { currentUser } = useAuthStore();
+  const SUPPORTED_SYMBOLS = currentUser?.cryptos ?? ['BTC', 'PAXG'];
   const { operations, summary, loading } = portfolio;
 
   const [showForm, setShowForm] = useState(false);
@@ -94,6 +95,7 @@ export function PortfolioSection() {
 
   const currentPrices = {
     BTC: cryptoData.BTC?.price,
+    ETH: cryptoData.ETH?.price,
     PAXG: cryptoData.PAXG?.price
   };
 

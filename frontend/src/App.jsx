@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore } from './store/appStore';
+import { useAuthStore } from './store/authStore';
 import { Card } from './components/ui/Card';
 import { Spinner } from './components/ui/Spinner';
 import { CryptoSelector } from './components/CryptoSelector';
+import { ProfileSelector } from './components/ProfileSelector';
 import { MarketModeIndicator } from './components/MarketModeIndicator';
 import { PriceDisplay } from './components/PriceDisplay';
 import { ZoneMap } from './components/ZoneMap';
@@ -13,7 +15,7 @@ import { DecisionPanel } from './components/DecisionPanel';
 import { MacroContext } from './components/MacroContext';
 import { MacroCalendarBanner } from './components/MacroCalendarBanner';
 import { PortfolioSection } from './components/PortfolioSection';
-import { RefreshCw, AlertCircle, X, LayoutDashboard, Briefcase, AlertTriangle } from 'lucide-react';
+import { RefreshCw, AlertCircle, X, LayoutDashboard, Briefcase, AlertTriangle, UserCircle } from 'lucide-react';
 import { formatRelativeTime } from './utils/formatters';
 import { AUTO_REFRESH_INTERVAL } from './utils/constants';
 
@@ -37,16 +39,40 @@ export default function App() {
     loading, decisionLoading, error, serverWaking, lastUpdate,
     portfolio,
     setSelectedCrypto, loadCryptoData, updateUserState,
-    getDecision, refreshData, clearError, loadPortfolio
+    getDecision, refreshData, clearError, loadPortfolio, setUserId
   } = useAppStore();
 
-  // Carga datos de mercado Y portfolio al iniciar — el engine de decisión
-  // necesita el portfolio aunque el usuario no haya visitado la tab Portfolio
-  useEffect(() => {
-    loadCryptoData(selectedCrypto);
-    loadPortfolio();
-  }, []);
+  const { currentUser, logout } = useAuthStore();
 
+  // Si no hay usuario autenticado, mostrar pantalla de selección de perfil
+  if (!currentUser) {
+    return <ProfileSelector />;
+  }
+
+  // Guardar cryptos válidas para el perfil activo
+  const profileCryptos = currentUser.cryptos ?? ['BTC', 'PAXG'];
+
+  // Carga datos de mercado Y portfolio cuando el usuario cambia
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  useEffect(() => {
+    setUserId(currentUser.id);
+    // Si la crypto seleccionada no está en el perfil, resetear a la primera
+    const activeCrypto = profileCryptos.includes(selectedCrypto)
+      ? selectedCrypto
+      : profileCryptos[0];
+    if (activeCrypto !== selectedCrypto) {
+      setSelectedCrypto(activeCrypto);
+    }
+    loadCryptoData(activeCrypto);
+    loadPortfolio();
+  }, [currentUser?.id]);
+
+  const handleLogout = () => {
+    setUserId(null);
+    logout();
+  };
+
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
     const t = setInterval(refreshData, AUTO_REFRESH_INTERVAL);
     return () => clearInterval(t);
@@ -77,7 +103,7 @@ export default function App() {
               <span className="text-sm font-semibold text-slate-300 tracking-wide">Crypto Context</span>
             </div>
             <div className="hidden sm:block w-px h-5 bg-white/[0.08]" />
-            <CryptoSelector selected={selectedCrypto} onSelect={setSelectedCrypto} />
+            <CryptoSelector selected={selectedCrypto} onSelect={setSelectedCrypto} cryptos={profileCryptos} />
           </div>
 
           {/* Tabs — desktop */}
@@ -117,6 +143,15 @@ export default function App() {
                          hover:bg-slate-700/80 transition-colors disabled:opacity-40"
             >
               <RefreshCw className={`w-4 h-4 text-slate-400 ${loading ? 'animate-spin' : ''}`} />
+            </motion.button>
+            <motion.button
+              onClick={handleLogout}
+              whileTap={{ scale: 0.93 }}
+              title={`Perfil: ${currentUser.name} — Cambiar`}
+              className="w-8 h-8 rounded-lg bg-slate-800/80 border border-white/[0.06] flex items-center justify-center
+                         hover:bg-slate-700/80 transition-colors"
+            >
+              <UserCircle className="w-4 h-4 text-slate-400" />
             </motion.button>
           </div>
         </div>
