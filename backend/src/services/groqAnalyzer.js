@@ -43,7 +43,7 @@ export async function analyzeGoldSentiment(headlines, macroData) {
     : 'Sin datos macroeconómicos disponibles';
 
   const headlinesText = headlines.length > 0
-    ? headlines.map((h, i) => `${i + 1}. ${h}`).join('\n')
+    ? headlines.map((h, i) => `${i + 1}. ${typeof h === 'string' ? h : h.title}`).join('\n')
     : 'Sin titulares disponibles';
 
   const prompt = `Eres un analista especializado en oro físico y PAXG (oro tokenizado).

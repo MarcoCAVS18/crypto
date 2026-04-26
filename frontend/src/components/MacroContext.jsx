@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { TrendingUp, TrendingDown, Minus, Newspaper, BrainCircuit, Clock, RefreshCw } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Newspaper, BrainCircuit, Clock, RefreshCw, ExternalLink } from 'lucide-react';
 import { refreshGoldContext } from '../services/api';
 
 const SENTIMENT = {
@@ -39,9 +39,11 @@ function MacroStat({ label, value, delta, invertDelta, sub }) {
 function relativeTime(iso) {
   if (!iso) return '';
   const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-  if (min < 1) return 'ahora';
-  if (min < 60) return `${min}m`;
-  return `${Math.floor(min / 60)}h`;
+  if (min < 1)   return 'ahora';
+  if (min < 60)  return `${min}m`;
+  const h = Math.floor(min / 60);
+  if (h < 24)    return `${h}h`;
+  return `${Math.floor(h / 24)}d`;
 }
 
 export function MacroContext({ goldContext: initialContext }) {
@@ -187,19 +189,52 @@ export function MacroContext({ goldContext: initialContext }) {
               <Newspaper className="w-3 h-3 text-slate-600" />
               <p className="text-[10px] text-slate-600 uppercase tracking-widest">Últimas noticias</p>
             </div>
-            <ul className="space-y-2">
-              {headlines.slice(0, 5).map((h, i) => (
-                <motion.li
-                  key={i}
-                  initial={{ opacity: 0, x: -6 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.05 * i, duration: 0.2 }}
-                  className="flex items-start gap-2 text-xs text-slate-500 leading-relaxed"
-                >
-                  <span className="shrink-0 text-slate-700 font-mono tabular">{i + 1}.</span>
-                  <span>{h}</span>
-                </motion.li>
-              ))}
+            <ul className="space-y-2.5">
+              {headlines.slice(0, 6).map((h, i) => {
+                const isObj  = h && typeof h === 'object';
+                const title  = isObj ? h.title  : h;
+                const url    = isObj ? h.url    : null;
+                const source = isObj ? h.source : null;
+                const age    = isObj ? relativeTime(h.pubDate) : null;
+
+                return (
+                  <motion.li
+                    key={i}
+                    initial={{ opacity: 0, x: -6 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.05 * i, duration: 0.2 }}
+                    className="flex items-start gap-2"
+                  >
+                    <span className="shrink-0 text-slate-700 font-mono tabular text-xs mt-0.5">{i + 1}.</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-slate-400 leading-relaxed">{title}</p>
+                      {(source || age) && (
+                        <div className="flex items-center gap-2 mt-1">
+                          {source && (
+                            <span className="text-[10px] text-slate-600 bg-slate-800/60 px-1.5 py-0.5 rounded">
+                              {source}
+                            </span>
+                          )}
+                          {age && (
+                            <span className="text-[10px] text-slate-700">{age}</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    {url && (
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Abrir artículo"
+                        className="shrink-0 mt-0.5 text-slate-700 hover:text-blue-400 transition-colors"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+                  </motion.li>
+                );
+              })}
             </ul>
           </div>
         )}
