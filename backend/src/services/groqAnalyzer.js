@@ -91,6 +91,52 @@ Responde SOLO con un objeto JSON válido (sin markdown, sin texto extra):
 }
 
 /**
+ * Traduce un array de titulares al español en una sola llamada a Groq.
+ * Devuelve los mismos objetos con el campo `title` traducido.
+ * Si Groq falla, devuelve los titulares originales sin modificar.
+ *
+ * @param {Array<{title,url,source,pubDate}>} headlines
+ * @returns {Promise<Array<{title,url,source,pubDate}>>}
+ */
+export async function translateHeadlines(headlines) {
+  if (!headlines.length) return headlines;
+  const client = getClient();
+
+  const numbered = headlines.map((h, i) => `${i + 1}. ${h.title}`).join('\n');
+
+  const prompt = `Traducí al español rioplatense (Argentina) cada uno de estos titulares financieros.
+Mantené nombres propios, siglas (Fed, DXY, CPI, NFP) y cifras tal como están.
+Respondé ÚNICAMENTE con un array JSON de strings, en el mismo orden, sin texto extra:
+["traducción 1", "traducción 2", ...]
+
+TITULARES:
+${numbered}`;
+
+  const completion = await client.chat.completions.create({
+    model:       'llama-3.3-70b-versatile',
+    messages:    [{ role: 'user', content: prompt }],
+    temperature: 0.1,
+    max_tokens:  600
+  });
+
+  const content   = completion.choices[0]?.message?.content ?? '';
+  const arrayMatch = content.match(/\[[\s\S]*\]/);
+  if (!arrayMatch) throw new Error('Translation response has no JSON array');
+
+  const translated = JSON.parse(arrayMatch[0]);
+  if (!Array.isArray(translated) || translated.length !== headlines.length) {
+    throw new Error('Translation array length mismatch');
+  }
+
+  return headlines.map((h, i) => ({
+    ...h,
+    title: typeof translated[i] === 'string' && translated[i].trim()
+      ? translated[i].trim()
+      : h.title
+  }));
+}
+
+/**
  * Evalúa si una señal de inversión debe modularse por eventos macro próximos.
  * Llama razona sobre el contexto completo y devuelve instrucciones concretas.
  *

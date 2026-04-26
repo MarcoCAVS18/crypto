@@ -6,7 +6,7 @@
 
 import { getMacroData } from './macroService.js';
 import { getGoldHeadlines } from './newsService.js';
-import { analyzeGoldSentiment } from './groqAnalyzer.js';
+import { analyzeGoldSentiment, translateHeadlines } from './groqAnalyzer.js';
 import { getGoldContextCache, setGoldContextCache } from '../config/database.js';
 
 /**
@@ -67,11 +67,20 @@ export async function getGoldContext(forceRefresh = false) {
     console.warn('[GoldContext] Groq analysis failed:', groqErr.message);
   }
 
+  // Traducir titulares al español (misma sesión de Groq, se cachea junto al contexto)
+  let translatedHeadlines = headlines.slice(0, 10);
+  try {
+    translatedHeadlines = await translateHeadlines(translatedHeadlines);
+    console.log('[GoldContext] Headlines traducidos al español');
+  } catch (trErr) {
+    console.warn('[GoldContext] Traducción fallida, usando inglés:', trErr.message);
+  }
+
   const context = {
     fetchedAt: new Date().toISOString(),
     fromCache: false,
     macro,
-    headlines: headlines.slice(0, 10),
+    headlines: translatedHeadlines,
     analysis,
     analysisError  // null si Groq funcionó, string con el error si falló
   };
