@@ -2,15 +2,28 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // portfolio_operations — acceso libre (app personal, sin autenticación)
+    // Operaciones del portfolio — lectura/escritura desde el cliente React
     match /portfolio_operations/{docId} {
       allow read, write: if true;
     }
 
-    // user_profiles — almacena el hash SHA-256 del PIN por perfil.
-    // El hash no es reversible y no contiene datos sensibles en texto plano.
+    // Perfiles de usuario (hash SHA-256 del PIN) — escritura solo al configurar
     match /user_profiles/{userId} {
       allow read, write: if true;
+    }
+
+    // Historial de decisiones — solo lectura pública (escritura solo desde Functions)
+    match /decisions/{docId} {
+      allow read:  if true;
+      allow write: if false;
+    }
+
+    // Cachés internas de la Function — solo acceso desde el servidor (Admin SDK)
+    match /_cache/{docId} {
+      allow read, write: if false;
+    }
+    match /_ai_cache/{docId} {
+      allow read, write: if false;
     }
   }
 }
