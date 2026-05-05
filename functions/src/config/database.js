@@ -33,6 +33,22 @@ export async function getDecisions(limit = 20) {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
+// Obtiene las últimas N decisiones de un símbolo específico (para contexto de Groq)
+export async function getDecisionsBySymbol(symbol, limit = 10) {
+  try {
+    const snap = await db()
+      .collection('decisions')
+      .where('symbol', '==', symbol.toUpperCase())
+      .orderBy('timestamp', 'desc')
+      .limit(limit)
+      .get();
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (err) {
+    console.warn('[DB] getDecisionsBySymbol failed:', err.message);
+    return [];
+  }
+}
+
 // ── Portfolio (stub — el frontend usa el cliente Firestore directamente) ──────
 
 export function getPortfolioSummaryBySymbol(_symbol) {

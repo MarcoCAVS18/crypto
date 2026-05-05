@@ -1,4 +1,4 @@
-import { getMacroData }                              from './macroService.js';
+import { getMacroData, getCOTData, getRealYield }    from './macroService.js';
 import { getGoldHeadlines }                          from './newsService.js';
 import { analyzeGoldSentiment, translateHeadlines }  from './groqAnalyzer.js';
 import { getGoldContextCache, setGoldContextCache }  from '../config/database.js';
@@ -18,14 +18,22 @@ export async function getGoldContext(forceRefresh = false) {
 
   console.log('[GoldContext] Fetching fresh gold context...');
 
-  const [macroResult, headlinesResult] = await Promise.allSettled([
+  const [macroResult, headlinesResult, cotResult, realYieldResult] = await Promise.allSettled([
     getMacroData(),
-    getGoldHeadlines()
+    getGoldHeadlines(),
+    getCOTData(),
+    getRealYield()
   ]);
 
-  const macro = macroResult.status === 'fulfilled'
+  const baseMacro = macroResult.status === 'fulfilled'
     ? macroResult.value
     : { dxy: null, tenYearYield: null };
+
+  const macro = {
+    ...baseMacro,
+    cot:       cotResult.status       === 'fulfilled' ? cotResult.value       : null,
+    realYield: realYieldResult.status === 'fulfilled' ? realYieldResult.value : null
+  };
 
   const headlines = headlinesResult.status === 'fulfilled'
     ? headlinesResult.value
@@ -33,6 +41,12 @@ export async function getGoldContext(forceRefresh = false) {
 
   if (macroResult.status === 'rejected') {
     console.warn('[GoldContext] Macro error:', macroResult.reason?.message);
+  }
+  if (cotResult.status === 'rejected') {
+    console.warn('[GoldContext] COT error:', cotResult.reason?.message);
+  }
+  if (realYieldResult.status === 'rejected') {
+    console.warn('[GoldContext] Real yield error:', realYieldResult.reason?.message);
   }
 
   let analysis = {

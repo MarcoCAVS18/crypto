@@ -241,15 +241,16 @@ Guía de criterio:
  * Considera P&L actual, historial de compras, capital desplegado y la señal técnica.
  * Se cachea 1h porque cambia con el precio pero no en cada carga.
  *
- * @param {string} asset          - 'BTC' | 'ETH' | 'PAXG'
+ * @param {string} asset            - 'BTC' | 'ETH' | 'PAXG'
  * @param {number} currentPrice
- * @param {object} indicators     - { rsi, trendShort, trendLong }
- * @param {object} portfolioCtx   - { units, avgBuyPrice, netInvested, allBuys, operations }
- * @param {object} userState      - { cashPercent, totalCapital }
- * @param {object} decision       - { action, strength, recommendation }
+ * @param {object} indicators       - { rsi, trendShort, trendLong }
+ * @param {object} portfolioCtx     - { units, avgBuyPrice, netInvested, allBuys, operations }
+ * @param {object} userState        - { cashPercent, totalCapital }
+ * @param {object} decision         - { action, strength, recommendation }
+ * @param {Array}  recentDecisions  - últimas N decisiones del sistema para este activo
  * @returns {{ insight: string, optimalEntryPrice: number|null }}
  */
-export async function generatePortfolioInsight(asset, currentPrice, indicators, portfolioCtx, userState, decision) {
+export async function generatePortfolioInsight(asset, currentPrice, indicators, portfolioCtx, userState, decision, recentDecisions = []) {
   const client = getClient();
 
   const { units = 0, avgBuyPrice = 0, netInvested = 0, allBuys = [] } = portfolioCtx;
@@ -280,6 +281,25 @@ export async function generatePortfolioInsight(asset, currentPrice, indicators, 
     ? `$${Math.round(netInvested).toLocaleString('en-US')} de $${Math.round(totalCapital).toLocaleString('en-US')} totales (${deployedPct.toFixed(1)}% invertido · ${(100 - deployedPct).toFixed(1)}% libre en cash)`
     : `$${Math.round(netInvested).toLocaleString('en-US')} USD invertidos`;
 
+  // Formatear historial de señales del sistema con resultado retrospectivo
+  const decisionsText = recentDecisions.length > 0
+    ? recentDecisions.map(d => {
+        const ts = d.timestamp?.toDate ? d.timestamp.toDate() : new Date(d.timestamp);
+        const daysAgo = Math.floor((Date.now() - ts.getTime()) / 86400000);
+        const timeLabel = daysAgo === 0 ? 'hoy' : daysAgo === 1 ? 'ayer' : `hace ${daysAgo}d`;
+        const priceAtDecision = d.price ?? 0;
+        const pnlPct = priceAtDecision > 0
+          ? ((currentPrice - priceAtDecision) / priceAtDecision) * 100
+          : null;
+        const outcome = pnlPct != null
+          ? (pnlPct >= 0
+              ? `→ hoy ${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}% ✓`
+              : `→ hoy ${pnlPct.toFixed(1)}% ✗`)
+          : '';
+        return `  [${timeLabel}] ${d.decision} @ $${Math.round(priceAtDecision).toLocaleString('en-US')} ${outcome}`;
+      }).join('\n')
+    : '  Sin historial disponible';
+
   const prompt = `Sos un asesor de inversiones personal especializado en criptoactivos y oro.
 
 ACTIVO: ${assetName}
@@ -301,10 +321,14 @@ ${buysText}
 SEÑAL TÉCNICA DEL SISTEMA: ${decision.action} ${decision.strength}
 RECOMENDACIÓN GENERAL: ${decision.recommendation}
 
+HISTORIAL DE SEÑALES RECIENTES DEL SISTEMA (${asset}):
+${decisionsText}
+
 Escribí UNA nota personalizada (máximo 3 oraciones cortas) en español rioplatense que:
 1. Mencione el estado real de la posición (P&L, tiempo acumulando, distribución de compras)
 2. Diga si la señal tiene sentido para ESTE usuario específicamente o si conviene esperar
 3. Sea concreta, no genérica — nombré el activo, el P&L real, el porcentaje de cash libre
+4. Si hay señales recientes con buenos resultados, destacá la consistencia del sistema
 
 Si hay un precio de entrada más conveniente que el actual, indicalo como número. Si no aplica, null.
 

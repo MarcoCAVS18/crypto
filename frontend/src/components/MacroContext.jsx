@@ -46,6 +46,68 @@ function relativeTime(iso) {
   return `${Math.floor(h / 24)}d`;
 }
 
+const REAL_YIELD_LABELS = {
+  very_bullish: { label: 'Muy alcista para oro', color: 'text-emerald-400' },
+  bullish:      { label: 'Alcista para oro',      color: 'text-emerald-400' },
+  neutral:      { label: 'Neutral',               color: 'text-slate-400' },
+  bearish:      { label: 'Bajista para oro',       color: 'text-red-400' }
+};
+
+const COT_LABELS = {
+  contrarian_bull: { label: 'Contrarian alcista', color: 'text-emerald-400', sub: 'Extremo short especulativo' },
+  bullish:         { label: 'Alcista',             color: 'text-emerald-400', sub: 'Net long moderado' },
+  neutral:         { label: 'Neutral',             color: 'text-slate-400',   sub: 'Posición equilibrada' },
+  crowded_long:    { label: 'Riesgo de corrección',color: 'text-red-400',     sub: 'Extremo long especulativo' }
+};
+
+function RealYieldStat({ data }) {
+  if (!data) return null;
+  const cfg = REAL_YIELD_LABELS[data.sentiment] ?? REAL_YIELD_LABELS.neutral;
+  return (
+    <div className="flex items-center justify-between py-2.5 border-b border-white/[0.04] last:border-0">
+      <div className="min-w-0 pr-2">
+        <p className="text-sm text-slate-300">Rendimiento Real 10Y (TIPS)</p>
+        <p className={`text-[10px] mt-0.5 ${cfg.color}`}>{cfg.label}</p>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <span className="text-sm font-semibold text-white tabular">{data.value?.toFixed(2)}%</span>
+      </div>
+    </div>
+  );
+}
+
+function CotSection({ data }) {
+  if (!data) return null;
+  const cfg = COT_LABELS[data.sentiment] ?? COT_LABELS.neutral;
+  const weekSign = data.weekChange >= 0 ? '+' : '';
+  const weekColor = data.weekChange > 0 ? 'text-emerald-400' : data.weekChange < 0 ? 'text-red-400' : 'text-slate-500';
+
+  return (
+    <div>
+      <p className="text-[10px] text-slate-600 uppercase tracking-widest mb-2">COT · Posición Especulativa Oro</p>
+      <div className="bg-slate-900/50 rounded-xl px-4 py-3 border border-white/[0.04] space-y-2">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm text-slate-300">Net especulativo</p>
+            <p className={`text-[10px] mt-0.5 ${cfg.color}`}>{cfg.label} · {cfg.sub}</p>
+          </div>
+          <span className="text-sm font-semibold text-white tabular">
+            {data.netSpec >= 0 ? '+' : ''}{(data.netSpec / 1000).toFixed(0)}k
+          </span>
+        </div>
+        {data.weekChange != null && (
+          <div className="flex items-center justify-between border-t border-white/[0.04] pt-2">
+            <p className="text-xs text-slate-500">Cambio semanal</p>
+            <span className={`text-xs font-semibold tabular ${weekColor}`}>
+              {weekSign}{(data.weekChange / 1000).toFixed(0)}k contratos
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function MacroContext({ goldContext: initialContext }) {
   const [context, setContext] = useState(initialContext);
   const [refreshing, setRefreshing] = useState(false);
@@ -58,7 +120,7 @@ export function MacroContext({ goldContext: initialContext }) {
 
   if (!context) return null;
 
-  const { macro, sentiment, reasoning, keyFactors = [], headlines = [], fetchedAt, fromCache, analysisError } = context;
+  const { macro, sentiment, reasoning, keyFactors = [], headlines = [], fetchedAt, fromCache, analysisError, cot, realYield } = context;
   const s = SENTIMENT[sentiment] ?? SENTIMENT.neutral;
   const SentIcon = s.Icon;
   const groqMissing = !!analysisError;
@@ -156,7 +218,7 @@ export function MacroContext({ goldContext: initialContext }) {
         </div>
 
         {/* Macro indicators */}
-        {macro && (macro.dxy || macro.tenYearYield) && (
+        {macro && (macro.dxy || macro.tenYearYield || macro.realYield) && (
           <div>
             <p className="text-[10px] text-slate-600 uppercase tracking-widest mb-2">Indicadores</p>
             <div className="bg-slate-900/50 rounded-xl px-4 border border-white/[0.04]">
@@ -178,8 +240,16 @@ export function MacroContext({ goldContext: initialContext }) {
                   sub="Yield alto → mayor costo oportunidad"
                 />
               )}
+              {(macro.realYield ?? realYield) && (
+                <RealYieldStat data={macro.realYield ?? realYield} />
+              )}
             </div>
           </div>
+        )}
+
+        {/* COT Report */}
+        {(macro?.cot ?? cot) && (
+          <CotSection data={macro?.cot ?? cot} />
         )}
 
         {/* Headlines */}

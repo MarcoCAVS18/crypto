@@ -116,6 +116,18 @@ export function getDecisions(limit = 20) {
   return stmt.all(limit);
 }
 
+// Obtiene las últimas N decisiones de un símbolo específico (para contexto de Groq)
+export function getDecisionsBySymbol(symbol, limit = 10) {
+  const db = getDatabase();
+  return db.prepare(`
+    SELECT id, timestamp, symbol, price, market_mode, decision, reason
+    FROM decisions
+    WHERE symbol = ?
+    ORDER BY timestamp DESC
+    LIMIT ?
+  `).all(symbol.toUpperCase(), limit);
+}
+
 // ── Portfolio operations ───────────────────────────────────────────────────────
 
 export function addPortfolioOperation(op) {

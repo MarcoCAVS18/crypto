@@ -1,15 +1,19 @@
 // Market mode específico para PAXG / oro tokenizado
 //
-// El oro se mueve por factores distintos al crypto:
-//   - DXY (25%): dólar sube → oro baja | dólar baja → oro sube
-//   - Bono 10Y (20%): yields altos = mayor costo de oportunidad vs oro
+// Factores base (suman al 100%):
 //   - Sentimiento IA noticias (40%): Groq analiza macro y titulares
-//   - Técnicos BTC (15%): contexto de mercado cripto
+//   - DXY (25%):     dólar sube → oro baja | dólar baja → oro sube
+//   - Bono 10Y (20%): yields altos = mayor costo de oportunidad vs oro
+//   - Técnicos (15%): contexto de mercado cripto
 //
-// Puntuación final:
-//   > +0.25  → risk_on  (entorno favorable para oro)
-//   < -0.25  → risk_off (entorno desfavorable)
-//   entre    → neutral
+// Señales aditivas (no reemplazan los anteriores; clampean al rango [-1, 1]):
+//   - COT CFTC (±0.10): posición neta especulativa en futuros de oro
+//   - Rendimiento real 10Y TIPS (±0.10): tasa real negativa → muy favorable para oro
+//
+// Umbral de modo final:
+//   score > +0.25  → risk_on  (entorno favorable para oro)
+//   score < -0.25  → risk_off (entorno desfavorable)
+//   entre          → neutral
 
 import { determineMarketMode } from './marketMode.js';
 
@@ -107,8 +111,57 @@ export function determineGoldMarketMode(currentPrice, indicators, volumeAnalysis
     reasons.push(`Técnico: tendencia bajista (EMA, RSI desfavorables)`);
   }
 
-  // ── Modo final ────────────────────────────────────────────────────────────
-  const finalScore = Math.round(score * 1000) / 1000;
+  // ── 5. COT CFTC — posición neta especulativa (aditivo ±0.10) ─────────────
+  if (macro?.cot) {
+    const { netSpec, weekChange, sentiment: cotSent } = macro.cot;
+    let cotAdj = 0;
+
+    if (cotSent === 'contrarian_bull') {
+      cotAdj = 0.10;
+      reasons.push(`COT: especuladores net short (${(netSpec / 1000).toFixed(0)}k contratos) → señal contraria alcista`);
+    } else if (cotSent === 'crowded_long') {
+      cotAdj = -0.10;
+      reasons.push(`COT: posición especulativa muy larga (${(netSpec / 1000).toFixed(0)}k) → riesgo de corrección`);
+    } else if (cotSent === 'bullish') {
+      cotAdj = 0.05;
+      reasons.push(`COT: especuladores net long moderados (${(netSpec / 1000).toFixed(0)}k contratos)`);
+    } else {
+      reasons.push(`COT: posición neta neutral (${(netSpec / 1000).toFixed(0)}k contratos)`);
+    }
+
+    // Momentum semanal: ajuste adicional pequeño
+    if (weekChange > 15000) {
+      cotAdj = Math.min(cotAdj + 0.03, 0.10);
+    } else if (weekChange < -15000) {
+      cotAdj = Math.max(cotAdj - 0.03, -0.10);
+    }
+
+    score += cotAdj;
+  }
+
+  // ── 6. Rendimiento real 10Y TIPS (aditivo ±0.10) ─────────────────────────
+  if (macro?.realYield) {
+    const { value: ry, sentiment: rySent } = macro.realYield;
+    let ryAdj = 0;
+
+    if (rySent === 'very_bullish') {
+      ryAdj = 0.10;
+      reasons.push(`Rendimiento real 10Y: ${ry.toFixed(2)}% (negativo → entorno muy favorable para el oro)`);
+    } else if (rySent === 'bullish') {
+      ryAdj = 0.05;
+      reasons.push(`Rendimiento real 10Y: ${ry.toFixed(2)}% (bajo → soporte para el oro)`);
+    } else if (rySent === 'bearish') {
+      ryAdj = -0.10;
+      reasons.push(`Rendimiento real 10Y: ${ry.toFixed(2)}% (elevado → presión sobre el oro)`);
+    } else {
+      reasons.push(`Rendimiento real 10Y: ${ry.toFixed(2)}% (neutral)`);
+    }
+
+    score += ryAdj;
+  }
+
+  // ── Modo final (score se clampea a [-1, 1]) ───────────────────────────────
+  const finalScore = Math.round(Math.max(-1, Math.min(1, score)) * 1000) / 1000;
   const mode = finalScore > 0.25 ? 'risk_on' : finalScore < -0.25 ? 'risk_off' : 'neutral';
 
   return {
@@ -116,15 +169,17 @@ export function determineGoldMarketMode(currentPrice, indicators, volumeAnalysis
     score: finalScore,
     reasons,
     goldContext: {
-      macro: macro ?? null,
-      sentiment: analysis?.sentiment ?? 'neutral',
+      macro:         macro ?? null,
+      sentiment:     analysis?.sentiment ?? 'neutral',
       sentimentScore: analysis?.score ?? 0,
-      reasoning: analysis?.reasoning ?? '',
-      keyFactors: analysis?.keyFactors ?? [],
-      headlines: goldContext.headlines ?? [],
-      fetchedAt: goldContext.fetchedAt,
-      fromCache: goldContext.fromCache ?? false,
-      analysisError: goldContext.analysisError ?? null
+      reasoning:     analysis?.reasoning ?? '',
+      keyFactors:    analysis?.keyFactors ?? [],
+      headlines:     goldContext.headlines ?? [],
+      fetchedAt:     goldContext.fetchedAt,
+      fromCache:     goldContext.fromCache ?? false,
+      analysisError: goldContext.analysisError ?? null,
+      cot:           macro?.cot ?? null,
+      realYield:     macro?.realYield ?? null
     }
   };
 }

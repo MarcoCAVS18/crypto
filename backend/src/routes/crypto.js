@@ -8,7 +8,7 @@ import { getGoldContext } from '../services/goldContext.js';
 import { makeDecision } from '../services/decisionEngine.js';
 import { analyzeCalendarRisk, generatePortfolioInsight } from '../services/groqAnalyzer.js';
 import { getUpcomingEvents } from '../data/macroCalendar.js';
-import { saveDecision, getPortfolioSummaryBySymbol, getAiCache, setAiCache } from '../config/database.js';
+import { saveDecision, getPortfolioSummaryBySymbol, getAiCache, setAiCache, getDecisionsBySymbol } from '../config/database.js';
 
 const router = express.Router();
 
@@ -210,8 +210,11 @@ router.post('/decision', async (req, res) => {
         let portfolioInsight = getAiCache(insightKey);
         if (!portfolioInsight) {
           console.log(`[PortfolioInsight] Calling Groq for ${symbol} position`);
+          // Historial de señales para contexto retrospectivo
+          let recentDecisions = [];
+          try { recentDecisions = getDecisionsBySymbol(symbol.toUpperCase(), 10); } catch (_) {}
           portfolioInsight = await generatePortfolioInsight(
-            symbol.toUpperCase(), marketData.price, indicators, portfolioContext, userState, decision
+            symbol.toUpperCase(), marketData.price, indicators, portfolioContext, userState, decision, recentDecisions
           );
           setAiCache(insightKey, portfolioInsight, 1);
         } else {
