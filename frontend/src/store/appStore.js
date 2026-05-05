@@ -124,10 +124,15 @@ export const useAppStore = create(
           ? {
               ...symbolSummary,
               hasPosition: symbolSummary.units > 0 && symbolSummary.avgBuyPrice > 0,
+              // Precio actual para cálculo de P&L en el backend
+              currentPrice: get().cryptoData[selectedCrypto]?.price ?? null,
+              // Historial completo de compras ordenado por fecha (para análisis IA)
+              allBuys: portfolio.operations
+                .filter(op => op.symbol === selectedCrypto && op.type === 'BUY')
+                .sort((a, b) => new Date(a.date) - new Date(b.date))
+                .map(op => ({ price: op.price, amount_usd: op.amount_usd, date: op.date })),
               // Ventana de ciclo activo: 4 días.
               // Solo los buys de este período bloquean la repetición de tramos.
-              // Toda la historia completa vive en Firestore sin límite de tiempo
-              // y siempre se usa para calcular P&L, promedio y unidades totales.
               executedBuys: (() => {
                 const cutoff = Date.now() - 4 * 24 * 3600 * 1000;
                 return portfolio.operations

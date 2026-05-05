@@ -4,7 +4,6 @@ import { analyzeGoldSentiment, translateHeadlines }  from './groqAnalyzer.js';
 import { getGoldContextCache, setGoldContextCache }  from '../config/database.js';
 
 export async function getGoldContext(forceRefresh = false) {
-  // ── Caché (async en Firestore) ─────────────────────────────────────────────
   if (!forceRefresh) {
     try {
       const cached = await getGoldContextCache();
@@ -36,7 +35,6 @@ export async function getGoldContext(forceRefresh = false) {
     console.warn('[GoldContext] Macro error:', macroResult.reason?.message);
   }
 
-  // ── Análisis Groq ──────────────────────────────────────────────────────────
   let analysis = {
     sentiment: 'neutral', score: 0,
     reasoning: 'Análisis no disponible.', keyFactors: []
@@ -50,8 +48,7 @@ export async function getGoldContext(forceRefresh = false) {
     console.warn('[GoldContext] Groq analysis failed:', groqErr.message);
   }
 
-  // ── Traducción al español ──────────────────────────────────────────────────
-  let translatedHeadlines = headlines.slice(0, 10);
+  let translatedHeadlines = headlines.slice(0, 12);
   try {
     translatedHeadlines = await translateHeadlines(translatedHeadlines);
     console.log('[GoldContext] Headlines traducidos');
@@ -68,8 +65,7 @@ export async function getGoldContext(forceRefresh = false) {
     analysisError
   };
 
-  // ── Guardar en caché (fire-and-forget para no bloquear la respuesta) ────────
-  setGoldContextCache(context, 6).catch(e =>
+  setGoldContextCache(context, 2).catch(e =>
     console.warn('[GoldContext] No se pudo guardar caché:', e.message)
   );
 

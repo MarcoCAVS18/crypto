@@ -87,7 +87,7 @@ export async function getGoldContext(forceRefresh = false) {
 
   // ── Persist to cache ───────────────────────────────────────────────────────
   try {
-    setGoldContextCache(context, 6);
+    setGoldContextCache(context, 2);
     console.log('[GoldContext] Saved to cache (TTL 6h)');
   } catch (cacheErr) {
     console.warn('[GoldContext] Could not save to cache:', cacheErr.message);

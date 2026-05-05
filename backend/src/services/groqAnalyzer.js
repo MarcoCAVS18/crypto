@@ -1,6 +1,8 @@
 // Análisis con Groq (Llama 3.3 70B, free tier ~14,400 req/día)
-// 1. analyzeGoldSentiment   — sentimiento macro para oro/PAXG (caché 6h)
-// 2. analyzeCalendarRisk    — modulación de decisión por eventos macro (caché 4h)
+// 1. analyzeGoldSentiment     — sentimiento macro para oro/PAXG (caché 2h)
+// 2. translateHeadlines       — traducción de titulares al español (caché 2h)
+// 3. analyzeCalendarRisk      — modulación de decisión por eventos macro (caché 4h)
+// 4. generatePortfolioInsight — nota personalizada según posición del usuario (caché 1h)
 
 import Groq from 'groq-sdk';
 
@@ -42,21 +44,35 @@ export async function analyzeGoldSentiment(headlines, macroData) {
     ? macroLines.join('\n')
     : 'Sin datos macroeconómicos disponibles';
 
+  // Incluir antigüedad en cada titular para que Groq pese noticias recientes más
+  function headlineAge(h) {
+    if (!h.pubDate) return '';
+    const min = Math.floor((Date.now() - new Date(h.pubDate).getTime()) / 60000);
+    if (min < 60)  return ` [hace ${min}m]`;
+    if (min < 1440) return ` [hace ${Math.floor(min/60)}h]`;
+    return ` [hace ${Math.floor(min/1440)}d]`;
+  }
+
   const headlinesText = headlines.length > 0
-    ? headlines.map((h, i) => `${i + 1}. ${typeof h === 'string' ? h : h.title}`).join('\n')
+    ? headlines.map((h, i) => {
+        const title = typeof h === 'string' ? h : h.title;
+        const age   = typeof h === 'object' ? headlineAge(h) : '';
+        return `${i + 1}.${age} ${title}`;
+      }).join('\n')
     : 'Sin titulares disponibles';
 
-  const prompt = `Eres un analista especializado en oro físico y PAXG (oro tokenizado).
+  const prompt = `Sos un analista especializado en oro físico y PAXG (oro tokenizado).
 
 DATOS MACRO ACTUALES:
 ${macroText}
 
-TITULARES RECIENTES (inglés):
+TITULARES RECIENTES (los más nuevos primero; la antigüedad aparece entre corchetes):
 ${headlinesText}
 
-Analiza estos datos y determina el sentimiento para el precio del oro/PAXG en el corto plazo (24-72h).
+Analizá estos datos y determiná el sentimiento para el precio del oro/PAXG en el corto plazo (24-72h).
+Ponderá más las noticias recientes (< 6h) que las antiguas (> 48h).
 
-Responde SOLO con un objeto JSON válido (sin markdown, sin texto extra):
+Respondé SOLO con un objeto JSON válido (sin markdown, sin texto extra):
 {
   "sentiment": "bullish" | "neutral" | "bearish",
   "score": <número entre -1.0 (muy bajista) y 1.0 (muy alcista)>,
@@ -217,5 +233,101 @@ Guía de criterio:
                        : 1.0,
     reasoning:    typeof p.reasoning    === 'string' ? p.reasoning    : '',
     calendarNote: typeof p.calendarNote === 'string' ? p.calendarNote : ''
+  };
+}
+
+/**
+ * Genera una nota personalizada analizando la posición real del usuario.
+ * Considera P&L actual, historial de compras, capital desplegado y la señal técnica.
+ * Se cachea 1h porque cambia con el precio pero no en cada carga.
+ *
+ * @param {string} asset          - 'BTC' | 'ETH' | 'PAXG'
+ * @param {number} currentPrice
+ * @param {object} indicators     - { rsi, trendShort, trendLong }
+ * @param {object} portfolioCtx   - { units, avgBuyPrice, netInvested, allBuys, operations }
+ * @param {object} userState      - { cashPercent, totalCapital }
+ * @param {object} decision       - { action, strength, recommendation }
+ * @returns {{ insight: string, optimalEntryPrice: number|null }}
+ */
+export async function generatePortfolioInsight(asset, currentPrice, indicators, portfolioCtx, userState, decision) {
+  const client = getClient();
+
+  const { units = 0, avgBuyPrice = 0, netInvested = 0, allBuys = [] } = portfolioCtx;
+  const { totalCapital = 0 } = userState;
+
+  const unrealizedPnl    = (currentPrice - avgBuyPrice) * units;
+  const unrealizedPnlPct = avgBuyPrice > 0 ? ((currentPrice - avgBuyPrice) / avgBuyPrice) * 100 : 0;
+  const deployedPct      = totalCapital > 0 ? (netInvested / totalCapital) * 100 : null;
+
+  const firstBuy       = allBuys[0] ?? null;
+  const daysSinceFirst = firstBuy
+    ? Math.floor((Date.now() - new Date(firstBuy.date).getTime()) / 86400000)
+    : null;
+
+  const assetName = asset === 'PAXG' ? 'PAXG (oro tokenizado)' : asset === 'ETH' ? 'Ethereum (ETH)' : 'Bitcoin (BTC)';
+
+  const buysText = allBuys.length > 0
+    ? allBuys.map((b, i) => {
+        const pnlPct = avgBuyPrice > 0 ? ((currentPrice - b.price) / b.price) * 100 : 0;
+        const sign   = pnlPct >= 0 ? '+' : '';
+        return `  ${i + 1}. ${b.date} · @ $${b.price.toLocaleString('en-US', { maximumFractionDigits: 0 })} · $${Math.round(b.amount_usd).toLocaleString('en-US')} USD (${sign}${pnlPct.toFixed(1)}% hoy)`;
+      }).join('\n')
+    : '  Sin historial disponible';
+
+  const pnlSign   = unrealizedPnl >= 0 ? '+' : '';
+  const pnlColor  = unrealizedPnl >= 0 ? 'GANANCIA' : 'PÉRDIDA';
+  const deployed  = deployedPct != null
+    ? `$${Math.round(netInvested).toLocaleString('en-US')} de $${Math.round(totalCapital).toLocaleString('en-US')} totales (${deployedPct.toFixed(1)}% invertido · ${(100 - deployedPct).toFixed(1)}% libre en cash)`
+    : `$${Math.round(netInvested).toLocaleString('en-US')} USD invertidos`;
+
+  const prompt = `Sos un asesor de inversiones personal especializado en criptoactivos y oro.
+
+ACTIVO: ${assetName}
+
+MERCADO AHORA:
+- Precio actual: $${currentPrice.toLocaleString('en-US', { maximumFractionDigits: 0 })} USD
+- Tendencia corta: ${indicators.trendShort ?? 'N/A'}
+- RSI: ${indicators.rsi != null ? indicators.rsi.toFixed(1) : 'N/A'}
+
+POSICIÓN DEL USUARIO:
+- Unidades: ${units.toFixed(8)} ${asset}
+- Precio promedio de entrada: $${avgBuyPrice.toLocaleString('en-US', { maximumFractionDigits: 0 })} USD
+- ${pnlColor} no realizada: ${pnlSign}$${Math.abs(unrealizedPnl).toFixed(2)} (${pnlSign}${unrealizedPnlPct.toFixed(2)}%)
+- Capital: ${deployed}
+${daysSinceFirst != null ? `- Acumulando desde hace ${daysSinceFirst} días (primera compra: ${firstBuy.date})` : ''}
+- Historial de compras (${allBuys.length} operaciones de compra):
+${buysText}
+
+SEÑAL TÉCNICA DEL SISTEMA: ${decision.action} ${decision.strength}
+RECOMENDACIÓN GENERAL: ${decision.recommendation}
+
+Escribí UNA nota personalizada (máximo 3 oraciones cortas) en español rioplatense que:
+1. Mencione el estado real de la posición (P&L, tiempo acumulando, distribución de compras)
+2. Diga si la señal tiene sentido para ESTE usuario específicamente o si conviene esperar
+3. Sea concreta, no genérica — nombré el activo, el P&L real, el porcentaje de cash libre
+
+Si hay un precio de entrada más conveniente que el actual, indicalo como número. Si no aplica, null.
+
+Respondé SOLO con JSON válido (sin markdown):
+{
+  "insight": "...",
+  "optimalEntryPrice": null
+}`;
+
+  const completion = await client.chat.completions.create({
+    model:       'llama-3.3-70b-versatile',
+    messages:    [{ role: 'user', content: prompt }],
+    temperature: 0.3,
+    max_tokens:  280
+  });
+
+  const content    = completion.choices[0]?.message?.content ?? '';
+  const jsonMatch  = content.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error(`Portfolio insight response has no JSON. Raw: ${content.slice(0, 200)}`);
+
+  const parsed = JSON.parse(jsonMatch[0]);
+  return {
+    insight:            typeof parsed.insight === 'string' ? parsed.insight.trim() : '',
+    optimalEntryPrice:  typeof parsed.optimalEntryPrice === 'number' ? parsed.optimalEntryPrice : null
   };
 }

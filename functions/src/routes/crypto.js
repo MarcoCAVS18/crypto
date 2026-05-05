@@ -6,7 +6,7 @@ import { determineMarketMode } from '../services/marketMode.js';
 import { determineGoldMarketMode } from '../services/goldMarketMode.js';
 import { getGoldContext } from '../services/goldContext.js';
 import { makeDecision } from '../services/decisionEngine.js';
-import { analyzeCalendarRisk } from '../services/groqAnalyzer.js';
+import { analyzeCalendarRisk, generatePortfolioInsight } from '../services/groqAnalyzer.js';
 import { getUpcomingEvents } from '../data/macroCalendar.js';
 import { saveDecision, getPortfolioSummaryBySymbol, getAiCache, setAiCache } from '../config/database.js';
 
@@ -197,6 +197,34 @@ router.post('/decision', async (req, res) => {
       } catch (calErr) {
         // No interrumpir la señal principal si el calendario falla
         console.warn('[CalendarRisk] Error:', calErr.message);
+      }
+    }
+
+    // ── Portfolio insight personalizado (Groq, caché 1h) ─────────────────────
+    if (portfolioContext?.hasPosition && portfolioContext.units > 0 && process.env.GROQ_API_KEY) {
+      try {
+        const pb = Math.round(marketData.price / 500) * 500;
+        const ab = Math.round((portfolioContext.avgBuyPrice ?? 0) / 50) * 50;
+        const insightKey = `portinsight_${symbol}_${pb}_${ab}_${Math.round(portfolioContext.netInvested ?? 0)}`;
+
+        let portfolioInsight = await getAiCache(insightKey);
+        if (!portfolioInsight) {
+          console.log(`[PortfolioInsight] Calling Groq for ${symbol} position`);
+          portfolioInsight = await generatePortfolioInsight(
+            symbol.toUpperCase(), marketData.price, indicators, portfolioContext, userState, decision
+          );
+          setAiCache(insightKey, portfolioInsight, 1).catch(e =>
+            console.warn('[PortfolioInsight] Cache write failed:', e.message)
+          );
+        } else {
+          console.log(`[PortfolioInsight] Cache hit for ${symbol}`);
+        }
+
+        if (portfolioInsight?.insight) {
+          decision = { ...decision, portfolioInsight };
+        }
+      } catch (insightErr) {
+        console.warn('[PortfolioInsight] Error:', insightErr.message);
       }
     }
 

@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowUpCircle, Clock, ArrowDownCircle, Lightbulb, ShoppingCart, TrendingDown, ArrowRight } from 'lucide-react';
+import { ArrowUpCircle, Clock, ArrowDownCircle, Lightbulb, ShoppingCart, TrendingDown, ArrowRight, BrainCircuit, MapPin } from 'lucide-react';
 
 const ACTION = {
   BUY: {
@@ -72,7 +72,7 @@ export function DecisionPanel({ decision, portfolioSummary }) {
     );
   }
 
-  const { action, strength, reason, recommendation, operations = [] } = decision;
+  const { action, strength, reason, recommendation, operations = [], portfolioInsight } = decision;
   const cfg = ACTION[action] ?? ACTION.WAIT;
   const { Icon } = cfg;
   const dots = strengthDots[strength] ?? 1;
@@ -127,6 +127,11 @@ export function DecisionPanel({ decision, portfolioSummary }) {
           </div>
         </div>
 
+        {/* Insight personalizado de portfolio */}
+        {portfolioInsight?.insight && (
+          <PortfolioInsightCard insight={portfolioInsight} />
+        )}
+
         {/* BUY operations */}
         {buyOps.length > 0 && (
           <OperationGroup
@@ -152,6 +157,33 @@ export function DecisionPanel({ decision, portfolioSummary }) {
         )}
       </motion.div>
     </AnimatePresence>
+  );
+}
+
+function PortfolioInsightCard({ insight }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.12, duration: 0.3 }}
+      className="flex items-start gap-3 p-4 rounded-xl bg-blue-500/[0.06] border border-blue-500/20"
+    >
+      <BrainCircuit className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+      <div className="flex-1 min-w-0">
+        <span className="text-[10px] text-blue-400/70 uppercase tracking-wider block mb-1.5">
+          Análisis de tu posición
+        </span>
+        <p className="text-sm text-slate-300 leading-relaxed">{insight.insight}</p>
+        {insight.optimalEntryPrice && (
+          <div className="flex items-center gap-1.5 mt-2">
+            <MapPin className="w-3 h-3 text-blue-400/60 shrink-0" />
+            <span className="text-xs text-blue-400/80 font-mono tabular">
+              Entrada sugerida: ${insight.optimalEntryPrice.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+            </span>
+          </div>
+        )}
+      </div>
+    </motion.div>
   );
 }
 
