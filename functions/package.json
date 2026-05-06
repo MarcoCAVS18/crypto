@@ -4,7 +4,7 @@
   "description": "Firebase Functions backend para Crypto Context",
   "type": "module",
   "main": "index.js",
-  "engines": { "node": "20" },
+  "engines": { "node": "22" },
   "scripts": {
     "serve": "firebase emulators:start --only functions,hosting",
     "deploy": "firebase deploy --only functions,hosting"
