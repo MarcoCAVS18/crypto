@@ -1,122 +1,176 @@
-// Componente principal de la aplicación
 import { useEffect, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore } from './store/appStore';
+import { useAuthStore } from './store/authStore';
 import { Card } from './components/ui/Card';
 import { Spinner } from './components/ui/Spinner';
 import { CryptoSelector } from './components/CryptoSelector';
+import { ProfileSelector } from './components/ProfileSelector';
 import { MarketModeIndicator } from './components/MarketModeIndicator';
 import { PriceDisplay } from './components/PriceDisplay';
 import { ZoneMap } from './components/ZoneMap';
 import { TechnicalAnalysis } from './components/TechnicalAnalysis';
 import { UserStateInput } from './components/UserStateInput';
 import { DecisionPanel } from './components/DecisionPanel';
+import { MacroContext } from './components/MacroContext';
+import { MacroCalendarBanner } from './components/MacroCalendarBanner';
 import { PortfolioSection } from './components/PortfolioSection';
-import { RefreshCw, AlertCircle, X, LayoutDashboard, Briefcase, AlertTriangle } from 'lucide-react';
+import { RefreshCw, AlertCircle, X, LayoutDashboard, Briefcase, AlertTriangle, UserCircle } from 'lucide-react';
 import { formatRelativeTime } from './utils/formatters';
 import { AUTO_REFRESH_INTERVAL } from './utils/constants';
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'portfolio', label: 'Portfolio', icon: Briefcase }
+  { id: 'portfolio', label: 'Portfolio',  icon: Briefcase }
 ];
 
-function App() {
+const tabVariants = {
+  initial: (dir) => ({ opacity: 0, x: dir > 0 ? 24 : -24 }),
+  animate: { opacity: 1, x: 0, transition: { duration: 0.28, ease: 'easeOut' } },
+  exit:    (dir) => ({ opacity: 0, x: dir > 0 ? -24 : 24, transition: { duration: 0.2 } })
+};
+
+// ── Root: solo decide qué mostrar según auth ──────────────────────────────────
+export default function App() {
+  const currentUser = useAuthStore((s) => s.currentUser);
+  return currentUser ? <AuthenticatedApp /> : <ProfileSelector />;
+}
+
+// ── App autenticada: todos los hooks siempre se ejecutan ──────────────────────
+function AuthenticatedApp() {
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [tabDir, setTabDir]       = useState(1);
 
   const {
-    selectedCrypto,
-    cryptoData,
-    userState,
-    currentDecision,
-    loading,
-    decisionLoading,
-    error,
-    serverWaking,
-    lastUpdate,
-    setSelectedCrypto,
-    loadCryptoData,
-    updateUserState,
-    getDecision,
-    refreshData,
-    clearError
+    selectedCrypto, cryptoData, userState, currentDecision,
+    loading, decisionLoading, error, serverWaking, lastUpdate,
+    portfolio,
+    setSelectedCrypto, loadCryptoData, updateUserState,
+    getDecision, refreshData, clearError, loadPortfolio, setUserId
   } = useAppStore();
 
-  // Cargar datos iniciales
-  useEffect(() => {
-    loadCryptoData(selectedCrypto);
-  }, []);
+  const { currentUser, logout } = useAuthStore();
 
-  // Auto-refresh cada 5 minutos
+  const profileCryptos = currentUser.cryptos ?? ['BTC', 'PAXG'];
+
+  // Carga datos de mercado Y portfolio cuando el usuario cambia
   useEffect(() => {
-    const interval = setInterval(() => {
-      refreshData();
-    }, AUTO_REFRESH_INTERVAL);
-    return () => clearInterval(interval);
+    setUserId(currentUser.id);
+    const activeCrypto = profileCryptos.includes(selectedCrypto)
+      ? selectedCrypto
+      : profileCryptos[0];
+    if (activeCrypto !== selectedCrypto) {
+      setSelectedCrypto(activeCrypto);
+    }
+    loadCryptoData(activeCrypto);
+    loadPortfolio();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser.id]);
+
+  // Auto-refresh periódico
+  useEffect(() => {
+    const t = setInterval(refreshData, AUTO_REFRESH_INTERVAL);
+    return () => clearInterval(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCrypto]);
 
-  const currentData = cryptoData[selectedCrypto];
-
-  const handleUserStateSubmit = ({ cashPercent, mode, totalCapital }) => {
-    updateUserState({ cashPercent, mode, totalCapital });
-    getDecision();
+  const handleLogout = () => {
+    setUserId(null);
+    logout();
   };
 
+  const switchTab = (id) => {
+    const ids = TABS.map(t => t.id);
+    setTabDir(ids.indexOf(id) > ids.indexOf(activeTab) ? 1 : -1);
+    setActiveTab(id);
+  };
+
+  const currentData      = cryptoData[selectedCrypto];
+  const portfolioSummary = portfolio.summary.find(s => s.symbol === selectedCrypto) ?? null;
+
   return (
-    <div className="min-h-screen bg-gray-900">
-      {/* Header */}
-      <header className="bg-gray-800 border-b border-gray-700 sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2 sm:gap-4">
-            <h1 className="text-base sm:text-xl font-bold text-white hidden sm:block">Crypto Context</h1>
-            <CryptoSelector selected={selectedCrypto} onSelect={setSelectedCrypto} />
+    <div className="min-h-svh">
+      {/* ── Header ──────────────────────────────────────────────────────────── */}
+      <header className="sticky top-0 z-50 bg-slate-950/80 backdrop-blur-xl border-b border-white/[0.05]">
+        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+          {/* Logo + selector */}
+          <div className="flex items-center gap-3">
+            <div className="hidden sm:flex items-center gap-1.5">
+              <div className="w-6 h-6 rounded-lg bg-blue-600/80 flex items-center justify-center">
+                <span className="text-white text-[10px] font-bold">C</span>
+              </div>
+              <span className="text-sm font-semibold text-slate-300 tracking-wide">Crypto Context</span>
+            </div>
+            <div className="hidden sm:block w-px h-5 bg-white/[0.08]" />
+            <CryptoSelector selected={selectedCrypto} onSelect={setSelectedCrypto} cryptos={profileCryptos} />
           </div>
 
           {/* Tabs — desktop */}
-          <nav className="hidden sm:flex items-center gap-1 bg-gray-900/60 rounded-lg p-1">
+          <nav className="hidden sm:flex items-center bg-slate-900/60 rounded-xl p-1 border border-white/[0.05]">
             {TABS.map(tab => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors
-                  ${activeTab === tab.id
-                    ? 'bg-blue-500/20 text-blue-400'
-                    : 'text-gray-400 hover:text-gray-200'
-                  }`}
+                onClick={() => switchTab(tab.id)}
+                className={`relative flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-medium transition-colors z-0
+                  ${activeTab === tab.id ? 'text-white' : 'text-slate-500 hover:text-slate-300'}`}
               >
-                <tab.icon className="w-4 h-4" />
+                {activeTab === tab.id && (
+                  <motion.div
+                    layoutId="tab-pill"
+                    className="absolute inset-0 bg-slate-700/60 border border-white/[0.08] rounded-lg -z-10"
+                    transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                  />
+                )}
+                <tab.icon className="w-3.5 h-3.5" />
                 {tab.label}
               </button>
             ))}
           </nav>
 
-          <div className="flex items-center gap-3">
+          {/* Right actions */}
+          <div className="flex items-center gap-2">
             {lastUpdate && (
-              <span className="text-xs text-gray-500 hidden sm:block">
+              <span className="text-[11px] text-slate-600 hidden sm:block tabular">
                 {formatRelativeTime(lastUpdate)}
               </span>
             )}
-            <button
+            <motion.button
               onClick={refreshData}
               disabled={loading}
-              className="p-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition-colors disabled:opacity-50"
+              whileTap={{ scale: 0.93 }}
+              className="w-8 h-8 rounded-lg bg-slate-800/80 border border-white/[0.06] flex items-center justify-center
+                         hover:bg-slate-700/80 transition-colors disabled:opacity-40"
             >
-              <RefreshCw className={`w-5 h-5 text-gray-400 ${loading ? 'animate-spin' : ''}`} />
-            </button>
+              <RefreshCw className={`w-4 h-4 text-slate-400 ${loading ? 'animate-spin' : ''}`} />
+            </motion.button>
+            <motion.button
+              onClick={handleLogout}
+              whileTap={{ scale: 0.93 }}
+              title={`Perfil: ${currentUser.name} — Cambiar`}
+              className="w-8 h-8 rounded-lg bg-slate-800/80 border border-white/[0.06] flex items-center justify-center
+                         hover:bg-slate-700/80 transition-colors"
+            >
+              <UserCircle className="w-4 h-4 text-slate-400" />
+            </motion.button>
           </div>
         </div>
 
-        {/* Tabs — mobile */}
-        <div className="sm:hidden flex border-t border-gray-700">
+        {/* Mobile tabs */}
+        <div className="sm:hidden flex border-t border-white/[0.05]">
           {TABS.map(tab => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-medium transition-colors
-                ${activeTab === tab.id
-                  ? 'text-blue-400 border-b-2 border-blue-400'
-                  : 'text-gray-500 hover:text-gray-300'
-                }`}
+              onClick={() => switchTab(tab.id)}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-sm font-medium transition-colors relative
+                ${activeTab === tab.id ? 'text-blue-400' : 'text-slate-600 hover:text-slate-400'}`}
             >
+              {activeTab === tab.id && (
+                <motion.div
+                  layoutId="mobile-tab-indicator"
+                  className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500"
+                  transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                />
+              )}
               <tab.icon className="w-4 h-4" />
               {tab.label}
             </button>
@@ -124,47 +178,65 @@ function App() {
         </div>
       </header>
 
-      {/* Server waking banner */}
-      {serverWaking && (
-        <div className="bg-blue-500/20 border-b border-blue-500/50 px-4 py-3">
-          <div className="max-w-6xl mx-auto flex items-center justify-center gap-2 text-blue-400">
-            <RefreshCw className="w-4 h-4 animate-spin" />
-            <span className="text-sm">Despertando servidor... esto puede tardar 30 segundos</span>
-          </div>
-        </div>
-      )}
-
-      {/* Error banner */}
-      {error && (
-        <div className="bg-red-500/20 border-b border-red-500/50 px-4 py-2">
-          <div className="max-w-6xl mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-2 text-red-400">
-              <AlertCircle className="w-5 h-5" />
-              <span className="text-sm">{error}</span>
+      {/* ── Banners ──────────────────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {serverWaking && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="bg-blue-500/10 border-b border-blue-500/20 px-4 py-2.5"
+          >
+            <div className="max-w-3xl mx-auto flex items-center justify-center gap-2 text-blue-400 text-sm">
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              Despertando servidor... puede tardar ~30 segundos
             </div>
-            <button onClick={clearError} className="text-red-400 hover:text-red-300">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
+          </motion.div>
+        )}
+        {error && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="bg-red-500/10 border-b border-red-500/20 px-4 py-2"
+          >
+            <div className="max-w-3xl mx-auto flex items-center justify-between">
+              <div className="flex items-center gap-2 text-red-400 text-sm">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{error}</span>
+              </div>
+              <button onClick={clearError} className="text-red-400/60 hover:text-red-400 transition-colors ml-3 shrink-0">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* Main content */}
-      <div className="max-w-6xl mx-auto px-4 py-6">
-        {/* ── TAB: Dashboard ───────────────────────────────────────────── */}
-        {activeTab === 'dashboard' && (
-          <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
+      {/* ── Page content ─────────────────────────────────────────────────────── */}
+      <main className="max-w-3xl mx-auto px-4 py-6">
+        <AnimatePresence mode="wait" custom={tabDir}>
+          {activeTab === 'dashboard' && (
+            <motion.div
+              key="dashboard"
+              custom={tabDir}
+              variants={tabVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              className="space-y-4"
+            >
               {loading && !currentData ? (
-                <div className="flex items-center justify-center py-20">
+                <div className="flex items-center justify-center py-24">
                   <Spinner size="lg" />
                 </div>
               ) : currentData ? (
                 <>
-                  {/* Advertencia de velas sintéticas */}
+                  {/* Calendario macro — eventos próximos que pueden generar volatilidad */}
+                  <MacroCalendarBanner symbol={selectedCrypto} />
+
                   {currentData.candlesSource === 'synthetic' && (
-                    <div className="flex items-start gap-2 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-yellow-400 text-sm">
+                    <div className="flex items-start gap-2.5 p-3.5 bg-amber-500/[0.08] border border-amber-500/20 rounded-xl text-amber-400 text-sm">
                       <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-                      <span>Los indicadores técnicos (RSI, EMA) están basados en datos sintéticos porque la API de candles no respondió. Refrescar puede resolverlo.</span>
+                      <span>Indicadores técnicos basados en datos sintéticos (API de velas no respondió). Refrescá para reintentar.</span>
                     </div>
                   )}
 
@@ -176,7 +248,12 @@ function App() {
                     />
                   </Card>
 
-                  {/* Precio */}
+                  {/* Gold macro context — PAXG only */}
+                  {selectedCrypto === 'PAXG' && currentData.marketMode?.goldContext && (
+                    <MacroContext goldContext={currentData.marketMode.goldContext} />
+                  )}
+
+                  {/* Price */}
                   <Card>
                     <PriceDisplay
                       symbol={selectedCrypto}
@@ -185,23 +262,25 @@ function App() {
                     />
                   </Card>
 
-                  {/* Mapa de zonas */}
+                  {/* Zone map */}
                   {currentData.zones && (
                     <Card>
-                      <h2 className="text-sm font-semibold text-gray-400 mb-4">Zonas de Precio</h2>
+                      <div className="flex items-center justify-between mb-4">
+                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Mapa de Zonas</span>
+                      </div>
                       <ZoneMap zones={currentData.zones} currentPrice={currentData.price} />
                     </Card>
                   )}
 
-                  {/* Análisis técnico */}
+                  {/* Technical analysis */}
                   {currentData.technicalAnalysis && (
                     <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <h2 className="text-sm font-semibold text-gray-400">Análisis Técnico</h2>
+                      <div className="flex items-center justify-between mb-3 px-0.5">
+                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Análisis Técnico</span>
                         {currentData.technicalAnalysis.candlesCount && (
-                          <span className="text-xs text-gray-600">
+                          <span className="text-[10px] text-slate-700">
                             {currentData.technicalAnalysis.candlesCount} velas 1h
-                            {currentData.candlesSource === 'real' ? ' · datos reales' : ' · datos sintéticos'}
+                            {currentData.candlesSource === 'real' ? ' · reales' : ' · sintéticas'}
                           </span>
                         )}
                       </div>
@@ -209,50 +288,63 @@ function App() {
                     </div>
                   )}
 
-                  {/* Input del usuario */}
+                  {/* User state */}
                   <Card>
-                    <h2 className="text-sm font-semibold text-gray-400 mb-4">Tu Estado Actual</h2>
+                    <div className="mb-4">
+                      <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Tu Posición Actual</span>
+                    </div>
                     <UserStateInput
-                      onSubmit={handleUserStateSubmit}
+                      onSubmit={({ cashPercent, mode, totalCapital }) => {
+                        updateUserState({ cashPercent, mode, totalCapital });
+                        getDecision();
+                      }}
                       initialCash={userState.cashPercent}
                       initialMode={userState.mode}
                       initialCapital={userState.totalCapital}
                     />
                   </Card>
 
-                  {/* Panel de decisión */}
+                  {/* Decision */}
                   {decisionLoading ? (
-                    <Card className="flex items-center justify-center py-8">
-                      <Spinner />
+                    <Card className="flex items-center justify-center py-10">
+                      <div className="flex flex-col items-center gap-3">
+                        <Spinner />
+                        <span className="text-xs text-slate-500">Analizando señal...</span>
+                      </div>
                     </Card>
                   ) : (
-                    <DecisionPanel decision={currentDecision} />
+                    <DecisionPanel decision={currentDecision} portfolioSummary={portfolioSummary} />
                   )}
                 </>
               ) : (
-                <Card className="text-center py-10">
-                  <p className="text-gray-400">
-                    No se pudieron cargar los datos. Intenta refrescar la página.
-                  </p>
+                <Card className="text-center py-16">
+                  <p className="text-slate-500 text-sm">No se pudieron cargar los datos. Intenta refrescar.</p>
                 </Card>
               )}
-          </div>
-        )}
+            </motion.div>
+          )}
 
-        {/* ── TAB: Portfolio ───────────────────────────────────────────── */}
-        {activeTab === 'portfolio' && (
-          <PortfolioSection />
-        )}
-      </div>
+          {activeTab === 'portfolio' && (
+            <motion.div
+              key="portfolio"
+              custom={tabDir}
+              variants={tabVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+            >
+              <PortfolioSection />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </main>
 
-      {/* Footer */}
-      <footer className="bg-gray-800 border-t border-gray-700 mt-10">
-        <div className="max-w-6xl mx-auto px-4 py-4 text-center text-xs text-gray-500">
-          Crypto Context Dashboard — Herramienta de análisis, no consejo financiero
-        </div>
+      {/* ── Footer ───────────────────────────────────────────────────────────── */}
+      <footer className="border-t border-white/[0.04] mt-12 py-5">
+        <p className="text-center text-[11px] text-slate-700">
+          Crypto Context · Herramienta de análisis personal. No constituye asesoramiento financiero.
+        </p>
       </footer>
     </div>
   );
 }
-
-export default App;

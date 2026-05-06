@@ -57,6 +57,21 @@ export function initDatabase() {
 
     CREATE INDEX IF NOT EXISTS idx_portfolio_symbol ON portfolio_operations(symbol);
     CREATE INDEX IF NOT EXISTS idx_portfolio_date ON portfolio_operations(date);
+
+    CREATE TABLE IF NOT EXISTS gold_context_cache (
+      id         INTEGER PRIMARY KEY,
+      cached_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+      expires_at DATETIME NOT NULL,
+      data       TEXT NOT NULL
+    );
+
+    -- Caché genérica para respuestas de IA (calendar risk, etc.)
+    CREATE TABLE IF NOT EXISTS ai_cache (
+      cache_key  TEXT PRIMARY KEY,
+      cached_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+      expires_at DATETIME NOT NULL,
+      data       TEXT NOT NULL
+    );
   `);
 
   return db;
@@ -99,6 +114,18 @@ export function getDecisions(limit = 20) {
   `);
 
   return stmt.all(limit);
+}
+
+// Obtiene las últimas N decisiones de un símbolo específico (para contexto de Groq)
+export function getDecisionsBySymbol(symbol, limit = 10) {
+  const db = getDatabase();
+  return db.prepare(`
+    SELECT id, timestamp, symbol, price, market_mode, decision, reason
+    FROM decisions
+    WHERE symbol = ?
+    ORDER BY timestamp DESC
+    LIMIT ?
+  `).all(symbol.toUpperCase(), limit);
 }
 
 // ── Portfolio operations ───────────────────────────────────────────────────────
@@ -186,4 +213,45 @@ export function getPortfolioSummaryBySymbol(symbol) {
     ...s,
     hasPosition: s.units > 0 && s.avgBuyPrice > 0
   };
+}
+
+// ── Gold context cache ────────────────────────────────────────────────────────
+
+export function getGoldContextCache() {
+  const db = getDatabase();
+  const row = db.prepare(
+    "SELECT data FROM gold_context_cache WHERE expires_at > datetime('now') ORDER BY id DESC LIMIT 1"
+  ).get();
+  return row ? JSON.parse(row.data) : null;
+}
+
+export function setGoldContextCache(data, ttlHours = 6) {
+  const db = getDatabase();
+  db.prepare("DELETE FROM gold_context_cache").run();
+  db.prepare(`
+    INSERT INTO gold_context_cache (data, expires_at)
+    VALUES (?, datetime('now', '+${ttlHours} hours'))
+  `).run(JSON.stringify(data));
+}
+
+// ── AI generic cache ───────────────────────────────────────────────────────────
+
+export function getAiCache(key) {
+  const db = getDatabase();
+  const row = db.prepare(
+    "SELECT data FROM ai_cache WHERE cache_key = ? AND expires_at > datetime('now')"
+  ).get(key);
+  return row ? JSON.parse(row.data) : null;
+}
+
+export function setAiCache(key, data, ttlHours = 4) {
+  const db = getDatabase();
+  db.prepare(`
+    INSERT INTO ai_cache (cache_key, data, expires_at)
+    VALUES (?, ?, datetime('now', '+${ttlHours} hours'))
+    ON CONFLICT(cache_key) DO UPDATE SET
+      data       = excluded.data,
+      cached_at  = CURRENT_TIMESTAMP,
+      expires_at = excluded.expires_at
+  `).run(key, JSON.stringify(data));
 }

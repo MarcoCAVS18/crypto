@@ -1,29 +1,35 @@
-// Input para el estado del usuario (cash disponible, capital total y modo)
 import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from './ui/Button';
-import { Wallet, Eye, TrendingUp, LineChart, DollarSign, Info } from 'lucide-react';
+import { TrendingUp, Eye, LineChart, DollarSign, Info, ChevronDown } from 'lucide-react';
 
 const MODE_CONFIG = {
   inversion: {
     id: 'inversion',
     label: 'Inversión',
-    icon: TrendingUp,
-    description: 'Largo plazo',
-    detail: 'Posiciones grandes, señales basadas en EMA y zonas de precio. Ideal para acumular a lo largo del tiempo.'
+    Icon: TrendingUp,
+    description: 'Largo plazo · señales basadas en EMA, zonas y P&L del portfolio',
+    color: 'text-blue-400',
+    activeBg: 'bg-blue-500/15 border-blue-500/40',
+    dot: 'bg-blue-400'
   },
   trading: {
     id: 'trading',
     label: 'Trading',
-    icon: LineChart,
-    description: 'Corto plazo',
-    detail: 'Señales más frecuentes usando RSI y zonas. Entradas y salidas tácticas con stop loss ajustado.'
+    Icon: LineChart,
+    description: 'Corto plazo · RSI, stop loss ajustado, entradas y salidas tácticas',
+    color: 'text-purple-400',
+    activeBg: 'bg-purple-500/15 border-purple-500/40',
+    dot: 'bg-purple-400'
   },
   observacion: {
     id: 'observacion',
     label: 'Observación',
-    icon: Eye,
-    description: 'Solo mirar',
-    detail: 'No genera operaciones. Solo monitorear el mercado sin ejecutar nada.'
+    Icon: Eye,
+    description: 'Solo monitorear · sin señales de operación activas',
+    color: 'text-slate-400',
+    activeBg: 'bg-slate-500/15 border-slate-500/40',
+    dot: 'bg-slate-400'
   }
 };
 
@@ -32,137 +38,132 @@ export function UserStateInput({ onSubmit, initialCash = 50, initialMode = 'inve
   const [mode, setMode] = useState(initialMode);
   const [totalCapital, setTotalCapital] = useState(initialCapital);
   const [capitalInput, setCapitalInput] = useState(initialCapital > 0 ? String(initialCapital) : '');
-  const [showModeDetail, setShowModeDetail] = useState(false);
+  const [showModeInfo, setShowModeInfo] = useState(false);
 
   const cashAmount = totalCapital > 0 ? (totalCapital * cashPercent / 100) : null;
   const activeMode = MODE_CONFIG[mode];
 
+  const cashLevel = cashPercent < 30 ? 'bajo' : cashPercent < 60 ? 'moderado' : 'alto';
+  const cashColor = { bajo: 'text-red-400', moderado: 'text-amber-400', alto: 'text-emerald-400' }[cashLevel];
+
   const handleCapitalChange = (e) => {
     const raw = e.target.value.replace(/[^0-9.]/g, '');
     setCapitalInput(raw);
-    const parsed = parseFloat(raw);
-    setTotalCapital(isNaN(parsed) ? 0 : parsed);
-  };
-
-  const handleSubmit = () => {
-    onSubmit({ cashPercent, mode, totalCapital });
+    setTotalCapital(isNaN(parseFloat(raw)) ? 0 : parseFloat(raw));
   };
 
   return (
-    <div className="space-y-5">
-      {/* Capital total */}
+    <div className="space-y-6">
+      {/* Capital input */}
       <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <DollarSign className="w-4 h-4 text-gray-400" />
-          <span className="text-sm text-gray-400">Capital total disponible (USD)</span>
-        </div>
+        <label className="flex items-center gap-1.5 text-xs text-slate-500 uppercase tracking-widest">
+          <DollarSign className="w-3.5 h-3.5" />
+          Capital total disponible (USD)
+        </label>
         <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-medium">$</span>
+          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-medium pointer-events-none">$</span>
           <input
             type="text"
             inputMode="decimal"
             value={capitalInput}
             onChange={handleCapitalChange}
             placeholder="Ej: 5000"
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-7 pr-4 py-2.5 text-white text-sm
-                       focus:outline-none focus:border-blue-500 placeholder-gray-600"
+            className="w-full bg-slate-800/60 border border-white/[0.08] rounded-xl pl-8 pr-4 py-3 text-white
+                       focus:outline-none focus:border-blue-500/60 focus:bg-slate-800
+                       placeholder-slate-600 transition-colors"
           />
         </div>
         {totalCapital > 0 && (
-          <p className="text-xs text-gray-500">
-            Capital total registrado: <span className="text-gray-300">${totalCapital.toLocaleString('en-US')}</span>
+          <p className="text-xs text-slate-600">
+            Capital registrado: <span className="text-slate-400 tabular font-medium">${totalCapital.toLocaleString('en-US')}</span>
           </p>
         )}
       </div>
 
-      {/* Slider de Cash disponible */}
+      {/* Cash slider */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <Wallet className="w-4 h-4 text-gray-400 shrink-0" />
-            <span className="text-sm text-gray-400 truncate">% disponible en efectivo</span>
-          </div>
-          <div className="text-right shrink-0">
-            <span className="text-xl font-bold text-white">{cashPercent}%</span>
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-slate-500 uppercase tracking-widest">% en efectivo disponible</span>
+          <div className="text-right">
+            <span className={`text-2xl font-bold tabular ${cashColor}`}>{cashPercent}%</span>
             {cashAmount !== null && (
-              <p className="text-xs text-blue-400">= ${cashAmount.toLocaleString('en-US', { maximumFractionDigits: 0 })}</p>
+              <p className="text-xs text-blue-400 tabular">≈ ${cashAmount.toLocaleString('en-US', { maximumFractionDigits: 0 })}</p>
             )}
           </div>
         </div>
 
         <input
           type="range"
-          min="0"
-          max="100"
-          step="5"
+          min="0" max="100" step="5"
           value={cashPercent}
-          onChange={(e) => setCashPercent(parseInt(e.target.value))}
-          className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+          onChange={e => setCashPercent(parseInt(e.target.value))}
+          className="w-full"
         />
 
-        <div className="flex justify-between text-xs text-gray-600">
-          <span>0% · Sin cash</span>
-          <span>50%</span>
-          <span>100% · Todo cash</span>
-        </div>
-
-        {/* Barra de interpretación */}
-        <div className="grid grid-cols-3 gap-1 text-xs">
-          <div className={`rounded p-1.5 text-center transition-colors ${cashPercent < 30 ? 'bg-red-500/20 text-red-400' : 'bg-gray-800 text-gray-600'}`}>
-            0–29% · Bajo
-          </div>
-          <div className={`rounded p-1.5 text-center transition-colors ${cashPercent >= 30 && cashPercent < 60 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-gray-800 text-gray-600'}`}>
-            30–59% · Moderado
-          </div>
-          <div className={`rounded p-1.5 text-center transition-colors ${cashPercent >= 60 ? 'bg-green-500/20 text-green-400' : 'bg-gray-800 text-gray-600'}`}>
-            60–100% · Alto
-          </div>
+        {/* Cash level indicator */}
+        <div className="flex rounded-lg overflow-hidden border border-white/[0.05] text-xs">
+          {[
+            { label: '0–29% · Bajo',    range: [0, 29],  color: cashPercent < 30 ? 'bg-red-500/20 text-red-400' : 'bg-slate-800/40 text-slate-600' },
+            { label: '30–59% · Medio',  range: [30, 59], color: cashPercent >= 30 && cashPercent < 60 ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-800/40 text-slate-600' },
+            { label: '60–100% · Alto',  range: [60, 100],color: cashPercent >= 60 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800/40 text-slate-600' }
+          ].map((s, i) => (
+            <div key={i} className={`flex-1 text-center py-1.5 transition-colors ${s.color}`}>{s.label}</div>
+          ))}
         </div>
       </div>
 
-      {/* Selector de Modo */}
+      {/* Mode selector */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <span className="text-sm text-gray-400">Modo de operación</span>
+          <span className="text-xs text-slate-500 uppercase tracking-widest">Modo de operación</span>
           <button
-            onClick={() => setShowModeDetail(!showModeDetail)}
-            className="text-gray-500 hover:text-gray-300 transition-colors"
-            title="¿Qué significa cada modo?"
+            onClick={() => setShowModeInfo(!showModeInfo)}
+            className="flex items-center gap-1 text-xs text-slate-600 hover:text-slate-400 transition-colors"
           >
-            <Info className="w-4 h-4" />
+            <Info className="w-3.5 h-3.5" />
+            <span>{showModeInfo ? 'Ocultar' : '¿Qué es?'}</span>
           </button>
         </div>
 
-        <div className="grid grid-cols-3 gap-1.5">
-          {Object.values(MODE_CONFIG).map((m) => (
-            <button
+        <div className="grid grid-cols-3 gap-2">
+          {Object.values(MODE_CONFIG).map(m => (
+            <motion.button
               key={m.id}
               onClick={() => setMode(m.id)}
+              whileTap={{ scale: 0.97 }}
               className={`
-                flex flex-col items-center gap-1 p-2 sm:p-2.5 rounded-lg border transition-all
+                flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all text-center
                 ${mode === m.id
-                  ? 'bg-blue-500/20 border-blue-500 text-blue-400'
-                  : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'
-                }
+                  ? `${m.activeBg} ${m.color}`
+                  : 'bg-slate-800/50 border-white/[0.06] text-slate-500 hover:border-white/[0.12] hover:text-slate-400'}
               `}
             >
-              <m.icon className="w-4 h-4" />
-              <span className="text-[11px] sm:text-xs font-medium leading-tight text-center">{m.label}</span>
-              <span className="text-[10px] opacity-70 hidden sm:block leading-tight">{m.description}</span>
-            </button>
+              <m.Icon className="w-4 h-4" />
+              <span className="text-xs font-semibold leading-tight">{m.label}</span>
+            </motion.button>
           ))}
         </div>
 
-        {/* Detalle del modo seleccionado */}
-        {showModeDetail && activeMode && (
-          <div className="bg-gray-800/60 border border-gray-700 rounded-lg p-3">
-            <p className="text-xs text-gray-400 leading-relaxed">{activeMode.detail}</p>
-          </div>
-        )}
+        <AnimatePresence>
+          {showModeInfo && activeMode && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden"
+            >
+              <div className="flex items-start gap-2.5 bg-slate-800/40 border border-white/[0.05] rounded-xl p-3">
+                <span className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${activeMode.dot}`} />
+                <p className="text-xs text-slate-400 leading-relaxed">{activeMode.description}</p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
-      <Button onClick={handleSubmit} className="w-full">
-        Obtener Decisión
+      <Button onClick={() => onSubmit({ cashPercent, mode, totalCapital })} className="w-full py-3">
+        Obtener Señal de Inversión
       </Button>
     </div>
   );

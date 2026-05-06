@@ -45,6 +45,7 @@ export const useAppStore = create(
       // Datos del crypto actual
       cryptoData: {
         BTC:  null,
+        ETH:  null,
         PAXG: null
       },
 
@@ -71,8 +72,15 @@ export const useAppStore = create(
       error:           null,
       serverWaking:    false,
 
+      // Usuario activo
+      userId: null,
+
       // Última actualización
       lastUpdate: null,
+
+      // ── Acciones de usuario ───────────────────────────────────────────────
+
+      setUserId: (id) => set({ userId: id }),
 
       // ── Acciones de crypto ────────────────────────────────────────────────
 
@@ -113,7 +121,29 @@ export const useAppStore = create(
         const allSummary      = computePortfolioSummary(portfolio.operations);
         const symbolSummary   = allSummary.find(s => s.symbol === selectedCrypto) || null;
         const portfolioContext = symbolSummary
-          ? { ...symbolSummary, hasPosition: symbolSummary.units > 0 && symbolSummary.avgBuyPrice > 0 }
+          ? {
+              ...symbolSummary,
+              hasPosition: symbolSummary.units > 0 && symbolSummary.avgBuyPrice > 0,
+              // Precio actual para cálculo de P&L en el backend
+              currentPrice: get().cryptoData[selectedCrypto]?.price ?? null,
+              // Historial completo de compras ordenado por fecha (para análisis IA)
+              allBuys: portfolio.operations
+                .filter(op => op.symbol === selectedCrypto && op.type === 'BUY')
+                .sort((a, b) => new Date(a.date) - new Date(b.date))
+                .map(op => ({ price: op.price, amount_usd: op.amount_usd, date: op.date })),
+              // Ventana de ciclo activo: 4 días.
+              // Solo los buys de este período bloquean la repetición de tramos.
+              executedBuys: (() => {
+                const cutoff = Date.now() - 4 * 24 * 3600 * 1000;
+                return portfolio.operations
+                  .filter(op =>
+                    op.symbol === selectedCrypto &&
+                    op.type === 'BUY' &&
+                    new Date(op.date).getTime() >= cutoff
+                  )
+                  .map(op => ({ price: op.price, amount_usd: op.amount_usd, date: op.date }));
+              })()
+            }
           : null;
 
         try {
@@ -153,8 +183,9 @@ export const useAppStore = create(
       loadPortfolio: async () => {
         set((state) => ({ portfolio: { ...state.portfolio, loading: true } }));
         try {
-          const operations = await fsGetOperations();
-          const summary    = computePortfolioSummary(operations);
+          const userId    = get().userId;
+          const operations = await fsGetOperations(null, userId);
+          const summary   = computePortfolioSummary(operations);
           set((state) => ({
             portfolio: { ...state.portfolio, operations, summary, loading: false }
           }));
@@ -178,10 +209,11 @@ export const useAppStore = create(
         });
 
         try {
+          const userId = get().userId;
           // 2. Escribir en Firestore
-          await fsAddOperation(opData);
-          // 3. Reemplazar temp por datos reales (sin spinner)
-          const operations = await fsGetOperations();
+          await fsAddOperation(opData, userId);
+          // 3. Reemplazar temp por datos reales sin activar el spinner del loadPortfolio
+          const operations = await fsGetOperations(null, userId);
           const summary    = computePortfolioSummary(operations);
           set((state) => ({ portfolio: { ...state.portfolio, operations, summary } }));
         } catch (err) {
