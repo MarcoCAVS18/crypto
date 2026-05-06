@@ -36,8 +36,10 @@ export function PortfolioSection() {
   const [error, setError] = useState(null);
   const [expandedOp, setExpandedOp] = useState(null);
   const [filterSymbol, setFilterSymbol] = useState('ALL');
+  const [visibleCount, setVisibleCount] = useState(3);
 
   useEffect(() => {
+    // No-op si ya hay datos cacheados (ver appStore.loadPortfolio)
     loadPortfolio();
   }, []);
 
@@ -94,6 +96,14 @@ export function PortfolioSection() {
     ? operations
     : operations.filter(o => o.symbol === filterSymbol);
 
+  const visibleOps = filteredOps.slice(0, visibleCount);
+  const hiddenCount = filteredOps.length - visibleOps.length;
+
+  // Reset al cambiar de filtro
+  useEffect(() => {
+    setVisibleCount(3);
+  }, [filterSymbol]);
+
   const currentPrices = {
     BTC: cryptoData.BTC?.price,
     ETH: cryptoData.ETH?.price,
@@ -107,8 +117,9 @@ export function PortfolioSection() {
         <h2 className="text-lg font-bold text-white shrink-0">Mi Portfolio</h2>
         <div className="flex items-center gap-2">
           <button
-            onClick={loadPortfolio}
+            onClick={() => loadPortfolio({ force: true })}
             disabled={loading}
+            title="Recargar desde Firestore"
             className="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors disabled:opacity-50"
           >
             <RefreshCw className={`w-4 h-4 text-gray-400 ${loading ? 'animate-spin' : ''}`} />
@@ -265,7 +276,7 @@ export function PortfolioSection() {
           </div>
 
           <div className="space-y-2">
-            {filteredOps.map(op => (
+            {visibleOps.map(op => (
               <OperationRow
                 key={op.id}
                 op={op}
@@ -275,6 +286,30 @@ export function PortfolioSection() {
               />
             ))}
           </div>
+
+          {/* Paginación: ver más / ver menos */}
+          {filteredOps.length > 3 && (
+            <div className="flex items-center justify-center gap-3 pt-2">
+              {hiddenCount > 0 && (
+                <button
+                  onClick={() => setVisibleCount(c => c + 3)}
+                  className="text-sm text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1"
+                >
+                  <ChevronDown className="w-4 h-4" />
+                  Ver más ({hiddenCount} restante{hiddenCount === 1 ? '' : 's'})
+                </button>
+              )}
+              {visibleCount > 3 && (
+                <button
+                  onClick={() => setVisibleCount(3)}
+                  className="text-sm text-gray-500 hover:text-gray-400 transition-colors flex items-center gap-1"
+                >
+                  <ChevronUp className="w-4 h-4" />
+                  Ver menos
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

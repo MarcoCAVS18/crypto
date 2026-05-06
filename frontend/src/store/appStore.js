@@ -63,7 +63,8 @@ export const useAppStore = create(
       portfolio: {
         operations: [],
         summary:    [],
-        loading:    false
+        loading:    false,
+        userId:     null   // marca a quién pertenecen los datos cacheados
       },
 
       // Loading states
@@ -179,45 +180,52 @@ export const useAppStore = create(
       clearError: () => set({ error: null }),
 
       // ── Portfolio (Firestore) ─────────────────────────────────────────────
+      // Las operaciones se cachean en localStorage por usuario.
+      // loadPortfolio() es no-op si ya hay datos. Pasá { force: true } para
+      // forzar un re-fetch (botón refresh, etc.).
 
-      loadPortfolio: async () => {
+      loadPortfolio: async ({ force = false } = {}) => {
+        const { portfolio, userId } = get();
+        // Skip si ya tenemos datos cacheados para este usuario y no se forzó
+        if (!force && portfolio.userId === userId && portfolio.operations.length > 0) {
+          return;
+        }
         set((state) => ({ portfolio: { ...state.portfolio, loading: true } }));
         try {
-          const userId    = get().userId;
           const operations = await fsGetOperations(null, userId);
-          const summary   = computePortfolioSummary(operations);
+          const summary    = computePortfolioSummary(operations);
           set((state) => ({
-            portfolio: { ...state.portfolio, operations, summary, loading: false }
+            portfolio: { ...state.portfolio, operations, summary, userId, loading: false }
           }));
         } catch (err) {
           set((state) => ({ portfolio: { ...state.portfolio, loading: false } }));
-          // Mostrar el error de Firestore en el banner principal de la app
           set({ error: err.message });
         }
       },
 
-      // Optimistic add: muestra la operación de inmediato, sincroniza Firestore en fondo.
-      // Después del write exitoso recarga silenciosamente para obtener el ID real.
+      // Optimistic add: muestra la operación de inmediato.
+      // Después del write reemplaza el id temp por el id real de Firestore
+      // (sin volver a leer toda la colección).
       addOperation: async (opData) => {
         const tempId  = `temp-${Date.now()}`;
-        const tempOp  = { id: tempId, ...opData };
+        const tempOp  = { id: tempId, ...opData, symbol: opData.symbol.toUpperCase(), type: opData.type.toUpperCase() };
 
-        // 1. Actualizar UI al instante
         set((state) => {
-          const ops     = [tempOp, ...state.portfolio.operations];
+          const ops = [tempOp, ...state.portfolio.operations];
           return { portfolio: { ...state.portfolio, operations: ops, summary: computePortfolioSummary(ops) } };
         });
 
         try {
-          const userId = get().userId;
-          // 2. Escribir en Firestore
-          await fsAddOperation(opData, userId);
-          // 3. Reemplazar temp por datos reales sin activar el spinner del loadPortfolio
-          const operations = await fsGetOperations(null, userId);
-          const summary    = computePortfolioSummary(operations);
-          set((state) => ({ portfolio: { ...state.portfolio, operations, summary } }));
+          const userId  = get().userId;
+          const realId  = await fsAddOperation(opData, userId);
+          // Reemplazar el id temporal por el real, sin re-fetch
+          set((state) => {
+            const ops = state.portfolio.operations.map(o =>
+              o.id === tempId ? { ...o, id: realId } : o
+            );
+            return { portfolio: { ...state.portfolio, operations: ops, summary: computePortfolioSummary(ops) } };
+          });
         } catch (err) {
-          // Revertir si falla
           set((state) => {
             const ops = state.portfolio.operations.filter(o => o.id !== tempId);
             return { portfolio: { ...state.portfolio, operations: ops, summary: computePortfolioSummary(ops) } };
@@ -252,7 +260,15 @@ export const useAppStore = create(
       name: 'crypto-dashboard-storage',
       partialize: (state) => ({
         userState:      state.userState,
-        selectedCrypto: state.selectedCrypto
+        selectedCrypto: state.selectedCrypto,
+        // Cacheamos las operaciones del portfolio para evitar relecturas a Firestore.
+        // No persistimos cryptoData (datos de mercado, deben ser frescos).
+        portfolio: {
+          operations: state.portfolio.operations,
+          summary:    state.portfolio.summary,
+          userId:     state.portfolio.userId,
+          loading:    false
+        }
       })
     }
   )
