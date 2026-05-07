@@ -150,6 +150,12 @@ export async function getDailyCandles(symbol, count = 120) {
   return fetchRealCandles(pair, 86400, count);
 }
 
+export async function getHistoricalCandles(symbol, granularity = 14400, count = 100) {
+  const pair = COINBASE_IDS[symbol];
+  if (!pair) throw new Error(`Símbolo no soportado: ${symbol}`);
+  return fetchRealCandles(pair, granularity, count);
+}
+
 export function getCache() {
   return cache;
 }

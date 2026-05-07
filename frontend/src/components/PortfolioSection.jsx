@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import { useAuthStore } from '../store/authStore';
+import { PortfolioChart } from './PortfolioChart';
 
 const EXCHANGES = ['Binance', 'Coinbase', 'Kraken', 'OKX', 'Bybit', 'Manual'];
 
@@ -131,6 +132,15 @@ export function PortfolioSection() {
           </Button>
         </div>
       </div>
+
+      {/* Gráficos P&L + Velas */}
+      {operations.length > 0 && (
+        <PortfolioChart
+          operations={operations}
+          currentPrices={currentPrices}
+          symbols={SUPPORTED_SYMBOLS}
+        />
+      )}
 
       {/* Resumen por símbolo */}
       {summary.length > 0 && (
@@ -275,16 +285,28 @@ export function PortfolioSection() {
             ))}
           </div>
 
-          <div className="space-y-2">
-            {visibleOps.map(op => (
-              <OperationRow
-                key={op.id}
-                op={op}
-                expanded={expandedOp === op.id}
-                onToggle={() => setExpandedOp(expandedOp === op.id ? null : op.id)}
-                onDelete={() => handleDelete(op.id)}
+          <div className="relative">
+            <div className="space-y-2">
+              {visibleOps.map(op => (
+                <OperationRow
+                  key={op.id}
+                  op={op}
+                  expanded={expandedOp === op.id}
+                  onToggle={() => setExpandedOp(expandedOp === op.id ? null : op.id)}
+                  onDelete={() => handleDelete(op.id)}
+                />
+              ))}
+            </div>
+
+            {/* Fade inferior cuando hay más operaciones ocultas */}
+            {hiddenCount > 0 && (
+              <div
+                className="absolute inset-x-0 bottom-0 h-14 pointer-events-none"
+                style={{
+                  background: 'linear-gradient(to bottom, transparent 0%, rgba(8, 12, 24, 0.75) 55%, rgba(8, 12, 24, 0.97) 100%)'
+                }}
               />
-            ))}
+            )}
           </div>
 
           {/* Paginación: ver más / ver menos */}

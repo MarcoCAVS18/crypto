@@ -113,3 +113,9 @@ input[type='range']::-moz-range-thumb {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
 }
+
+/* ── Gradient fade at the bottom of a section (premium blur aesthetic) ─────── */
+.fade-bottom {
+  mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+}
