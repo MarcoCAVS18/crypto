@@ -169,6 +169,8 @@ export async function getGoldVolatilityData() {
     silver: silverResult.status === 'fulfilled' ? silverResult.value : null
   };
 }
+
+/**
  * Sin API key. Interpreta: <0% muy alcista para oro, >2% bajista.
  * @returns {{ value, date, sentiment }}
  */
