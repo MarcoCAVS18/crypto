@@ -50,4 +50,9 @@ export async function fetchCandles(symbol, granularity = '1d', count = 120) {
   return response.data;
 }
 
+export async function fetchDecisions(symbol, limit = 100) {
+  const response = await api.get(`/crypto/${symbol}/decisions`, { params: { limit } });
+  return response.data;
+}
+
 export default api;

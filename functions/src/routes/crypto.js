@@ -12,6 +12,37 @@ import { saveDecision, getPortfolioSummaryBySymbol, getAiCache, setAiCache, getD
 
 const router = express.Router();
 
+// GET /api/crypto/:symbol/decisions - Historial de señales IA para backtesting
+router.get('/:symbol/decisions', async (req, res) => {
+  try {
+    const symbol = req.params.symbol.toUpperCase();
+    const limit  = Math.min(200, Math.max(1, parseInt(req.query.limit) || 100));
+
+    if (!['BTC', 'ETH', 'PAXG'].includes(symbol)) {
+      return res.status(400).json({ error: 'Símbolo no válido' });
+    }
+
+    const raw = await getDecisionsBySymbol(symbol, limit);
+    const decisions = raw.map(d => {
+      const ts = d.timestamp?.toDate?.() ?? new Date(d.timestamp);
+      return {
+        id:         d.id,
+        timestamp:  ts instanceof Date && !isNaN(ts) ? ts.toISOString() : null,
+        symbol:     d.symbol,
+        price:      d.price,
+        marketMode: d.marketMode ?? d.market_mode,
+        decision:   d.decision,
+        reason:     d.reason
+      };
+    }).filter(d => d.timestamp);
+
+    res.json({ symbol, count: decisions.length, decisions });
+  } catch (err) {
+    console.error('Error en /:symbol/decisions:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/crypto/:symbol/candles - Velas OHLCV para charts
 router.get('/:symbol/candles', async (req, res) => {
   try {

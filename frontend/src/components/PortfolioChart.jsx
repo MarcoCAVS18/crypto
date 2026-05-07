@@ -8,7 +8,7 @@ import {
   ResponsiveContainer, ReferenceLine, CartesianGrid
 } from 'recharts';
 import { createChart, ColorType } from 'lightweight-charts';
-import { fetchCandles } from '../services/api';
+import { fetchCandles, fetchDecisions } from '../services/api';
 import { Activity, TrendingUp, TrendingDown, RefreshCw } from 'lucide-react';
 
 // ── Constantes ────────────────────────────────────────────────────────────────
@@ -278,28 +278,38 @@ function EvolucionChart({ operations, currentPrices }) {
 // ── Sub-componente: candlestick (lightweight-charts) ──────────────────────────
 
 function VelasChart({ symbol, operations }) {
-  const containerRef  = useRef(null);
-  const chartRef      = useRef(null);
-  const seriesRef     = useRef(null);
-  const [candles, setCandles]     = useState(null);
-  const [loading, setLoading]     = useState(false);
-  const [error,   setError]       = useState(null);
-  const [range,   setRange]       = useState('3m');
+  const containerRef = useRef(null);
+  const chartRef     = useRef(null);
+  const seriesRef    = useRef(null);
+
+  const [candles,   setCandles]   = useState(null);
+  const [decisions, setDecisions] = useState([]);
+  const [loading,   setLoading]   = useState(false);
+  const [error,     setError]     = useState(null);
+  const [range,     setRange]     = useState('3m');
+  // Capas de marcadores visibles
+  const [layers, setLayers] = useState({ ops: true, signals: true });
 
   // Fetch candles al cambiar símbolo o rango
   useEffect(() => {
     if (!symbol) return;
-    const days = TIME_RANGES.find(r => r.label === range)?.days ?? 90;
+    const days  = TIME_RANGES.find(r => r.label === range)?.days ?? 90;
     const count = Math.min(300, days + 10);
-
     setLoading(true);
     setError(null);
-
     fetchCandles(symbol, '1d', count)
       .then(d => setCandles(d.candles))
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, [symbol, range]);
+
+  // Fetch historial de señales IA al cambiar símbolo
+  useEffect(() => {
+    if (!symbol) return;
+    fetchDecisions(symbol, 200)
+      .then(d => setDecisions(d.decisions ?? []))
+      .catch(() => setDecisions([]));
+  }, [symbol]);
 
   // Crear / destruir chart al montar / desmontar
   useEffect(() => {
@@ -325,8 +335,8 @@ function VelasChart({ symbol, operations }) {
     });
 
     const series = chart.addCandlestickSeries({
-      upColor:      '#10b981',
-      downColor:    '#ef4444',
+      upColor:       '#10b981',
+      downColor:     '#ef4444',
       borderVisible: false,
       wickUpColor:   '#10b981',
       wickDownColor: '#ef4444'
@@ -335,7 +345,6 @@ function VelasChart({ symbol, operations }) {
     chartRef.current  = chart;
     seriesRef.current = series;
 
-    // Resize observer
     const ro = new ResizeObserver(entries => {
       if (!entries[0]) return;
       chart.applyOptions({ width: entries[0].contentRect.width });
@@ -350,50 +359,74 @@ function VelasChart({ symbol, operations }) {
     };
   }, []);
 
-  // Actualizar datos y marcadores cuando cambian candles u operaciones
+  // Actualizar datos + marcadores al cambiar cualquier dependencia
   useEffect(() => {
     if (!seriesRef.current || !candles) return;
 
-    const days = TIME_RANGES.find(r => r.label === range)?.days ?? 90;
+    const days   = TIME_RANGES.find(r => r.label === range)?.days ?? 90;
     const cutoff = Date.now() - days * 86_400_000;
 
     const chartData = candles
       .filter(c => c.timestamp > cutoff)
       .map(c => ({
         time:  Math.floor(c.timestamp / 1000),
-        open:  c.open,
-        high:  c.high,
-        low:   c.low,
-        close: c.close
+        open:  c.open, high: c.high, low: c.low, close: c.close
       }))
       .sort((a, b) => a.time - b.time);
 
     if (chartData.length === 0) return;
     seriesRef.current.setData(chartData);
 
-    // Marcadores de operaciones
     const firstTime = chartData[0].time;
     const lastTime  = chartData.at(-1).time;
+    const inRange   = t => t >= firstTime && t <= lastTime;
+    const allMarkers = [];
 
-    const markers = (operations ?? [])
-      .filter(op => op.symbol === symbol)
-      .map(op => ({
-        time:     Math.floor(new Date(op.date + 'T12:00:00Z').getTime() / 1000),
-        position: op.type === 'BUY' ? 'belowBar' : 'aboveBar',
-        color:    op.type === 'BUY' ? '#10b981' : '#f87171',
-        shape:    op.type === 'BUY' ? 'arrowUp'  : 'arrowDown',
-        text:     `${op.type} ${fmtUSD(parseFloat(op.amount_usd))}`
-      }))
-      .filter(m => m.time >= firstTime && m.time <= lastTime)
-      .sort((a, b) => a.time - b.time);
+    // ── Capa 1: operaciones del portfolio (flechas) ───────────────────────────
+    if (layers.ops) {
+      (operations ?? [])
+        .filter(op => op.symbol === symbol)
+        .map(op => ({
+          time:     Math.floor(new Date(op.date + 'T12:00:00Z').getTime() / 1000),
+          position: op.type === 'BUY' ? 'belowBar' : 'aboveBar',
+          color:    op.type === 'BUY' ? '#10b981' : '#f87171',
+          shape:    op.type === 'BUY' ? 'arrowUp'  : 'arrowDown',
+          text:     `${op.type} ${fmtUSD(parseFloat(op.amount_usd))}`
+        }))
+        .filter(m => inRange(m.time))
+        .forEach(m => allMarkers.push(m));
+    }
 
-    seriesRef.current.setMarkers(markers);
+    // ── Capa 2: señales IA (círculos) ─────────────────────────────────────────
+    if (layers.signals) {
+      decisions
+        .filter(d => d.decision === 'BUY' || d.decision === 'SELL')
+        .map(d => {
+          const ts  = new Date(d.timestamp);
+          const day = Date.UTC(ts.getUTCFullYear(), ts.getUTCMonth(), ts.getUTCDate()) / 1000;
+          return {
+            time:     day,
+            position: d.decision === 'BUY' ? 'belowBar' : 'aboveBar',
+            color:    d.decision === 'BUY' ? '#0ea5e9' : '#f97316',
+            shape:    'circle',
+            text:     `IA ${d.decision}`
+          };
+        })
+        .filter(m => inRange(m.time))
+        .forEach(m => allMarkers.push(m));
+    }
+
+    allMarkers.sort((a, b) => a.time - b.time);
+    seriesRef.current.setMarkers(allMarkers);
     chartRef.current.timeScale().fitContent();
-  }, [candles, operations, symbol, range]);
+  }, [candles, operations, decisions, symbol, range, layers]);
+
+  const hasOps     = operations?.some(op => op.symbol === symbol);
+  const hasSignals = decisions.length > 0;
 
   return (
     <div>
-      {/* Controles: rango */}
+      {/* Controles: rango + carga */}
       <div className="flex items-center gap-1.5 mb-3">
         {TIME_RANGES.map(r => (
           <button
@@ -410,7 +443,7 @@ function VelasChart({ symbol, operations }) {
         {loading && <RefreshCw className="w-3.5 h-3.5 text-gray-500 animate-spin ml-1" />}
       </div>
 
-      {/* Canvas container */}
+      {/* Canvas container con fade inferior */}
       <div className="relative rounded-xl overflow-hidden">
         {error && (
           <div className="absolute inset-0 flex items-center justify-center text-red-400 text-xs bg-slate-900/80 z-10">
@@ -418,31 +451,37 @@ function VelasChart({ symbol, operations }) {
           </div>
         )}
         <div ref={containerRef} className="w-full" />
-
-        {/* Blur / fade inferior */}
         <div
           className="absolute inset-x-0 bottom-0 pointer-events-none"
           style={{
             height: '60px',
-            background: `linear-gradient(to bottom, transparent 0%, ${CHART_BG}cc 55%, ${CHART_BG} 100%)`,
+            background: `linear-gradient(to bottom, transparent 0%, ${CHART_BG}cc 55%, ${CHART_BG} 100%)`
           }}
         />
       </div>
 
-      {/* Leyenda de marcadores */}
-      {operations?.some(op => op.symbol === symbol) && (
-        <div className="flex items-center gap-4 mt-2.5 text-[11px] text-gray-500">
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
-            Compra
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-red-400 inline-block" />
-            Venta
-          </span>
-          <span className="ml-auto text-gray-600">Velas diarias · Coinbase</span>
-        </div>
-      )}
+      {/* Leyenda con toggles */}
+      <div className="flex items-center gap-2 mt-2.5 flex-wrap">
+        {hasOps && (
+          <LayerToggleBtn
+            active={layers.ops}
+            onClick={() => setLayers(l => ({ ...l, ops: !l.ops }))}
+            colorOn="#10b981"
+            shape="arrow"
+            label="Mis ops"
+          />
+        )}
+        {hasSignals && (
+          <LayerToggleBtn
+            active={layers.signals}
+            onClick={() => setLayers(l => ({ ...l, signals: !l.signals }))}
+            colorOn="#0ea5e9"
+            shape="circle"
+            label={`Señales IA (${decisions.filter(d => d.decision !== 'WAIT').length})`}
+          />
+        )}
+        <span className="ml-auto text-[11px] text-gray-600">Velas diarias · Coinbase</span>
+      </div>
     </div>
   );
 }
@@ -539,6 +578,30 @@ function TabButton({ active, onClick, children }) {
           : 'text-gray-500 hover:text-gray-300'}`}
     >
       {children}
+    </button>
+  );
+}
+
+function LayerToggleBtn({ active, onClick, colorOn, shape, label }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium transition-all border
+        ${active
+          ? 'border-white/10 text-gray-300 bg-white/5'
+          : 'border-transparent text-gray-600 opacity-50'}`}
+    >
+      {shape === 'arrow' ? (
+        <svg width="8" height="8" viewBox="0 0 8 8">
+          <polygon points="4,0 8,8 0,8" fill={active ? colorOn : '#6b7280'} />
+        </svg>
+      ) : (
+        <span
+          className="w-2 h-2 rounded-full inline-block shrink-0"
+          style={{ background: active ? colorOn : '#6b7280' }}
+        />
+      )}
+      {label}
     </button>
   );
 }
