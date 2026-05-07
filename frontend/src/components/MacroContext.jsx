@@ -46,6 +46,81 @@ function relativeTime(iso) {
   return `${Math.floor(h / 24)}d`;
 }
 
+const DAILY_BIAS_CFG = {
+  bull:  { label: 'Alcista',  color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20', dot: 'bg-emerald-400' },
+  bear:  { label: 'Bajista',  color: 'text-red-400',     bg: 'bg-red-500/10    border-red-500/20',     dot: 'bg-red-400' },
+  mixed: { label: 'Mixto',    color: 'text-amber-400',   bg: 'bg-amber-500/10  border-amber-500/20',   dot: 'bg-amber-400' }
+};
+
+function DailyBiasBadge({ data }) {
+  if (!data) return null;
+  const cfg = DAILY_BIAS_CFG[data.alignment] ?? DAILY_BIAS_CFG.mixed;
+  return (
+    <div className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl border ${cfg.bg}`}>
+      <div className="flex items-center gap-2">
+        <span className={`w-2 h-2 rounded-full shrink-0 ${cfg.dot}`} />
+        <span className="text-xs text-slate-400">Tendencia diaria PAXG</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className={`text-xs font-semibold ${cfg.color}`}>{cfg.label}</span>
+        {data.rsi != null && (
+          <span className="text-[10px] text-slate-600 tabular">RSI {data.rsi.toFixed(0)}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const GVZ_LABELS = {
+  high:   { label: 'Alta — entrar con cuidado', color: 'text-red-400' },
+  medium: { label: 'Elevada — precaución',      color: 'text-amber-400' },
+  normal: { label: 'Normal',                    color: 'text-slate-400' },
+  low:    { label: 'Baja — tendencia estable',  color: 'text-emerald-400' }
+};
+
+function GvzStat({ data }) {
+  if (!data) return null;
+  const v = data.value;
+  const key = v > 25 ? 'high' : v > 20 ? 'medium' : v < 15 ? 'low' : 'normal';
+  const cfg = GVZ_LABELS[key];
+  return (
+    <div className="flex items-center justify-between py-2.5 border-b border-white/[0.04] last:border-0">
+      <div className="min-w-0 pr-2">
+        <p className="text-sm text-slate-300">GVZ · Volatilidad del Oro</p>
+        <p className={`text-[10px] mt-0.5 ${cfg.color}`}>{cfg.label}</p>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <span className="text-sm font-semibold text-white tabular">{v?.toFixed(1)}</span>
+        {data.changePercent != null && <Delta v={data.changePercent} />}
+      </div>
+    </div>
+  );
+}
+
+function GoldSilverRatioStat({ silver, ratio }) {
+  if (!ratio && !silver) return null;
+  const r = ratio ?? null;
+  const color = r == null ? 'text-slate-400'
+    : r > 90 ? 'text-red-400'
+    : r < 70 ? 'text-emerald-400'
+    : 'text-slate-400';
+  const label = r == null ? '' : r > 90 ? 'Oro caro vs plata' : r < 70 ? 'Rally en ambos metales' : 'Normal';
+  return (
+    <div className="flex items-center justify-between py-2.5 border-b border-white/[0.04] last:border-0">
+      <div className="min-w-0 pr-2">
+        <p className="text-sm text-slate-300">Ratio Oro / Plata</p>
+        {label && <p className={`text-[10px] mt-0.5 ${color}`}>{label}</p>}
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        {r != null && <span className={`text-sm font-semibold tabular ${color}`}>{r.toFixed(1)}</span>}
+        {silver?.value != null && (
+          <span className="text-xs text-slate-600 tabular">${silver.value.toFixed(2)}/oz</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const REAL_YIELD_LABELS = {
   very_bullish: { label: 'Muy alcista para oro', color: 'text-emerald-400' },
   bullish:      { label: 'Alcista para oro',      color: 'text-emerald-400' },
@@ -120,7 +195,8 @@ export function MacroContext({ goldContext: initialContext }) {
 
   if (!context) return null;
 
-  const { macro, sentiment, reasoning, keyFactors = [], headlines = [], fetchedAt, fromCache, analysisError, cot, realYield } = context;
+  const { macro, sentiment, reasoning, keyFactors = [], headlines = [], fetchedAt, fromCache, analysisError,
+          cot, realYield, gvz, goldSilverRatio, dailyBias } = context;
   const s = SENTIMENT[sentiment] ?? SENTIMENT.neutral;
   const SentIcon = s.Icon;
   const groqMissing = !!analysisError;
@@ -217,8 +293,13 @@ export function MacroContext({ goldContext: initialContext }) {
           </div>
         </div>
 
+        {/* Daily trend badge */}
+        {(macro?.dailyBias ?? dailyBias) && (
+          <DailyBiasBadge data={macro?.dailyBias ?? dailyBias} />
+        )}
+
         {/* Macro indicators */}
-        {macro && (macro.dxy || macro.tenYearYield || macro.realYield) && (
+        {macro && (macro.dxy || macro.tenYearYield || macro.realYield || macro.gvz || macro.silver) && (
           <div>
             <p className="text-[10px] text-slate-600 uppercase tracking-widest mb-2">Indicadores</p>
             <div className="bg-slate-900/50 rounded-xl px-4 border border-white/[0.04]">
@@ -242,6 +323,15 @@ export function MacroContext({ goldContext: initialContext }) {
               )}
               {(macro.realYield ?? realYield) && (
                 <RealYieldStat data={macro.realYield ?? realYield} />
+              )}
+              {macro.gvz && (
+                <GvzStat data={macro.gvz} />
+              )}
+              {(macro.silver || goldSilverRatio != null) && (
+                <GoldSilverRatioStat
+                  silver={macro.silver}
+                  ratio={goldSilverRatio ?? context.goldSilverRatio}
+                />
               )}
             </div>
           </div>

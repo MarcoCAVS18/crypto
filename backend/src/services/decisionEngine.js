@@ -81,10 +81,13 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
 
   // ── Contexto macro PAXG (COT + real yield + goldScore) ─────────────────────
   // Estos datos modulan umbrales y recomendaciones solo para PAXG.
-  const goldCtx    = isPaxg ? (marketMode.goldContext ?? null) : null;
-  const goldScore  = isPaxg ? (marketMode.score ?? 0)         : 0;
-  const cot        = goldCtx?.macro?.cot       ?? goldCtx?.cot       ?? null;
-  const realYield  = goldCtx?.macro?.realYield ?? goldCtx?.realYield ?? null;
+  const goldCtx        = isPaxg ? (marketMode.goldContext ?? null) : null;
+  const goldScore      = isPaxg ? (marketMode.score ?? 0)         : 0;
+  const cot            = goldCtx?.macro?.cot          ?? goldCtx?.cot          ?? null;
+  const realYield      = goldCtx?.macro?.realYield    ?? goldCtx?.realYield    ?? null;
+  const gvz            = goldCtx?.macro?.gvz          ?? goldCtx?.gvz          ?? null;
+  const goldSilverRatio = goldCtx?.goldSilverRatio    ?? null;
+  const dailyBias      = goldCtx?.macro?.dailyBias    ?? goldCtx?.dailyBias    ?? null;
 
   // ── Contexto del portfolio ──────────────────────────────────────────────────
   const executedBuys = portfolioCtx?.executedBuys ?? [];
@@ -143,20 +146,30 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
   let paxgCapFraction = 1.0;
   if (isPaxg && marketMode.mode === 'risk_on') {
     paxgCapFraction = goldScore > 0.6 ? 1.0 : goldScore > 0.45 ? 0.80 : 0.65;
-    if (cot?.sentiment === 'crowded_long')    paxgCapFraction = Math.max(paxgCapFraction - 0.20, 0.50);
-    if (cot?.sentiment === 'contrarian_bull') paxgCapFraction = Math.min(paxgCapFraction + 0.10, 1.00);
+    if (cot?.sentiment === 'crowded_long')       paxgCapFraction = Math.max(paxgCapFraction - 0.20, 0.50);
+    if (cot?.sentiment === 'contrarian_bull')    paxgCapFraction = Math.min(paxgCapFraction + 0.10, 1.00);
     if (realYield?.sentiment === 'very_bullish') paxgCapFraction = Math.min(paxgCapFraction + 0.10, 1.00);
     if (realYield?.sentiment === 'bearish')      paxgCapFraction = Math.max(paxgCapFraction - 0.15, 0.50);
+    // GVZ: volatilidad muy alta → reducir exposición
+    if (gvz?.value > 25)                         paxgCapFraction = Math.max(paxgCapFraction - 0.15, 0.40);
+    else if (gvz?.value < 15)                    paxgCapFraction = Math.min(paxgCapFraction + 0.05, 1.00);
+    // Daily bias: tendencia diaria contraria reduce posición; alineada la refuerza
+    if (dailyBias?.alignment === 'bear')         paxgCapFraction = Math.max(paxgCapFraction - 0.20, 0.40);
+    if (dailyBias?.alignment === 'bull')         paxgCapFraction = Math.min(paxgCapFraction + 0.05, 1.00);
   }
 
   // ── PAXG: línea de contexto macro para recomendaciones ─────────────────────
   let macroLine = '';
   if (isPaxg && goldCtx) {
     const parts = [];
-    if (cot?.sentiment === 'crowded_long')    parts.push('⚠️ COT muy largo → riesgo de corrección, posición reducida');
+    if (cot?.sentiment === 'crowded_long')       parts.push('⚠️ COT muy largo → riesgo de corrección');
     else if (cot?.sentiment === 'contrarian_bull') parts.push('✓ COT extremo corto → señal contraria alcista');
-    if (realYield?.sentiment === 'very_bullish') parts.push(`✓ Tasa real ${realYield.value.toFixed(2)}% → entorno ideal para oro`);
-    else if (realYield?.sentiment === 'bearish')  parts.push(`⚠️ Tasa real ${realYield.value.toFixed(2)}% → presión sobre el oro`);
+    if (realYield?.sentiment === 'very_bullish')  parts.push(`✓ Tasa real ${realYield.value.toFixed(2)}% → entorno ideal`);
+    else if (realYield?.sentiment === 'bearish')  parts.push(`⚠️ Tasa real ${realYield.value.toFixed(2)}% → presión bajista`);
+    if (gvz?.value > 25)                          parts.push(`⚠️ GVZ ${gvz.value.toFixed(1)} → alta volatilidad`);
+    if (dailyBias?.alignment === 'bear')          parts.push('⚠️ Tendencia diaria bajista → posición reducida');
+    else if (dailyBias?.alignment === 'bull')     parts.push('✓ Tendencia diaria alcista');
+    if (goldSilverRatio != null && goldSilverRatio > 90) parts.push(`⚠️ Ratio Oro/Plata ${goldSilverRatio} → cautela`);
     if (parts.length) macroLine = ` · ${parts.join(' · ')}`;
   }
 
@@ -177,9 +190,10 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
   // acumular aunque el market mode técnico sea neutro.
   if (isPaxg && marketMode.mode === 'neutral') {
     const macroFavorable =
-      cot?.sentiment === 'contrarian_bull' ||
-      realYield?.sentiment === 'very_bullish' ||
-      realYield?.sentiment === 'bullish';
+      (cot?.sentiment === 'contrarian_bull' ||
+       realYield?.sentiment === 'very_bullish' ||
+       realYield?.sentiment === 'bullish') &&
+      dailyBias?.alignment !== 'bear';  // no entrar si el diario es claramente bajista
 
     if (macroFavorable && (isBelowAvg || currentZone === 'buy') && cashPercent >= 30) {
       const capFrac = paxgCapFraction * 0.60; // entrada conservadora en contexto mixto

@@ -160,6 +160,77 @@ export function determineGoldMarketMode(currentPrice, indicators, volumeAnalysis
     score += ryAdj;
   }
 
+  // ── 7. GVZ — Índice de volatilidad del oro (aditivo ±0.08) ──────────────────
+  if (macro?.gvz) {
+    const gvzVal = macro.gvz.value;
+    let gvzAdj = 0;
+
+    if (gvzVal > 25) {
+      gvzAdj = -0.08;
+      reasons.push(`GVZ: volatilidad muy alta (${gvzVal.toFixed(1)}) → entradas de alto riesgo, reducir exposición`);
+    } else if (gvzVal > 20) {
+      gvzAdj = -0.04;
+      reasons.push(`GVZ: volatilidad elevada (${gvzVal.toFixed(1)}) → precaución en entradas`);
+    } else if (gvzVal < 15) {
+      gvzAdj = 0.05;
+      reasons.push(`GVZ: volatilidad baja (${gvzVal.toFixed(1)}) → tendencia estable, entorno favorable`);
+    } else {
+      reasons.push(`GVZ: volatilidad normal (${gvzVal.toFixed(1)})`);
+    }
+    score += gvzAdj;
+  }
+
+  // ── 8. Ratio Oro/Plata (aditivo ±0.07) ──────────────────────────────────────
+  if (macro?.silver?.value) {
+    const goldSilverRatio = currentPrice / macro.silver.value;
+    const ratio = Math.round(goldSilverRatio * 10) / 10;
+    let ratioAdj = 0;
+
+    if (goldSilverRatio > 90) {
+      ratioAdj = -0.07;
+      reasons.push(`Ratio Oro/Plata: ${ratio} (elevado → oro caro vs plata, riesgo de corrección)`);
+    } else if (goldSilverRatio > 80) {
+      ratioAdj = -0.03;
+      reasons.push(`Ratio Oro/Plata: ${ratio} (alto → cautela en nuevas entradas)`);
+    } else if (goldSilverRatio < 70) {
+      ratioAdj = 0.07;
+      reasons.push(`Ratio Oro/Plata: ${ratio} (bajo → rally en ambos metales, señal muy alcista)`);
+    } else if (goldSilverRatio < 80) {
+      ratioAdj = 0.03;
+      reasons.push(`Ratio Oro/Plata: ${ratio} (moderado → contexto positivo para el oro)`);
+    } else {
+      reasons.push(`Ratio Oro/Plata: ${ratio} (neutral)`);
+    }
+    score += ratioAdj;
+  }
+
+  // ── 9. Tendencia diaria PAXG (aditivo ±0.10) ────────────────────────────────
+  if (macro?.dailyBias) {
+    const { alignment, trendShort: dt, rsi: dRsi } = macro.dailyBias;
+    let dailyAdj = 0;
+
+    if (alignment === 'bull') {
+      dailyAdj = 0.10;
+      reasons.push(`Tendencia diaria: alcista (EMA20 y EMA50) → confluencia multi-timeframe`);
+    } else if (alignment === 'bear') {
+      dailyAdj = -0.10;
+      reasons.push(`Tendencia diaria: bajista → señal 4h contra la tendencia mayor`);
+    } else {
+      reasons.push(`Tendencia diaria: mixta (corto ${dt}) → sin confirmación multi-timeframe`);
+    }
+
+    if (dRsi != null) {
+      if (dRsi > 70) {
+        dailyAdj = Math.max(dailyAdj - 0.05, -0.15);
+        reasons.push(`RSI diario sobrecomprado (${dRsi.toFixed(1)}) → precaución`);
+      } else if (dRsi < 35) {
+        dailyAdj = Math.min(dailyAdj + 0.05, 0.15);
+        reasons.push(`RSI diario sobrevendido (${dRsi.toFixed(1)}) → potencial rebote`);
+      }
+    }
+    score += dailyAdj;
+  }
+
   // ── Modo final (score se clampea a [-1, 1]) ───────────────────────────────
   const finalScore = Math.round(Math.max(-1, Math.min(1, score)) * 1000) / 1000;
   const mode = finalScore > 0.25 ? 'risk_on' : finalScore < -0.25 ? 'risk_off' : 'neutral';
@@ -178,8 +249,14 @@ export function determineGoldMarketMode(currentPrice, indicators, volumeAnalysis
       fetchedAt:     goldContext.fetchedAt,
       fromCache:     goldContext.fromCache ?? false,
       analysisError: goldContext.analysisError ?? null,
-      cot:           macro?.cot ?? null,
-      realYield:     macro?.realYield ?? null
+      cot:           macro?.cot       ?? null,
+      realYield:     macro?.realYield ?? null,
+      gvz:           macro?.gvz       ?? null,
+      silver:        macro?.silver    ?? null,
+      goldSilverRatio: macro?.silver?.value
+        ? Math.round(currentPrice / macro.silver.value * 10) / 10
+        : null,
+      dailyBias:     macro?.dailyBias ?? null
     }
   };
 }

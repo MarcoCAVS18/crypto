@@ -138,6 +138,18 @@ function generateSyntheticCandles(high, low, volume) {
   });
 }
 
+/**
+ * Obtiene velas diarias (granularidad 86400s) desde Coinbase.
+ * Usado para análisis multi-timeframe: detectar tendencia diaria del oro.
+ * @param {string} symbol - 'BTC' | 'ETH' | 'PAXG'
+ * @param {number} count  - cantidad de velas (máx 300 por limitación Coinbase)
+ */
+export async function getDailyCandles(symbol, count = 120) {
+  const pair = COINBASE_IDS[symbol];
+  if (!pair) throw new Error(`Símbolo no soportado: ${symbol}`);
+  return fetchRealCandles(pair, 86400, count);
+}
+
 export function getCache() {
   return cache;
 }
