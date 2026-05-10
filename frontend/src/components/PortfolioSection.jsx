@@ -142,9 +142,9 @@ export function PortfolioSection() {
         />
       )}
 
-      {/* Resumen por símbolo */}
+      {/* Resumen por símbolo — fila densa */}
       {summary.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="space-y-2">
           {summary.map(s => (
             <SummaryCard key={s.symbol} summary={s} currentPrice={currentPrices[s.symbol]} />
           ))}
@@ -341,52 +341,54 @@ export function PortfolioSection() {
 // ── Sub-componentes ────────────────────────────────────────────────────────────
 
 function SummaryCard({ summary, currentPrice }) {
-  const hasPrice = currentPrice != null;
+  const hasPrice     = currentPrice != null;
   const currentValue = hasPrice ? summary.units * currentPrice : null;
-  const pnl = hasPrice ? currentValue - summary.netInvested : null;
-  const pnlPct = hasPrice && summary.netInvested > 0 ? (pnl / summary.netInvested) * 100 : null;
-  const isProfit = pnl >= 0;
+  const pnl          = hasPrice ? currentValue - summary.netInvested : null;
+  const pnlPct       = hasPrice && summary.netInvested > 0 ? (pnl / summary.netInvested) * 100 : null;
+  const isProfit     = pnl >= 0;
 
   return (
-    <Card className="space-y-3">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <BarChart3 className="w-4 h-4 text-blue-400" />
-          <span className="font-bold text-white">{summary.symbol}</span>
-        </div>
-        <span className="text-xs text-gray-500">{summary.operations} op.</span>
+    <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-slate-900/50 border border-white/[0.05] hover:border-white/[0.1] transition-colors">
+      {/* Símbolo */}
+      <div className="flex flex-col shrink-0 min-w-[64px]">
+        <span className="font-bold text-white text-sm leading-tight">{summary.symbol}</span>
+        <span className="text-[10px] text-slate-500">{summary.operations} op.</span>
       </div>
 
-      {/* Métricas */}
-      <div className="grid grid-cols-2 gap-2 text-sm">
-        <Metric label="Unidades" value={formatUnits(summary.units)} />
-        <Metric label="Invertido neto" value={`$${summary.netInvested.toLocaleString('en-US', { maximumFractionDigits: 0 })}`} />
-        {summary.avgBuyPrice > 0 && (
-          <Metric label="Precio prom. compra" value={formatPrice(summary.avgBuyPrice)} />
-        )}
-        {hasPrice && (
-          <Metric label="Precio actual" value={formatPrice(currentPrice)} />
-        )}
+      {/* Métricas en línea — colapsa en móvil mostrando lo crítico */}
+      <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-x-3 gap-y-1 text-xs min-w-0">
+        <InlineMetric label="Unidades"  value={formatUnits(summary.units)} />
+        <InlineMetric label="Invertido" value={`$${summary.netInvested.toLocaleString('en-US', { maximumFractionDigits: 0 })}`} />
         {currentValue != null && (
-          <Metric label="Valor actual" value={`$${currentValue.toLocaleString('en-US', { maximumFractionDigits: 0 })}`} />
+          <InlineMetric label="Valor"   value={`$${currentValue.toLocaleString('en-US', { maximumFractionDigits: 0 })}`} />
         )}
-        {pnl != null && (
-          <div>
-            <p className="text-xs text-gray-500">P&L no realizado</p>
-            <p className={`font-semibold flex items-center gap-1 ${isProfit ? 'text-green-400' : 'text-red-400'}`}>
-              {isProfit ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-              {isProfit ? '+' : ''}{pnl.toLocaleString('en-US', { maximumFractionDigits: 0, style: 'currency', currency: 'USD' })}
-              {pnlPct != null && <span className="text-xs opacity-70">({isProfit ? '+' : ''}{pnlPct.toFixed(1)}%)</span>}
-            </p>
-          </div>
+        {summary.avgBuyPrice > 0 && (
+          <InlineMetric label="Avg. compra" value={formatPrice(summary.avgBuyPrice)} className="hidden sm:block" />
         )}
       </div>
 
-      {!hasPrice && summary.units > 0 && (
-        <p className="text-xs text-gray-600">Carga los datos de mercado para ver el P&L</p>
+      {/* P&L destacado a la derecha */}
+      {pnl != null && (
+        <div className={`shrink-0 text-right ${isProfit ? 'text-emerald-400' : 'text-red-400'}`}>
+          <div className="flex items-center gap-1 justify-end font-bold tabular text-sm">
+            {isProfit ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+            {isProfit ? '+' : ''}{pnl.toLocaleString('en-US', { maximumFractionDigits: 0, style: 'currency', currency: 'USD' })}
+          </div>
+          {pnlPct != null && (
+            <div className="text-[10px] opacity-70 tabular">{isProfit ? '+' : ''}{pnlPct.toFixed(1)}%</div>
+          )}
+        </div>
       )}
-    </Card>
+    </div>
+  );
+}
+
+function InlineMetric({ label, value, className = '' }) {
+  return (
+    <div className={`min-w-0 ${className}`}>
+      <p className="text-[10px] text-slate-500 truncate leading-tight">{label}</p>
+      <p className="text-xs text-slate-200 font-semibold truncate tabular">{value}</p>
+    </div>
   );
 }
 

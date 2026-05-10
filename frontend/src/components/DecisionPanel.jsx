@@ -62,8 +62,9 @@ function calcDcaEffect(op, portfolioSummary) {
   return { newAvg, avgDelta, avgDeltaPct, improves };
 }
 
-export function DecisionPanel({ decision, portfolioSummary }) {
+export function DecisionPanel({ decision, portfolioSummary, compact = false }) {
   if (!decision) {
+    if (compact) return null;
     return (
       <div className="bg-slate-900/50 border border-white/[0.05] rounded-2xl p-6 text-center backdrop-blur-sm">
         <Clock className="w-8 h-8 text-slate-600 mx-auto mb-3" />
@@ -79,6 +80,9 @@ export function DecisionPanel({ decision, portfolioSummary }) {
   const buyOps  = operations.filter(o => o.type === 'BUY');
   const sellOps = operations.filter(o => o.type === 'SELL');
 
+  // En modo compact, no hay órdenes ni insight para mostrar → no renderizar nada.
+  if (compact && buyOps.length === 0 && sellOps.length === 0) return null;
+
   return (
     <AnimatePresence mode="wait">
       <motion.div
@@ -89,7 +93,8 @@ export function DecisionPanel({ decision, portfolioSummary }) {
         transition={{ duration: 0.35, ease: 'easeOut' }}
         className="space-y-3"
       >
-        {/* Hero card */}
+        {/* Hero card — se omite en modo compact (ya hay un MarketHero arriba) */}
+        {!compact && (
         <div className={`rounded-2xl border shadow-xl ${cfg.bg} ${cfg.border} ${cfg.glow} p-5`}>
           {/* Action header */}
           <div className="flex items-start justify-between mb-4">
@@ -127,8 +132,10 @@ export function DecisionPanel({ decision, portfolioSummary }) {
           </div>
         </div>
 
-        {/* Insight personalizado de portfolio */}
-        {portfolioInsight?.insight && (
+        )}
+
+        {/* Insight personalizado de portfolio — también en sheet, evitamos duplicarlo en compact */}
+        {!compact && portfolioInsight?.insight && (
           <PortfolioInsightCard insight={portfolioInsight} />
         )}
 
