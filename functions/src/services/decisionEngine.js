@@ -225,9 +225,27 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
         : '';
 
       // Todos los tramos del ciclo actual ya fueron ejecutados a precios similares.
-      // En vez de bloquear, ofrecemos una acumulación adicional pequeña (20%)
-      // mientras el contexto siga siendo favorable.
+      // Si ya compraste HOY a este nivel, no repetir la misma sugerencia —
+      // reconocer la compra y sugerir esperar corrección.
+      // Si no hay compra de hoy, ofrecer acumulación adicional pequeña (20%).
       if (ops.length === 0) {
+        const todayUTC = new Date().toISOString().slice(0, 10);
+        const boughtTodayHere = executedBuys.some(b => {
+          if (!b.date || !b.price) return false;
+          const buyDate = new Date(b.date).toISOString().slice(0, 10);
+          return buyDate === todayUTC && Math.abs(b.price - currentPrice) / currentPrice < 0.015;
+        });
+
+        if (boughtTodayHere) {
+          return {
+            action: 'WAIT',
+            strength: 'débil',
+            reason: `Ya compraste hoy a este nivel de precio${pnlTag}${allocationLine}`,
+            recommendation: `Ejecutaste una compra hoy a un precio similar al actual. El contexto sigue favorable — pero promediar varias veces el mismo día al mismo precio no mejora el costo base. Esperá una corrección antes de acumular de nuevo.${concentrationNote}${macroLine}${rrLine}`,
+            operations: []
+          };
+        }
+
         const capitalDisponible = totalCapital > 0 ? totalCapital * (cashPercent / 100) : 0;
         const addlAmount = capitalDisponible * 0.20;
         const addlOp = addlAmount > 0 ? [{
@@ -243,7 +261,7 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
           action: 'BUY',
           strength: 'débil',
           reason: `Ciclo DCA completo — acumulación adicional disponible${pnlTag}${allocationLine}`,
-          recommendation: `El plan de tramos de este ciclo ya fue ejecutado. Podés seguir acumulando en pequeñas porciones (20% del capital disponible) si el contexto se mantiene favorable.${concentrationNote}${rrLine}`,
+          recommendation: `El plan de tramos de este ciclo ya fue ejecutado. Podés seguir acumulando en pequeñas porciones (20% del capital disponible) si el contexto se mantiene favorable.${concentrationNote}${macroLine}${rrLine}`,
           operations: addlOp
         };
       }
