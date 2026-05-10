@@ -1,0 +1,51 @@
+name: Deploy to Firebase
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      # ── Build frontend ────────────────────────────────────────────────────
+      - name: Install frontend deps
+        run: npm ci
+        working-directory: frontend
+
+      - name: Build frontend
+        run: npm run build
+        working-directory: frontend
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+
+      # ── Install function deps ─────────────────────────────────────────────
+      - name: Install function deps
+        run: npm ci
+        working-directory: functions
+
+      # ── Write service account JSON to disk ────────────────────────────────
+      # firebase-tools lee GOOGLE_APPLICATION_CREDENTIALS (ruta a archivo),
+      # no acepta JSON inline — así que lo escribimos a un archivo temporal.
+      - name: Write service account credentials
+        run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > /tmp/sa.json
+
+      # ── Deploy ────────────────────────────────────────────────────────────
+      - name: Deploy to Firebase
+        run: |
+          npx firebase-tools deploy \
+            --project ${{ secrets.FIREBASE_PROJECT_ID }} \
+            --non-interactive
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
