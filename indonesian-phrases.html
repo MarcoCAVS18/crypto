@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <meta name="theme-color" content="#060f1c">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Bahasa Indonesia</title>
+  <style>
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg:        #060f1c;
+      --chrome:    rgba(5, 11, 22, 0.82);
+      --border:    rgba(255, 255, 255, 0.07);
+      --divide:    rgba(255, 255, 255, 0.055);
+      --text:      rgba(255, 255, 255, 0.84);
+      --dim:       rgba(255, 255, 255, 0.35);
+      --accent:    #c94040;
+      --h-top:     60px;
+      --h-bot:     66px;
+      --sans:      -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', system-ui, sans-serif;
+    }
+
+    html {
+      background: #020810;
+      height: 100%;
+    }
+
+    body {
+      background: var(--bg);
+      background-image:
+        radial-gradient(ellipse 110% 45% at 50% -5%,  rgba(165, 35, 35, 0.09)  0%, transparent 100%),
+        radial-gradient(ellipse  70% 55% at 90% 105%,  rgba(18,  52, 110, 0.14) 0%, transparent 100%);
+      font-family: var(--sans);
+      color: var(--text);
+      height: 100%;
+      height: 100dvh;
+      max-width: 520px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* ── Header ──────────────────────────────── */
+
+    .hdr {
+      height: var(--h-top);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 20px;
+      background: var(--chrome);
+      backdrop-filter: blur(24px) saturate(160%);
+      -webkit-backdrop-filter: blur(24px) saturate(160%);
+      border-bottom: 1px solid var(--border);
+      position: relative;
+      z-index: 10;
+    }
+
+    .hdr-icon {
+      color: var(--accent);
+      flex-shrink: 0;
+      opacity: 0.85;
+    }
+
+    .hdr-info { flex: 1; min-width: 0; }
+
+    .hdr-app {
+      font-size: 9.5px;
+      font-weight: 600;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--dim);
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+
+    .hdr-name {
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--text);
+      line-height: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .hdr-badge {
+      flex-shrink: 0;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--dim);
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 3px 9px;
+      line-height: 1;
+    }
+
+    /* ── Column heads ───────────────────────── */
+
+    .col-heads {
+      flex-shrink: 0;
+      display: grid;
+      grid-template-columns: 42% 1fr;
+      padding: 7px 20px 6px;
+      border-bottom: 1px solid var(--divide);
+      position: relative;
+    }
+
+    .col-heads::before {
+      content: '';
+      position: absolute;
+      left: calc(42% + 20px * 0.42);
+      /* align with row divider: 42% of content width, offset by padding */
+      top: 0; bottom: 0;
+      width: 1px;
+      background: var(--divide);
+    }
+
+    .col-head {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.19);
+    }
+
+    .col-head-id { padding-left: 14px; }
+
+    /* ── Content ────────────────────────────── */
+
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+    }
+
+    .content::-webkit-scrollbar { display: none; }
+    .content { scrollbar-width: none; }
+
+    /* ── Section ────────────────────────────── */
+
+    .section { display: none; padding-bottom: 8px; }
+
+    .section.active {
+      display: block;
+      animation: fadeUp 0.16s ease;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(5px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Phrase row ──────────────────────────── */
+
+    .row {
+      display: grid;
+      grid-template-columns: 42% 1fr;
+      align-items: center;
+      min-height: 54px;
+      padding: 11px 20px;
+      border-bottom: 1px solid var(--divide);
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      position: relative;
+      transition: background 0.1s;
+    }
+
+    .row::before {
+      content: '';
+      position: absolute;
+      left: 42%;
+      top: 0; bottom: 0;
+      width: 1px;
+      background: var(--divide);
+    }
+
+    .row:last-child { border-bottom: none; }
+
+    .row:active { background: rgba(255, 255, 255, 0.035); }
+
+    @media (hover: hover) {
+      .row:hover { background: rgba(255, 255, 255, 0.022); }
+    }
+
+    .row:focus-visible {
+      outline: 1px solid rgba(201, 64, 64, 0.45);
+      outline-offset: -1px;
+    }
+
+    .ph-es {
+      font-size: 12px;
+      color: var(--dim);
+      line-height: 1.4;
+      padding-right: 14px;
+    }
+
+    .ph-id {
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--text);
+      line-height: 1.35;
+      padding-left: 14px;
+    }
+
+    /* ── Bottom tabs ─────────────────────────── */
+
+    .tabs {
+      height: var(--h-bot);
+      flex-shrink: 0;
+      display: flex;
+      background: var(--chrome);
+      backdrop-filter: blur(24px) saturate(180%);
+      -webkit-backdrop-filter: blur(24px) saturate(180%);
+      border-top: 1px solid var(--border);
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+      position: relative;
+      z-index: 10;
+    }
+
+    .tab {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      cursor: pointer;
+      color: var(--dim);
+      -webkit-tap-highlight-color: transparent;
+      transition: color 0.18s;
+      border: none;
+      background: none;
+      padding: 6px 0;
+      font-family: var(--sans);
+    }
+
+    .tab.active { color: var(--accent); }
+
+    .tab-lbl {
+      font-size: 9.5px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    /* ── Spotlight overlay ───────────────────── */
+
+    .sp {
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      background: rgba(3, 7, 16, 0.96);
+      backdrop-filter: blur(44px) saturate(140%);
+      -webkit-backdrop-filter: blur(44px) saturate(140%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.22s ease;
+    }
+
+    .sp.open {
+      opacity: 1;
+      pointer-events: all;
+    }
+
+    .sp-close {
+      position: absolute;
+      top: calc(env(safe-area-inset-top, 0px) + 16px);
+      right: 18px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: var(--dim);
+      -webkit-tap-highlight-color: transparent;
+      transition: background 0.15s;
+    }
+
+    .sp-close:active { background: rgba(255, 255, 255, 0.12); }
+
+    .sp-eyebrow {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.2);
+      margin-bottom: 14px;
+      text-align: center;
+    }
+
+    .sp-es {
+      font-size: 13px;
+      color: rgba(255, 255, 255, 0.32);
+      text-align: center;
+      padding: 0 40px;
+      margin-bottom: 8px;
+    }
+
+    .sp-id {
+      font-size: clamp(28px, 8vw, 52px);
+      font-weight: 700;
+      color: rgba(255, 255, 255, 0.9);
+      text-align: center;
+      padding: 0 32px;
+      line-height: 1.2;
+      letter-spacing: -0.02em;
+    }
+
+    .sp-sep {
+      width: 28px;
+      height: 1px;
+      background: rgba(255, 255, 255, 0.1);
+      margin: 24px auto;
+    }
+
+    .sp-actions { display: flex; gap: 10px; }
+
+    .sp-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-family: var(--sans);
+      font-weight: 500;
+      color: var(--dim);
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 20px;
+      padding: 8px 16px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .sp-btn:active, .sp-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--text);
+    }
+
+    .sp-hint {
+      position: absolute;
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 28px);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.13);
+      text-align: center;
+    }
+
+    /* ── Toast ───────────────────────────────── */
+
+    .toast {
+      position: fixed;
+      bottom: calc(var(--h-bot) + 14px);
+      left: 50%;
+      transform: translateX(-50%) translateY(6px);
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      backdrop-filter: blur(20px);
+      padding: 7px 16px;
+      border-radius: 20px;
+      font-size: 11.5px;
+      font-weight: 500;
+      color: rgba(255, 255, 255, 0.52);
+      opacity: 0;
+      transition: opacity 0.2s, transform 0.2s;
+      pointer-events: none;
+      white-space: nowrap;
+      z-index: 300;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* ── Landscape compact mode ──────────────── */
+
+    @media (max-height: 500px) and (orientation: landscape) {
+      :root { --h-top: 46px; --h-bot: 50px; }
+      .hdr-app { display: none; }
+      .tab-lbl { display: none; }
+      .row { min-height: 40px; padding: 8px 20px; }
+      .ph-id { font-size: 14px; }
+      .col-heads { padding: 5px 20px 4px; }
+    }
+  </style>
+</head>
+<body>
+
+  <header class="hdr">
+    <span class="hdr-icon" id="hdrIcon"></span>
+    <div class="hdr-info">
+      <div class="hdr-app">Bahasa Indonesia</div>
+      <div class="hdr-name" id="hdrName"></div>
+    </div>
+    <span class="hdr-badge" id="hdrBadge"></span>
+  </header>
+
+  <div class="col-heads">
+    <span class="col-head">Español</span>
+    <span class="col-head col-head-id">Indonesia</span>
+  </div>
+
+  <main class="content" id="content"></main>
+
+  <nav class="tabs" id="tabs" role="tablist"></nav>
+
+  <!-- Spotlight overlay -->
+  <div class="sp" id="sp" role="dialog" aria-modal="true" aria-labelledby="spId">
+    <button class="sp-close" id="spClose" aria-label="Cerrar">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+      </svg>
+    </button>
+    <p class="sp-eyebrow">Mostrar al local</p>
+    <p class="sp-es" id="spEs"></p>
+    <p class="sp-id" id="spId"></p>
+    <div class="sp-sep"></div>
+    <div class="sp-actions">
+      <button class="sp-btn" id="spCopy">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="9" y="9" width="13" height="13" rx="2"/>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+        </svg>
+        Copiar
+      </button>
+    </div>
+    <span class="sp-hint">Toca para cerrar</span>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    const SECTIONS = [
+      {
+        label: 'Básico',
+        tab: 'Básico',
+        icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+        </svg>`,
+        phrases: [
+          ['Hola',               'Halo'],
+          ['Buenos días',        'Selamat pagi'],
+          ['Buenas tardes',      'Selamat siang'],
+          ['Buenas noches',      'Selamat malam'],
+          ['Gracias',            'Terima kasih'],
+          ['De nada',            'Sama-sama'],
+          ['Sí',                 'Iya'],
+          ['No',                 'Tidak'],
+          ['Perdón / disculpa',  'Maaf'],
+        ]
+      },
+      {
+        label: 'Cotidiano',
+        tab: 'Diario',
+        icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>
+        </svg>`,
+        phrases: [
+          ['¿Cuánto cuesta?',      'Berapa harganya?'],
+          ['Es caro',               'Mahal'],
+          ['Barato',                'Murah'],
+          ['¿Dónde está el baño?',  'Di mana kamar mandi?'],
+          ['No entiendo',           'Saya tidak mengerti'],
+          ['¿Hablas inglés?',       'Kamu bisa bahasa Inggris?'],
+          ['Ayuda',                 'Tolong'],
+        ]
+      },
+      {
+        label: 'Restaurante',
+        tab: 'Comida',
+        icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 8h1a4 4 0 0 1 0 8h-1"/>
+          <path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/>
+          <line x1="6" y1="1" x2="6" y2="4"/>
+          <line x1="10" y1="1" x2="10" y2="4"/>
+          <line x1="14" y1="1" x2="14" y2="4"/>
+        </svg>`,
+        phrases: [
+          ['Agua',               'Air'],
+          ['Sin hielo',          'Tanpa es'],
+          ['Picante',            'Pedas'],
+          ['No picante',         'Tidak pedas'],
+          ['Cuenta, por favor',  'Minta bill, tolong'],
+        ]
+      },
+      {
+        label: 'Movilidad',
+        tab: 'Mover',
+        icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="3 11 22 2 13 21 11 13 3 11"/>
+        </svg>`,
+        phrases: [
+          ['Taxi',         'Taksi'],
+          ['Llévame a…',   'Antar saya ke…'],
+          ['Aquí',         'Di sini'],
+          ['Allí',         'Di sana'],
+        ]
+      }
+    ];
+
+    let current = 0;
+
+    const $ = id => document.getElementById(id);
+    const hdrIcon   = $('hdrIcon');
+    const hdrName   = $('hdrName');
+    const hdrBadge  = $('hdrBadge');
+    const contentEl = $('content');
+    const tabsEl    = $('tabs');
+    const spEl      = $('sp');
+    const spEsEl    = $('spEs');
+    const spIdEl    = $('spId');
+    const spCopy    = $('spCopy');
+    const spClose   = $('spClose');
+    const toastEl   = $('toast');
+
+    function esc(s) {
+      return s
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    /* Build DOM */
+    contentEl.innerHTML = SECTIONS.map((s, i) =>
+      `<div class="section${i === 0 ? ' active' : ''}" id="sec${i}" role="tabpanel">
+        ${s.phrases.map(([es, id]) =>
+          `<div class="row" role="button" tabindex="0" data-es="${esc(es)}" data-id="${esc(id)}">
+            <span class="ph-es">${esc(es)}</span>
+            <span class="ph-id">${esc(id)}</span>
+          </div>`
+        ).join('')}
+      </div>`
+    ).join('');
+
+    tabsEl.innerHTML = SECTIONS.map((s, i) =>
+      `<button class="tab${i === 0 ? ' active' : ''}" data-i="${i}"
+        role="tab" aria-selected="${i === 0}" aria-controls="sec${i}">
+        ${s.icon}
+        <span class="tab-lbl">${s.tab}</span>
+      </button>`
+    ).join('');
+
+    function updateHeader() {
+      const s = SECTIONS[current];
+      hdrIcon.innerHTML  = s.icon;
+      hdrName.textContent  = s.label;
+      hdrBadge.textContent = s.phrases.length;
+    }
+
+    updateHeader();
+
+    /* Switch section */
+    function switchTo(idx) {
+      if (idx === current) return;
+      const secs = contentEl.querySelectorAll('.section');
+      const tbts = tabsEl.querySelectorAll('.tab');
+      secs[current].classList.remove('active');
+      tbts[current].classList.remove('active');
+      tbts[current].setAttribute('aria-selected', 'false');
+      current = idx;
+      secs[current].classList.add('active');
+      tbts[current].classList.add('active');
+      tbts[current].setAttribute('aria-selected', 'true');
+      contentEl.scrollTop = 0;
+      updateHeader();
+    }
+
+    /* Spotlight */
+    function openSpotlight(es, id) {
+      spEsEl.textContent = es;
+      spIdEl.textContent = id;
+      spEl.classList.add('open');
+    }
+
+    function closeSpotlight() {
+      spEl.classList.remove('open');
+    }
+
+    /* Toast */
+    let toastTimer;
+    function showToast(msg) {
+      toastEl.textContent = msg;
+      toastEl.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2300);
+    }
+
+    /* Event: rows */
+    contentEl.addEventListener('click', e => {
+      const row = e.target.closest('.row');
+      if (row) openSpotlight(row.dataset.es, row.dataset.id);
+    });
+
+    contentEl.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        const row = e.target.closest('.row');
+        if (row) { e.preventDefault(); openSpotlight(row.dataset.es, row.dataset.id); }
+      }
+    });
+
+    /* Event: tabs */
+    tabsEl.addEventListener('click', e => {
+      const tab = e.target.closest('.tab');
+      if (tab) switchTo(+tab.dataset.i);
+    });
+
+    /* Event: spotlight */
+    spEl.addEventListener('click', e => {
+      if (!e.target.closest('.sp-btn, .sp-close')) closeSpotlight();
+    });
+    spClose.addEventListener('click', closeSpotlight);
+
+    spCopy.addEventListener('click', async e => {
+      e.stopPropagation();
+      const text = spIdEl.textContent;
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast('Copiado al portapapeles');
+      } catch {
+        showToast(text);
+      }
+    });
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') closeSpotlight();
+    });
+
+    /* Swipe left/right to change tabs */
+    let tx = 0, ty = 0;
+    contentEl.addEventListener('touchstart', e => {
+      tx = e.touches[0].clientX;
+      ty = e.touches[0].clientY;
+    }, { passive: true });
+
+    contentEl.addEventListener('touchend', e => {
+      const dx = e.changedTouches[0].clientX - tx;
+      const dy = e.changedTouches[0].clientY - ty;
+      if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.8) {
+        if (dx < 0 && current < SECTIONS.length - 1) switchTo(current + 1);
+        else if (dx > 0 && current > 0) switchTo(current - 1);
+      }
+    }, { passive: true });
+  </script>
+</body>
+</html>
