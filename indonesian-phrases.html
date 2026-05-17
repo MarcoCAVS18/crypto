@@ -121,8 +121,7 @@
     .col-heads::before {
       content: '';
       position: absolute;
-      left: calc(42% + 20px * 0.42);
-      /* align with row divider: 42% of content width, offset by padding */
+      left: 42%;
       top: 0; bottom: 0;
       width: 1px;
       background: var(--divide);
@@ -540,33 +539,40 @@
     const spClose   = $('spClose');
     const toastEl   = $('toast');
 
-    function esc(s) {
-      return s
+    function esc(str) {
+      return str
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
     }
 
-    /* Build DOM */
-    contentEl.innerHTML = SECTIONS.map((s, i) =>
-      `<div class="section${i === 0 ? ' active' : ''}" id="sec${i}" role="tabpanel">
-        ${s.phrases.map(([es, id]) =>
-          `<div class="row" role="button" tabindex="0" data-es="${esc(es)}" data-id="${esc(id)}">
-            <span class="ph-es">${esc(es)}</span>
-            <span class="ph-id">${esc(id)}</span>
-          </div>`
-        ).join('')}
-      </div>`
-    ).join('');
+    /* Build DOM — explicit loops to avoid nested template literals on Safari */
+    var contentHtml = '';
+    for (var si = 0; si < SECTIONS.length; si++) {
+      var sec = SECTIONS[si];
+      contentHtml += '<div class="section' + (si === 0 ? ' active' : '') + '" id="sec' + si + '" role="tabpanel">';
+      for (var pi = 0; pi < sec.phrases.length; pi++) {
+        var es   = sec.phrases[pi][0];
+        var indo = sec.phrases[pi][1];
+        contentHtml += '<div class="row" role="button" tabindex="0" data-es="' + esc(es) + '" data-id="' + esc(indo) + '">';
+        contentHtml += '<span class="ph-es">' + esc(es) + '</span>';
+        contentHtml += '<span class="ph-id">' + esc(indo) + '</span>';
+        contentHtml += '</div>';
+      }
+      contentHtml += '</div>';
+    }
+    contentEl.innerHTML = contentHtml;
 
-    tabsEl.innerHTML = SECTIONS.map((s, i) =>
-      `<button class="tab${i === 0 ? ' active' : ''}" data-i="${i}"
-        role="tab" aria-selected="${i === 0}" aria-controls="sec${i}">
-        ${s.icon}
-        <span class="tab-lbl">${s.tab}</span>
-      </button>`
-    ).join('');
+    var tabsHtml = '';
+    for (var ti = 0; ti < SECTIONS.length; ti++) {
+      var tsec = SECTIONS[ti];
+      tabsHtml += '<button class="tab' + (ti === 0 ? ' active' : '') + '" data-i="' + ti + '" role="tab" aria-selected="' + (ti === 0 ? 'true' : 'false') + '" aria-controls="sec' + ti + '">';
+      tabsHtml += tsec.icon;
+      tabsHtml += '<span class="tab-lbl">' + tsec.tab + '</span>';
+      tabsHtml += '</button>';
+    }
+    tabsEl.innerHTML = tabsHtml;
 
     function updateHeader() {
       const s = SECTIONS[current];
@@ -644,7 +650,7 @@
       try {
         await navigator.clipboard.writeText(text);
         showToast('Copiado al portapapeles');
-      } catch {
+      } catch (err) {
         showToast(text);
       }
     });
