@@ -1,32 +1,23 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from './ui/Button';
-import { TrendingUp, Eye, LineChart, DollarSign, Info, ChevronDown } from 'lucide-react';
+import { TrendingUp, Eye, DollarSign, Info } from 'lucide-react';
 
 const MODE_CONFIG = {
   inversion: {
     id: 'inversion',
-    label: 'Inversión',
+    label: 'Acumulando',
     Icon: TrendingUp,
-    description: 'Largo plazo · señales basadas en EMA, zonas y P&L del portfolio',
+    description: 'Señales de acumulación progresiva basadas en zonas, EMA y P&L del portfolio.',
     color: 'text-blue-400',
     activeBg: 'bg-blue-500/15 border-blue-500/40',
     dot: 'bg-blue-400'
   },
-  trading: {
-    id: 'trading',
-    label: 'Trading',
-    Icon: LineChart,
-    description: 'Corto plazo · RSI, stop loss ajustado, entradas y salidas tácticas',
-    color: 'text-purple-400',
-    activeBg: 'bg-purple-500/15 border-purple-500/40',
-    dot: 'bg-purple-400'
-  },
   observacion: {
     id: 'observacion',
-    label: 'Observación',
+    label: 'Observando',
     Icon: Eye,
-    description: 'Solo monitorear · sin señales de operación activas',
+    description: 'Solo monitorear el mercado sin señales de entrada activas.',
     color: 'text-slate-400',
     activeBg: 'bg-slate-500/15 border-slate-500/40',
     dot: 'bg-slate-400'
@@ -125,7 +116,7 @@ export function UserStateInput({ onSubmit, initialCash = 50, initialMode = 'inve
           </button>
         </div>
 
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2">
           {Object.values(MODE_CONFIG).map(m => (
             <motion.button
               key={m.id}
@@ -163,7 +154,7 @@ export function UserStateInput({ onSubmit, initialCash = 50, initialMode = 'inve
       </div>
 
       <Button onClick={() => onSubmit({ cashPercent, mode, totalCapital })} className="w-full py-3">
-        Obtener Señal de Inversión
+        Actualizar señal
       </Button>
     </div>
   );
