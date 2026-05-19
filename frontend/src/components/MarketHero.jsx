@@ -130,13 +130,13 @@ export function MarketHero({
     <div className="relative w-full overflow-hidden rounded-3xl border border-white/[0.06] bg-slate-950"
          style={{ minHeight: '460px' }}>
       {/* Chart canvas — fills the entire area */}
-      <div ref={containerRef} className="absolute inset-0" />
+      <div ref={containerRef} className="absolute inset-0 z-0" />
 
       {/* Soft gradient at the bottom for the glass panel */}
-      <div className="absolute inset-x-0 bottom-0 h-56 bg-gradient-to-t from-slate-950 via-slate-950/85 to-transparent pointer-events-none" />
+      <div className="absolute inset-x-0 bottom-0 h-56 z-10 bg-gradient-to-t from-slate-950 via-slate-950/85 to-transparent pointer-events-none" />
 
       {/* Top bar — symbol + price + range selector */}
-      <div className="relative flex items-start justify-between p-4 pointer-events-none">
+      <div className="relative z-20 flex items-start justify-between p-4 pointer-events-none">
         <div className="pointer-events-auto">
           <div className="flex items-baseline gap-3">
             <span className="text-xs uppercase tracking-widest text-slate-500">{symbol}</span>
@@ -181,7 +181,7 @@ export function MarketHero({
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -16 }}
           transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-          className="absolute inset-x-4 bottom-4"
+          className="absolute inset-x-4 bottom-4 z-20"
         >
           <div className={`rounded-2xl border border-white/[0.06] bg-slate-900/60 backdrop-blur-xl shadow-2xl ${cfg.ring} p-5`}
                style={{ boxShadow: `0 0 60px -20px ${cfg.glow}` }}>
