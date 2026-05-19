@@ -87,9 +87,7 @@ export const useAppStore = create(
 
       setSelectedCrypto: (symbol) => {
         set({ selectedCrypto: symbol, currentDecision: null });
-        if (!get().cryptoData[symbol]) {
-          get().loadCryptoData(symbol);
-        }
+        get().loadCryptoData(symbol);
       },
 
       loadCryptoData: async (symbol) => {
@@ -104,6 +102,9 @@ export const useAppStore = create(
             serverWaking: false,
             lastUpdate:   new Date()
           }));
+          if (get().userState.totalCapital > 0) {
+            get().getDecision();
+          }
         } catch (error) {
           clearTimeout(wakeTimer);
           set({ loading: false, serverWaking: false, error: error.message || 'Error cargando datos' });
