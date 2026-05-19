@@ -10,6 +10,7 @@ import {
 import { useAppStore } from '../store/appStore';
 import { useAuthStore } from '../store/authStore';
 import { PortfolioChart } from './PortfolioChart';
+import { BacktestStats } from './BacktestStats';
 
 const EXCHANGES = ['Binance', 'Coinbase', 'Kraken', 'OKX', 'Bybit', 'Manual'];
 
@@ -263,6 +264,9 @@ export function PortfolioSection() {
           </div>
         </Card>
       )}
+
+      {/* AI Signal History stats */}
+      <BacktestStats />
 
       {/* Lista de operaciones */}
       {operations.length > 0 && (
