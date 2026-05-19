@@ -1,5 +1,5 @@
 import express from 'express';
-import { getCryptoData } from '../services/marketData.js';
+import { getCryptoData, getHistoricalCandles } from '../services/marketData.js';
 import { calculateAllIndicators, analyzeVolume } from '../services/technicalAnalysis.js';
 import { calculateZones } from '../services/zoneCalculator.js';
 import { determineMarketMode } from '../services/marketMode.js';
@@ -11,6 +11,59 @@ import { getUpcomingEvents } from '../data/macroCalendar.js';
 import { saveDecision, getPortfolioSummaryBySymbol, getAiCache, setAiCache, getDecisionsBySymbol } from '../config/database.js';
 
 const router = express.Router();
+
+// GET /api/crypto/:symbol/decisions - Historial de señales IA para backtesting
+router.get('/:symbol/decisions', async (req, res) => {
+  try {
+    const symbol = req.params.symbol.toUpperCase();
+    const limit  = Math.min(200, Math.max(1, parseInt(req.query.limit) || 100));
+
+    if (!['BTC', 'ETH', 'PAXG'].includes(symbol)) {
+      return res.status(400).json({ error: 'Símbolo no válido' });
+    }
+
+    const raw = await getDecisionsBySymbol(symbol, limit);
+    const decisions = raw.map(d => {
+      const ts = d.timestamp?.toDate?.() ?? new Date(d.timestamp);
+      return {
+        id:         d.id,
+        timestamp:  ts instanceof Date && !isNaN(ts) ? ts.toISOString() : null,
+        symbol:     d.symbol,
+        price:      d.price,
+        marketMode: d.marketMode ?? d.market_mode,
+        decision:   d.decision,
+        reason:     d.reason
+      };
+    }).filter(d => d.timestamp);
+
+    res.json({ symbol, count: decisions.length, decisions });
+  } catch (err) {
+    console.error('Error en /:symbol/decisions:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/crypto/:symbol/candles - Velas OHLCV para charts
+router.get('/:symbol/candles', async (req, res) => {
+  try {
+    const symbol = req.params.symbol.toUpperCase();
+    const { granularity = '1d', count = '120' } = req.query;
+
+    if (!['BTC', 'ETH', 'PAXG'].includes(symbol)) {
+      return res.status(400).json({ error: 'Símbolo no válido' });
+    }
+
+    const granMap = { '1h': 3600, '4h': 14400, '1d': 86400 };
+    const gran = granMap[granularity] ?? 86400;
+    const cnt  = Math.min(300, Math.max(10, parseInt(count) || 120));
+
+    const candles = await getHistoricalCandles(symbol, gran, cnt);
+    res.json({ symbol, granularity, count: candles.length, candles });
+  } catch (err) {
+    console.error('Error en /api/crypto/:symbol/candles:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // GET /api/crypto/:symbol - Obtiene datos completos de un crypto
 router.get('/:symbol', async (req, res) => {

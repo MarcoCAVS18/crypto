@@ -45,5 +45,14 @@ export async function refreshGoldContext() {
   return response.data;
 }
 
+export async function fetchCandles(symbol, granularity = '1d', count = 120) {
+  const response = await api.get(`/crypto/${symbol}/candles`, { params: { granularity, count } });
+  return response.data;
+}
+
+export async function fetchDecisions(symbol, limit = 100) {
+  const response = await api.get(`/crypto/${symbol}/decisions`, { params: { limit } });
+  return response.data;
+}
 
 export default api;

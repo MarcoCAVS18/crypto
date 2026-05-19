@@ -146,7 +146,31 @@ export async function getCOTData() {
 }
 
 /**
- * Obtiene el rendimiento real a 10 años (TIPS) desde FRED.
+ * Obtiene GVZ (índice de volatilidad del oro) y precio de la plata.
+ * GVZ alto (>20) = entorno volátil para el oro; bajo (<15) = tendencia estable.
+ * El ratio Oro/Plata se calcula después en goldMarketMode usando el precio de PAXG.
+ * @returns {{ gvz: {value, changePercent}|null, silver: {value, changePercent}|null }}
+ */
+export async function getGoldVolatilityData() {
+  const [gvzResult, silverResult] = await Promise.allSettled([
+    fetchYahooChart('^GVZ'),
+    fetchYahooChart('SI=F')   // plata futuros (USD/oz troy)
+  ]);
+
+  if (gvzResult.status === 'rejected') {
+    console.warn('[MacroService] GVZ fetch failed:', gvzResult.reason?.message);
+  }
+  if (silverResult.status === 'rejected') {
+    console.warn('[MacroService] Silver fetch failed:', silverResult.reason?.message);
+  }
+
+  return {
+    gvz:    gvzResult.status    === 'fulfilled' ? gvzResult.value    : null,
+    silver: silverResult.status === 'fulfilled' ? silverResult.value : null
+  };
+}
+
+/**
  * Sin API key. Interpreta: <0% muy alcista para oro, >2% bajista.
  * @returns {{ value, date, sentiment }}
  */
