@@ -39,10 +39,12 @@ export async function getDecisionsBySymbol(symbol, limit = 10) {
     const snap = await db()
       .collection('decisions')
       .where('symbol', '==', symbol.toUpperCase())
-      .orderBy('timestamp', 'desc')
-      .limit(limit)
+      .limit(limit * 3)
       .get();
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    return snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (b.timestamp?.toMillis?.() ?? 0) - (a.timestamp?.toMillis?.() ?? 0))
+      .slice(0, limit);
   } catch (err) {
     console.warn('[DB] getDecisionsBySymbol failed:', err.message);
     return [];

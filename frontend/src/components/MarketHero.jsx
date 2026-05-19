@@ -190,9 +190,9 @@ export function MarketHero({
                 <Icon className="w-6 h-6" />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0 mb-1">
                   <span className={`text-base font-bold tracking-wider ${cfg.accent}`}>{cfg.label}</span>
-                  <span className="text-[10px] text-slate-500 uppercase tracking-widest">{cfg.sub}</span>
+                  <span className="text-[10px] text-slate-500">{cfg.sub}</span>
                 </div>
                 {decision?.reason && (
                   <p className="text-sm text-slate-300 leading-relaxed line-clamp-2">{decision.reason}</p>
