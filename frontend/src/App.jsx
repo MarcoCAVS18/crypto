@@ -11,6 +11,8 @@ import { DecisionPanel } from './components/DecisionPanel';
 import { MacroContext } from './components/MacroContext';
 import { MacroCalendarBanner } from './components/MacroCalendarBanner';
 import { PortfolioSection } from './components/PortfolioSection';
+import { PriceAlertBanner } from './components/PriceAlertBanner';
+import { OnboardingOverlay, useOnboarding } from './components/OnboardingOverlay';
 import { RefreshCw, AlertCircle, X, LayoutDashboard, Briefcase, AlertTriangle, UserCircle } from 'lucide-react';
 import { formatRelativeTime } from './utils/formatters';
 import { AUTO_REFRESH_INTERVAL } from './utils/constants';
@@ -37,6 +39,7 @@ function AuthenticatedApp() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [tabDir, setTabDir]       = useState(1);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(useOnboarding());
 
   const {
     selectedCrypto, cryptoData, userState, currentDecision,
@@ -197,6 +200,9 @@ function AuthenticatedApp() {
                 </div>
               ) : currentData ? (
                 <>
+                  {/* Zone alert banner */}
+                  <PriceAlertBanner symbol={selectedCrypto} price={currentData.price} zones={currentData.zones} />
+
                   {/* Calendar toast */}
                   <MacroCalendarBanner symbol={selectedCrypto} />
 
@@ -259,6 +265,13 @@ function AuthenticatedApp() {
           )}
         </AnimatePresence>
       </main>
+
+      {/* ── Onboarding overlay ───────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {showOnboarding && (
+          <OnboardingOverlay onDone={() => setShowOnboarding(false)} />
+        )}
+      </AnimatePresence>
 
       {/* ── Details bottom sheet ─────────────────────────────────────────────── */}
       <DetailsSheet

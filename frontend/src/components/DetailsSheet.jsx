@@ -1,9 +1,10 @@
 // Bottom sheet con detalles técnicos + tu posición + recomendación detallada.
 // Se abre desde el botón "Detalles" del MarketHero.
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Activity, BarChart3, Zap, LineChart, Wallet, Settings2, Lightbulb, BrainCircuit, MapPin } from 'lucide-react';
+import { X, Activity, Settings2, Lightbulb, BrainCircuit, MapPin } from 'lucide-react';
 import { UserStateInput } from './UserStateInput';
 import { MarketModeIndicator } from './MarketModeIndicator';
+import { CollapsibleSection } from './CollapsibleSection';
 
 export function DetailsSheet({
   open,
@@ -57,50 +58,56 @@ export function DetailsSheet({
             </button>
 
             {/* Scroll body */}
-            <div className="overflow-y-auto px-5 pb-8 pt-2 max-h-[calc(85svh-1.5rem)] space-y-6">
-              {/* Market Mode chip */}
-              {marketMode && (
-                <div>
-                  <MarketModeIndicator mode={marketMode.mode} reasons={marketMode.reasons} />
-                </div>
-              )}
+            <div className="overflow-y-auto px-4 pb-8 pt-2 max-h-[calc(85svh-1.5rem)] space-y-3">
 
-              {/* Insight IA si existe */}
+              {/* Insight IA — siempre visible si existe */}
               {decision?.portfolioInsight?.insight && (
                 <PortfolioInsight insight={decision.portfolioInsight} />
               )}
 
-              {/* Recomendación detallada */}
+              {/* Recomendación detallada — siempre visible */}
               {decision?.recommendation && (
-                <Section icon={Lightbulb} title="Recomendación" tint="text-amber-400">
+                <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-amber-500/[0.06] border border-amber-500/20">
+                  <Lightbulb className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                   <p className="text-sm text-slate-300 leading-relaxed">{decision.recommendation}</p>
-                </Section>
+                </div>
               )}
 
-              {/* Indicadores técnicos */}
+              {/* Indicadores técnicos — colapsable */}
               {ta && (
-                <Section icon={Activity} title="Indicadores técnicos" tint="text-blue-400">
-                  <div className="grid grid-cols-3 gap-2.5">
-                    <Metric label="RSI 14"     value={ta.rsi != null ? ta.rsi.toFixed(1) : '—'} sub={rsiTag(ta.rsi)}             color={rsiColor(ta.rsi)} />
-                    <Metric label="ATR %"      value={ta.atrPercent != null ? `${ta.atrPercent}%` : '—'} sub="Volatilidad"        color={atrColor(ta.atrPercent)} />
-                    <Metric label="Volumen"    value={volumeLabel(ta.volumeStatus)} sub={ta.volumeRatio ? `×${ta.volumeRatio}` : ''} color={volumeColor(ta.volumeStatus)} />
-                    <Metric label="EMA 20"     value={fmtPrice(ta.ema20)} sub="Corta"   color="text-slate-300" />
-                    <Metric label="EMA 50"     value={fmtPrice(ta.ema50)} sub="Media"   color="text-slate-300" />
-                    <Metric label="EMA 200"    value={fmtPrice(ta.ema200)} sub="Larga"  color="text-slate-300" />
+                <CollapsibleSection title="Indicadores técnicos" icon={Activity} accent="blue" defaultOpen>
+                  <div className="grid grid-cols-3 gap-2.5 pt-2">
+                    <Metric label="RSI 14"  value={ta.rsi != null ? ta.rsi.toFixed(1) : '—'} sub={rsiTag(ta.rsi)}             color={rsiColor(ta.rsi)} />
+                    <Metric label="ATR %"   value={ta.atrPercent != null ? `${ta.atrPercent}%` : '—'} sub="Volatilidad"        color={atrColor(ta.atrPercent)} />
+                    <Metric label="Volumen" value={volumeLabel(ta.volumeStatus)} sub={ta.volumeRatio ? `×${ta.volumeRatio}` : ''} color={volumeColor(ta.volumeStatus)} />
+                    <Metric label="EMA 20"  value={fmtPrice(ta.ema20)} sub="Corta"  color="text-slate-300" />
+                    <Metric label="EMA 50"  value={fmtPrice(ta.ema50)} sub="Media"  color="text-slate-300" />
+                    <Metric label="EMA 200" value={fmtPrice(ta.ema200)} sub="Larga" color="text-slate-300" />
                   </div>
-                </Section>
+                </CollapsibleSection>
               )}
 
-              {/* User state */}
-              <Section icon={Settings2} title="Tu posición" tint="text-slate-300">
-                <UserStateInput
-                  onSubmit={(s) => { onUserStateSubmit(s); onClose(); }}
-                  initialCash={userState.cashPercent}
-                  initialMode={userState.mode}
-                  initialCapital={userState.totalCapital}
-                />
-                {decisionLoading && <p className="text-xs text-slate-500 text-center mt-3">Analizando señal...</p>}
-              </Section>
+              {/* Contexto de mercado — colapsable */}
+              {marketMode && (
+                <CollapsibleSection title="Contexto de mercado" icon={Activity} accent="slate">
+                  <div className="pt-2">
+                    <MarketModeIndicator mode={marketMode.mode} reasons={marketMode.reasons} />
+                  </div>
+                </CollapsibleSection>
+              )}
+
+              {/* Tu posición — colapsable */}
+              <CollapsibleSection title="Tu posición" icon={Settings2} accent="slate" defaultOpen={!decision}>
+                <div className="pt-2">
+                  <UserStateInput
+                    onSubmit={(s) => { onUserStateSubmit(s); onClose(); }}
+                    initialCash={userState.cashPercent}
+                    initialMode={userState.mode}
+                    initialCapital={userState.totalCapital}
+                  />
+                  {decisionLoading && <p className="text-xs text-slate-500 text-center mt-3">Analizando señal...</p>}
+                </div>
+              </CollapsibleSection>
             </div>
           </motion.div>
         </>
