@@ -13,6 +13,7 @@ import { MacroCalendarBanner } from './components/MacroCalendarBanner';
 import { PortfolioSection } from './components/PortfolioSection';
 import { PriceAlertBanner } from './components/PriceAlertBanner';
 import { OnboardingOverlay, useOnboarding } from './components/OnboardingOverlay';
+import { FloatingChat } from './components/FloatingChat';
 import { RefreshCw, AlertCircle, X, LayoutDashboard, Briefcase, AlertTriangle, UserCircle } from 'lucide-react';
 import { formatRelativeTime } from './utils/formatters';
 import { AUTO_REFRESH_INTERVAL } from './utils/constants';
@@ -336,6 +337,9 @@ function AuthenticatedApp() {
         onUserStateSubmit={handleUserStateSubmit}
         decisionLoading={decisionLoading}
       />
+
+      {/* ── Floating chat ───────────────────────────────────────────────────── */}
+      <FloatingChat />
 
       {/* ── Footer ───────────────────────────────────────────────────────────── */}
       <footer className="border-t border-white/[0.04] mt-12 py-5"
