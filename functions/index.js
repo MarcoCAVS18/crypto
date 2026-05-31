@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase-admin/app';
 import { onRequest } from 'firebase-functions/v2/https';
+import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { defineSecret } from 'firebase-functions/params';
 
 initializeApp();
@@ -9,6 +10,7 @@ const vapidPublic   = defineSecret('VAPID_PUBLIC_KEY');
 const vapidPrivate  = defineSecret('VAPID_PRIVATE_KEY');
 
 import app from './src/app.js';
+import { handler as zoneWatcherHandler } from './src/scheduled/zoneWatcher.js';
 
 // ── API HTTP ──────────────────────────────────────────────────────────────────
 export const api = onRequest(
@@ -21,6 +23,13 @@ export const api = onRequest(
   app
 );
 
-// zoneWatcher (scheduled) is defined in src/scheduled/zoneWatcher.js
-// To enable: grant roles/cloudscheduler.admin to the deploy service account in GCP IAM,
-// then re-add the export here.
+// ── Scheduled: chequea zonas cada 1 hora y pushea si cambia a buy ─────────────
+export const zoneWatcher = onSchedule(
+  {
+    schedule:       'every 60 minutes',
+    region:         'us-central1',
+    timeoutSeconds: 60,
+    secrets:        [vapidPublic, vapidPrivate]
+  },
+  zoneWatcherHandler
+);
