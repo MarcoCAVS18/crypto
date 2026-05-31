@@ -229,7 +229,6 @@ export function PortfolioSection() {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('¿Eliminar esta operación?')) return;
     try {
       await removeOperation(id);
     } catch (err) {
@@ -543,6 +542,7 @@ function InlineMetric({ label, value, className = '' }) {
 }
 
 function OperationRow({ op, expanded, onToggle, onDelete }) {
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const isBuy = op.type === 'BUY';
   const color = isBuy ? 'text-green-400' : 'text-red-400';
   const bg = isBuy ? 'bg-green-500/5 border-green-500/20' : 'bg-red-500/5 border-red-500/20';
@@ -585,13 +585,31 @@ function OperationRow({ op, expanded, onToggle, onDelete }) {
             <Metric label="Precio" value={formatPrice(op.price)} />
             {op.notes && <Metric label="Notas" value={op.notes} />}
           </div>
-          <button
-            onClick={(e) => { e.stopPropagation(); onDelete(); }}
-            className="mt-3 flex items-center gap-1.5 text-xs text-red-400/70 hover:text-red-400 transition-colors"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            Eliminar operación
-          </button>
+          {confirmingDelete ? (
+            <div className="mt-3 flex items-center gap-3">
+              <span className="text-xs text-red-400">¿Eliminar esta operación?</span>
+              <button
+                onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                className="text-xs px-2.5 py-1 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
+              >
+                Confirmar
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setConfirmingDelete(false); }}
+                className="text-xs px-2.5 py-1 rounded-lg bg-white/5 text-gray-400 hover:bg-white/10 transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={(e) => { e.stopPropagation(); setConfirmingDelete(true); }}
+              className="mt-3 flex items-center gap-1.5 text-xs text-red-400/70 hover:text-red-400 transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Eliminar operación
+            </button>
+          )}
         </div>
       )}
     </div>
