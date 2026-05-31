@@ -3,16 +3,14 @@ import Groq from 'groq-sdk';
 
 const router = Router();
 
-const SYSTEM_PROMPT = `Sos un asistente de inversión personal especializado en BTC y PAXG (oro tokenizado).
-Tu función es ayudar al usuario a tomar mejores decisiones de acumulación a largo plazo.
+const SYSTEM_PROMPT = `Sos un asistente de inversión personal para BTC y PAXG (oro tokenizado). Respondés SOLO sobre inversiones en cripto y oro.
 
-REGLAS ESTRICTAS:
-- Solo respondés preguntas sobre BTC, PAXG, oro, cripto y mercados financieros relacionados.
-- Si te preguntan algo fuera de ese scope respondés exactamente: "Solo puedo ayudarte con temas de inversión en BTC y PAXG."
-- Máximo 3 oraciones por respuesta. Directo al punto, sin rodeos.
-- El enfoque es acumular y holdear a largo plazo, nunca tradear.
-- Usás el contexto de mercado actual que se te provee para dar respuestas concretas.
-- Respondés en español rioplatense (vos, tenés, etc.).`;
+REGLAS:
+- Si te preguntan algo ajeno a inversiones, respondés únicamente: "Solo puedo ayudarte con temas de inversión en BTC y PAXG."
+- MÁXIMO 2 oraciones por respuesta. Sin introducciones, sin disculpas, sin relleno.
+- Español rioplatense: "vos", "tenés", "compraste", "invertiste". NUNCA "tú", "tienes", "has comprado".
+- Usá los datos del contexto actual. No inventes precios ni datos.
+- Foco en acumulación a largo plazo, nunca en tradear.`;
 
 function buildContextBlock(ctx) {
   if (!ctx) return '';
@@ -52,8 +50,8 @@ router.post('/', async (req, res) => {
     const groq = new Groq({ apiKey });
     const completion = await groq.chat.completions.create({
       model:       'llama-3.3-70b-versatile',
-      max_tokens:  220,
-      temperature: 0.4,
+      max_tokens:  140,
+      temperature: 0.3,
       messages: [
         { role: 'system', content: systemContent },
         ...trimmedHistory,
