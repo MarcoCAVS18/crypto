@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { TrendingUp, Clock, TrendingDown, Activity, AlertCircle, ChevronDown } from 'lucide-react';
 import { fetchDecisions } from '../services/api';
 import { useAuthStore } from '../store/authStore';
+import { useAppStore } from '../store/appStore';
 
 // ── Decision config ────────────────────────────────────────────────────────────
 
@@ -46,6 +47,14 @@ const DECISION_CFG = {
 const TIMELINE_PAGE = 5;
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
+
+function outcomeOf(decision, signalPrice, currentPrice) {
+  if (!signalPrice || !currentPrice || decision === 'WAIT') return null;
+  const pct = ((currentPrice - signalPrice) / signalPrice) * 100;
+  if (decision === 'BUY')  return { pct,  good: pct > 0 };
+  if (decision === 'SELL') return { pct: -pct, good: pct < 0 };
+  return null;
+}
 
 function fmtDate(ts) {
   if (!ts) return '—';
@@ -114,9 +123,11 @@ function StatCol({ label, count, pct, cfg }) {
 }
 
 /** Single row in the mini timeline */
-function TimelineRow({ entry, index, isLast }) {
+function TimelineRow({ entry, index, isLast, currentPrice }) {
   const cfg = DECISION_CFG[entry.decision] ?? DECISION_CFG.WAIT;
-  const price = fmtPrice(entry.price);
+  const price   = fmtPrice(entry.price);
+  const outcome = outcomeOf(entry.decision, entry.price, currentPrice);
+  const outSign = outcome ? (outcome.pct >= 0 ? '+' : '') : '';
 
   return (
     <motion.div
@@ -144,16 +155,27 @@ function TimelineRow({ entry, index, isLast }) {
             </span>
           )}
         </div>
-        {price && (
-          <span className="text-[10px] text-slate-500 tabular font-mono shrink-0">{price}</span>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          {price && (
+            <span className="text-[10px] text-slate-500 tabular font-mono">{price}</span>
+          )}
+          {outcome && (
+            <span className={`text-[10px] font-semibold tabular font-mono px-1.5 py-0.5 rounded ${
+              outcome.good
+                ? 'bg-emerald-400/10 text-emerald-400'
+                : 'bg-red-400/10 text-red-400'
+            }`}>
+              {outSign}{outcome.pct.toFixed(1)}%
+            </span>
+          )}
+        </div>
       </div>
     </motion.div>
   );
 }
 
 /** Stats + timeline panel for one symbol */
-function SymbolStats({ decisions }) {
+function SymbolStats({ decisions, currentPrice }) {
   const [showAll, setShowAll] = useState(false);
 
   const stats = computeStats(decisions);
@@ -204,6 +226,7 @@ function SymbolStats({ decisions }) {
                 entry={entry}
                 index={i}
                 isLast={i === visible.length - 1}
+                currentPrice={currentPrice}
               />
             ))}
           </AnimatePresence>
@@ -275,6 +298,7 @@ function LoadingSkeleton() {
 
 export function BacktestStats() {
   const { currentUser } = useAuthStore();
+  const cryptoData = useAppStore(s => s.cryptoData);
   // Stable string key — avoids new array reference on every render.
   const symbolsKey = (currentUser?.cryptos ?? ['BTC', 'PAXG']).join(',');
   const symbols    = symbolsKey.split(',');
@@ -405,7 +429,7 @@ export function BacktestStats() {
           exit={{ opacity: 0, y: -4 }}
           transition={{ duration: 0.18, ease: 'easeOut' }}
         >
-          <SymbolStats decisions={currentDecisions} />
+          <SymbolStats decisions={currentDecisions} currentPrice={cryptoData[safeTab]?.price} />
         </motion.div>
       </AnimatePresence>
     </motion.div>

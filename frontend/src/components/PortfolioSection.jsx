@@ -5,7 +5,8 @@ import { Button } from './ui/Button';
 import { Badge } from './ui/Badge';
 import {
   PlusCircle, Trash2, TrendingUp, TrendingDown, Wallet,
-  BarChart3, RefreshCw, ChevronDown, ChevronUp, AlertCircle
+  BarChart3, RefreshCw, ChevronDown, ChevronUp, AlertCircle,
+  DollarSign, ShoppingCart, ArrowRight, Sparkles
 } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import { useAuthStore } from '../store/authStore';
@@ -25,6 +26,137 @@ const EMPTY_FORM = {
   exchange: 'Binance',
   notes: ''
 };
+
+// ── Cash Distribution Card ─────────────────────────────────────────────────────
+
+function CashDistributionCard() {
+  const {
+    userState, currentDecision, selectedCrypto, decisionLoading,
+    updateUserState, getDecision
+  } = useAppStore();
+
+  const [inputVal, setInputVal] = useState(
+    userState.totalCapital > 0 ? String(userState.totalCapital) : ''
+  );
+  const [dirty, setDirty] = useState(false);
+
+  const cashAvailable = userState.totalCapital > 0
+    ? userState.totalCapital * (userState.cashPercent / 100)
+    : 0;
+
+  const ops = currentDecision?.operations?.filter(o => o.type === 'BUY') ?? [];
+  const hasOps = ops.length > 0 && userState.totalCapital > 0;
+
+  const handleApply = () => {
+    const val = parseFloat(inputVal);
+    if (!val || val <= 0) return;
+    updateUserState({ totalCapital: val, cashPercent: 100, mode: 'inversion' });
+    setDirty(false);
+    getDecision();
+  };
+
+  return (
+    <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-sm p-5 space-y-4">
+      {/* Header */}
+      <div className="flex items-center gap-2">
+        <Sparkles className="w-4 h-4 text-blue-400 shrink-0" />
+        <h3 className="text-sm font-semibold text-slate-300">Distribución de efectivo</h3>
+      </div>
+
+      {/* Cash input */}
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
+          <input
+            type="number"
+            inputMode="decimal"
+            placeholder="¿Cuánto efectivo tenés disponible?"
+            value={inputVal}
+            onChange={e => { setInputVal(e.target.value); setDirty(true); }}
+            onKeyDown={e => e.key === 'Enter' && handleApply()}
+            className="w-full pl-8 pr-3 py-2.5 text-sm bg-slate-900/60 border border-white/[0.08] rounded-xl text-slate-200
+                       placeholder:text-slate-600 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20"
+          />
+        </div>
+        <button
+          onClick={handleApply}
+          disabled={decisionLoading || !inputVal || parseFloat(inputVal) <= 0}
+          className="px-4 py-2.5 rounded-xl bg-blue-600/80 hover:bg-blue-600 text-white text-sm font-medium
+                     transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+        >
+          {decisionLoading ? '...' : (dirty ? 'Calcular' : 'Recalcular')}
+        </button>
+      </div>
+
+      {/* Results */}
+      {hasOps && !decisionLoading && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1">
+            <span>Distribución sugerida para <span className="text-slate-300 font-semibold">{selectedCrypto}</span></span>
+            <span className="tabular font-mono text-slate-400">
+              Efectivo: ${cashAvailable.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+            </span>
+          </div>
+          {ops.map((op, i) => (
+            <div key={i} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-emerald-500/5 border border-emerald-500/15">
+              <span className="w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center shrink-0
+                               border border-emerald-500/30 text-emerald-400">
+                {op.level}
+              </span>
+              <span className="text-sm text-slate-300 flex-1 truncate">{op.label}</span>
+              <div className="flex items-center gap-3 shrink-0 text-right">
+                {op.price && (
+                  <div>
+                    <p className="text-[9px] text-slate-600 mb-0.5">Precio</p>
+                    <p className="text-xs font-mono text-slate-400 tabular">
+                      ${op.price >= 1000
+                        ? Math.round(op.price).toLocaleString('en-US')
+                        : op.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                )}
+                {op.usdAmount != null && (
+                  <div>
+                    <p className="text-[9px] text-slate-600 mb-0.5">Monto</p>
+                    <p className="text-sm font-semibold font-mono text-emerald-400 tabular">
+                      ${Math.round(op.usdAmount).toLocaleString('en-US')}
+                    </p>
+                  </div>
+                )}
+                {op.percentage != null && (
+                  <div>
+                    <p className="text-[9px] text-slate-600 mb-0.5">% capital</p>
+                    <p className="text-xs text-slate-400 tabular">{op.percentage}%</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+          {currentDecision?.recommendation && (
+            <p className="text-xs text-slate-500 italic pt-1 leading-relaxed">
+              {currentDecision.recommendation}
+            </p>
+          )}
+        </div>
+      )}
+
+      {decisionLoading && (
+        <div className="flex items-center justify-center py-4 text-slate-500 text-sm gap-2">
+          <RefreshCw className="w-4 h-4 animate-spin" />
+          Calculando distribución...
+        </div>
+      )}
+
+      {userState.totalCapital === 0 && !decisionLoading && (
+        <p className="text-xs text-slate-600 text-center py-2">
+          Ingresá tu capital disponible para ver cómo distribuirlo entre las zonas de compra.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── Main section ───────────────────────────────────────────────────────────────
 
 export function PortfolioSection() {
   const { portfolio, loadPortfolio, addOperation, removeOperation, cryptoData } = useAppStore();
@@ -159,6 +291,9 @@ export function PortfolioSection() {
           <p className="text-sm mt-1">Agrega tu primera compra o venta para ver el balance.</p>
         </Card>
       )}
+
+      {/* Distribución de efectivo — DCA sugerido */}
+      <CashDistributionCard />
 
       {/* Formulario de nueva operación */}
       {showForm && (
