@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bell, X, TrendingUp, TrendingDown } from 'lucide-react';
+import { sendZoneNotification, getPermission } from '../services/notifications';
 
 const STORAGE_KEY = 'crypto_dismissed_alerts';
 
@@ -43,6 +44,11 @@ export function PriceAlertBanner({ symbol, price, zones }) {
       if (!wasDismissedRecently(key)) {
         newAlert = { key, type: 'sell', symbol, price, message: `${symbol} entró en zona de distribución` };
       }
+    }
+
+    // Notificación nativa si hay permiso (llega aunque la app esté en segundo plano)
+    if (newAlert && getPermission() === 'granted') {
+      sendZoneNotification(newAlert.symbol, newAlert.type, newAlert.price);
     }
 
     setAlert(newAlert);

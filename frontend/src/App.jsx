@@ -16,6 +16,7 @@ import { OnboardingOverlay, useOnboarding } from './components/OnboardingOverlay
 import { RefreshCw, AlertCircle, X, LayoutDashboard, Briefcase, AlertTriangle, UserCircle } from 'lucide-react';
 import { formatRelativeTime } from './utils/formatters';
 import { AUTO_REFRESH_INTERVAL } from './utils/constants';
+import { requestPermission, isSupported, getPermission } from './services/notifications';
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -70,6 +71,14 @@ function AuthenticatedApp() {
   }, [selectedCrypto]);
 
   const handleLogout = () => { setUserId(null); logout(); };
+
+  // Pedir permiso de notificaciones la primera vez que el usuario refresca
+  const handleRefresh = async () => {
+    if (isSupported() && getPermission() === 'default') {
+      await requestPermission();
+    }
+    refreshData();
+  };
 
   const switchTab = (id) => {
     const ids = TABS.map(t => t.id);
@@ -127,7 +136,7 @@ function AuthenticatedApp() {
                 {formatRelativeTime(lastUpdate)}
               </span>
             )}
-            <motion.button onClick={refreshData} disabled={loading} whileTap={{ scale: 0.93 }}
+            <motion.button onClick={handleRefresh} disabled={loading} whileTap={{ scale: 0.93 }}
               className="w-8 h-8 rounded-lg bg-slate-800/80 border border-white/[0.06] flex items-center justify-center
                          hover:bg-slate-700/80 transition-colors disabled:opacity-40">
               <RefreshCw className={`w-4 h-4 text-slate-400 ${loading ? 'animate-spin' : ''}`} />
