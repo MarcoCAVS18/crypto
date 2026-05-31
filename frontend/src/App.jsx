@@ -132,7 +132,8 @@ function AuthenticatedApp() {
   return (
     <div className="min-h-svh">
       {/* ── Header ──────────────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-xl border-b border-white/[0.05]">
+      <header className="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-xl border-b border-white/[0.05]"
+              style={{ paddingTop: 'env(safe-area-inset-top)' }}>
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="hidden sm:flex items-center gap-1.5">
@@ -333,7 +334,8 @@ function AuthenticatedApp() {
       />
 
       {/* ── Footer ───────────────────────────────────────────────────────────── */}
-      <footer className="border-t border-white/[0.04] mt-12 py-5">
+      <footer className="border-t border-white/[0.04] mt-12 py-5"
+              style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
         <p className="text-center text-[11px] text-slate-700">
           Crypto Context · Herramienta de análisis personal. No constituye asesoramiento financiero.
         </p>
