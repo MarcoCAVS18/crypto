@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore } from './store/appStore';
 import { useAuthStore } from './store/authStore';
@@ -70,6 +70,41 @@ function AuthenticatedApp() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCrypto]);
 
+  // Notificación cuando la señal cambia de WAIT/null → BUY o SELL
+  const prevDecisionRef = useRef(null);
+  useEffect(() => {
+    const prev   = prevDecisionRef.current;
+    const curr   = currentDecision?.action;
+    prevDecisionRef.current = curr;
+
+    if (!curr || curr === 'WAIT') return;
+    if (prev === curr) return;          // misma señal, no repetir
+    if (getPermission() !== 'granted') return;
+
+    const isBuy  = curr === 'BUY';
+    const symbol = selectedCrypto;
+    const price  = cryptoData[symbol]?.price;
+    const priceStr = price
+      ? ` · $${price.toLocaleString('en-US', { maximumFractionDigits: 2 })}`
+      : '';
+
+    try {
+      new Notification(
+        isBuy ? `${symbol} — Señal de compra` : `${symbol} — Señal de venta`,
+        {
+          body:     `${currentDecision.reason ?? ''}${priceStr}`.trim(),
+          icon:     '/icon.svg',
+          badge:    '/icon.svg',
+          tag:      `signal_${symbol}`,
+          renotify: true,
+          silent:   false
+        }
+      );
+    } catch (e) {
+      console.warn('[Notifications] signal:', e.message);
+    }
+  }, [currentDecision, selectedCrypto, cryptoData]);
+
   const handleLogout = () => { setUserId(null); logout(); };
 
   // Pedir permiso de notificaciones la primera vez que el usuario refresca
@@ -97,7 +132,8 @@ function AuthenticatedApp() {
   return (
     <div className="min-h-svh">
       {/* ── Header ──────────────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-xl border-b border-white/[0.05]">
+      <header className="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-xl border-b border-white/[0.05]"
+              style={{ paddingTop: 'env(safe-area-inset-top)' }}>
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="hidden sm:flex items-center gap-1.5">
@@ -298,7 +334,8 @@ function AuthenticatedApp() {
       />
 
       {/* ── Footer ───────────────────────────────────────────────────────────── */}
-      <footer className="border-t border-white/[0.04] mt-12 py-5">
+      <footer className="border-t border-white/[0.04] mt-12 py-5"
+              style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
         <p className="text-center text-[11px] text-slate-700">
           Crypto Context · Herramienta de análisis personal. No constituye asesoramiento financiero.
         </p>
