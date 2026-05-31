@@ -27,6 +27,11 @@ export function FloatingChat() {
 
   const { cryptoData, selectedCrypto, currentDecision, portfolio } = useAppStore();
 
+  // Reset conversation when switching crypto so old history doesn't bleed across symbols
+  useEffect(() => {
+    setMessages([]);
+  }, [selectedCrypto]);
+
   useEffect(() => {
     if (open) {
       setTimeout(() => inputRef.current?.focus(), 200);

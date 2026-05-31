@@ -28,31 +28,44 @@ const EMPTY_FORM = {
 };
 
 // ── Cash Distribution Card ─────────────────────────────────────────────────────
+// Completely isolated — uses its own local state and its own API call.
+// Never modifies the global userState or currentDecision.
 
 function CashDistributionCard() {
-  const {
-    userState, currentDecision, selectedCrypto, decisionLoading,
-    updateUserState, getDecision
-  } = useAppStore();
+  const { selectedCrypto, portfolio } = useAppStore();
 
-  const [inputVal, setInputVal] = useState(
-    userState.totalCapital > 0 ? String(userState.totalCapital) : ''
-  );
-  const [dirty, setDirty] = useState(false);
+  const [inputVal, setInputVal]   = useState('');
+  const [loading, setLoading]     = useState(false);
+  const [ops, setOps]             = useState([]);
+  const [recommendation, setRecommendation] = useState('');
+  const [cashLabel, setCashLabel] = useState(0);
 
-  const cashAvailable = userState.totalCapital > 0
-    ? userState.totalCapital * (userState.cashPercent / 100)
-    : 0;
-
-  const ops = currentDecision?.operations?.filter(o => o.type === 'BUY') ?? [];
-  const hasOps = ops.length > 0 && userState.totalCapital > 0;
-
-  const handleApply = () => {
+  const handleApply = async () => {
     const val = parseFloat(inputVal);
     if (!val || val <= 0) return;
-    updateUserState({ totalCapital: val, cashPercent: 100, mode: 'inversion' });
-    setDirty(false);
-    getDecision();
+    setLoading(true);
+    setOps([]);
+    setRecommendation('');
+    try {
+      const portfolioSummary = portfolio.summary.find(s => s.symbol === selectedCrypto) ?? null;
+      const portfolioContext = portfolioSummary?.units > 0 ? {
+        ...portfolioSummary,
+        hasPosition:  portfolioSummary.units > 0,
+        currentPrice: null,
+        allBuys:      [],
+        executedBuys: []
+      } : null;
+      const { requestDecision } = await import('../services/api');
+      const data = await requestDecision(selectedCrypto, 100, 'inversion', val, portfolioContext);
+      const buyOps = data?.decision?.operations?.filter(o => o.type === 'BUY') ?? [];
+      setOps(buyOps);
+      setRecommendation(data?.decision?.recommendation ?? '');
+      setCashLabel(val);
+    } catch {
+      setOps([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -72,7 +85,7 @@ function CashDistributionCard() {
             inputMode="decimal"
             placeholder="¿Cuánto efectivo tenés disponible?"
             value={inputVal}
-            onChange={e => { setInputVal(e.target.value); setDirty(true); }}
+            onChange={e => setInputVal(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleApply()}
             className="w-full pl-8 pr-3 py-2.5 text-sm bg-slate-900/60 border border-white/[0.08] rounded-xl text-slate-200
                        placeholder:text-slate-600 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20"
@@ -80,21 +93,21 @@ function CashDistributionCard() {
         </div>
         <button
           onClick={handleApply}
-          disabled={decisionLoading || !inputVal || parseFloat(inputVal) <= 0}
+          disabled={loading || !inputVal || parseFloat(inputVal) <= 0}
           className="px-4 py-2.5 rounded-xl bg-blue-600/80 hover:bg-blue-600 text-white text-sm font-medium
                      transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
         >
-          {decisionLoading ? '...' : (dirty ? 'Calcular' : 'Recalcular')}
+          {loading ? '...' : 'Calcular'}
         </button>
       </div>
 
       {/* Results */}
-      {hasOps && !decisionLoading && (
+      {ops.length > 0 && !loading && (
         <div className="space-y-2">
           <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1">
             <span>Distribución sugerida para <span className="text-slate-300 font-semibold">{selectedCrypto}</span></span>
             <span className="tabular font-mono text-slate-400">
-              Efectivo: ${cashAvailable.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+              Efectivo: ${cashLabel.toLocaleString('en-US', { maximumFractionDigits: 0 })}
             </span>
           </div>
           {ops.map((op, i) => (
@@ -132,22 +145,20 @@ function CashDistributionCard() {
               </div>
             </div>
           ))}
-          {currentDecision?.recommendation && (
-            <p className="text-xs text-slate-500 italic pt-1 leading-relaxed">
-              {currentDecision.recommendation}
-            </p>
+          {recommendation && (
+            <p className="text-xs text-slate-500 italic pt-1 leading-relaxed">{recommendation}</p>
           )}
         </div>
       )}
 
-      {decisionLoading && (
+      {loading && (
         <div className="flex items-center justify-center py-4 text-slate-500 text-sm gap-2">
           <RefreshCw className="w-4 h-4 animate-spin" />
           Calculando distribución...
         </div>
       )}
 
-      {userState.totalCapital === 0 && !decisionLoading && (
+      {ops.length === 0 && !loading && (
         <p className="text-xs text-slate-600 text-center py-2">
           Ingresá tu capital disponible para ver cómo distribuirlo entre las zonas de compra.
         </p>
