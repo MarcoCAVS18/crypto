@@ -48,9 +48,7 @@ export function PriceAlertBanner({ symbol, price, zones }) {
     setAlert(newAlert);
   }, [symbol, price, zones]);
 
-  if (!alert) return null;
-
-  const isBuy  = alert.type === 'buy';
+  const isBuy  = alert?.type === 'buy';
   const colors = isBuy
     ? { bg: 'bg-emerald-950/80', border: 'border-emerald-500/40', text: 'text-emerald-300', icon: 'text-emerald-400', sub: 'text-emerald-400/70', Icon: TrendingUp }
     : { bg: 'bg-red-950/80',     border: 'border-red-500/40',     text: 'text-red-300',     icon: 'text-red-400',     sub: 'text-red-400/70',     Icon: TrendingDown };
@@ -62,32 +60,34 @@ export function PriceAlertBanner({ symbol, price, zones }) {
 
   return (
     <AnimatePresence>
-      <motion.div
-        key={alert.key}
-        initial={{ height: 0, opacity: 0 }}
-        animate={{ height: 'auto', opacity: 1 }}
-        exit={{ height: 0, opacity: 0 }}
-        transition={{ duration: 0.28, ease: 'easeOut' }}
-        className="overflow-hidden"
-      >
-        <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl border backdrop-blur-sm ${colors.bg} ${colors.border}`}>
-          <colors.Icon className={`w-4 h-4 shrink-0 ${colors.icon}`} />
-          <div className="flex-1 min-w-0">
-            <p className={`text-sm font-semibold ${colors.text}`}>{alert.message}</p>
-            <p className={`text-xs mt-0.5 ${colors.sub}`}>
-              Precio actual: ${alert.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}
-              {isBuy ? ' · Oportunidad de acumulación' : ' · Evaluar toma de ganancias'}
-            </p>
+      {alert && (
+        <motion.div
+          key={alert.key}
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: 'auto', opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.28, ease: 'easeOut' }}
+          className="overflow-hidden mb-1"
+        >
+          <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl border backdrop-blur-sm ${colors.bg} ${colors.border}`}>
+            <colors.Icon className={`w-4 h-4 shrink-0 ${colors.icon}`} />
+            <div className="flex-1 min-w-0">
+              <p className={`text-sm font-semibold ${colors.text}`}>{alert.message}</p>
+              <p className={`text-xs mt-0.5 ${colors.sub}`}>
+                Precio actual: ${alert.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}
+                {isBuy ? ' · Oportunidad de acumulación' : ' · Evaluar toma de ganancias'}
+              </p>
+            </div>
+            <Bell className={`w-3.5 h-3.5 shrink-0 ${colors.icon} opacity-60`} />
+            <button
+              onClick={handleDismiss}
+              className={`w-6 h-6 rounded-lg flex items-center justify-center hover:bg-white/[0.08] transition-colors ${colors.sub}`}
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
-          <Bell className={`w-3.5 h-3.5 shrink-0 ${colors.icon} opacity-60`} />
-          <button
-            onClick={handleDismiss}
-            className={`w-6 h-6 rounded-lg flex items-center justify-center hover:bg-white/[0.08] transition-colors ${colors.sub}`}
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </motion.div>
+        </motion.div>
+      )}
     </AnimatePresence>
   );
 }

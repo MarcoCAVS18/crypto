@@ -188,6 +188,13 @@ function AuthenticatedApp() {
       </AnimatePresence>
 
       {/* ── Page content ─────────────────────────────────────────────────────── */}
+      {/* Zone alert — siempre visible, independiente del tab activo */}
+      {currentData && (
+        <div className="max-w-3xl mx-auto px-4 pt-4">
+          <PriceAlertBanner symbol={selectedCrypto} price={currentData.price} zones={currentData.zones} />
+        </div>
+      )}
+
       <main className="max-w-3xl mx-auto px-4 py-5">
         <AnimatePresence mode="wait" custom={tabDir}>
           {activeTab === 'dashboard' && (
@@ -200,9 +207,6 @@ function AuthenticatedApp() {
                 </div>
               ) : currentData ? (
                 <>
-                  {/* Zone alert banner */}
-                  <PriceAlertBanner symbol={selectedCrypto} price={currentData.price} zones={currentData.zones} />
-
                   {/* Calendar toast */}
                   <MacroCalendarBanner symbol={selectedCrypto} />
 
