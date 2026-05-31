@@ -18,10 +18,10 @@ function buildContext(cryptoData, selectedCrypto, currentDecision, portfolio) {
 }
 
 export function FloatingChat() {
-  const [open, setOpen]       = useState(false);
-  const [input, setInput]     = useState('');
+  const [open, setOpen]         = useState(false);
+  const [input, setInput]       = useState('');
   const [messages, setMessages] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading]   = useState(false);
   const bottomRef = useRef(null);
   const inputRef  = useRef(null);
 
@@ -53,8 +53,7 @@ export function FloatingChat() {
 
     try {
       const context = buildContext(cryptoData, selectedCrypto, currentDecision, portfolio);
-      // Send last 8 messages as history (4 exchanges)
-      const history = messages.slice(-8);
+      const history = messages.slice(-12);
       const { data } = await api.post('/chat', { message: text, history, context });
       setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
     } catch {
@@ -91,7 +90,7 @@ export function FloatingChat() {
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-slate-200">Asistente de inversión</p>
-                  <p className="text-[10px] text-slate-500">BTC · PAXG · Solo inversiones</p>
+                  <p className="text-[10px] text-slate-500">BTC · PAXG · Macro · Noticias</p>
                 </div>
               </div>
               <button onClick={() => setOpen(false)}
@@ -106,7 +105,7 @@ export function FloatingChat() {
                 <div className="text-center py-6 space-y-2">
                   <Bot className="w-8 h-8 text-slate-600 mx-auto" />
                   <p className="text-xs text-slate-500 leading-relaxed">
-                    Preguntame sobre BTC o PAXG —<br/>zonas de compra, DCA, contexto macro...
+                    Preguntame sobre BTC o PAXG —<br/>zonas de compra, DCA, macro, noticias...
                   </p>
                 </div>
               )}
