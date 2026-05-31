@@ -50,7 +50,7 @@ jobs:
       - name: Deploy to Firebase
         run: |
           npx firebase-tools deploy \
-            --only hosting,functions:api \
+            --only hosting,functions \
             --project ${{ secrets.FIREBASE_PROJECT_ID }} \
             --non-interactive
         env:
