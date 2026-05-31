@@ -17,6 +17,7 @@ import { RefreshCw, AlertCircle, X, LayoutDashboard, Briefcase, AlertTriangle, U
 import { formatRelativeTime } from './utils/formatters';
 import { AUTO_REFRESH_INTERVAL } from './utils/constants';
 import { requestPermission, isSupported, getPermission } from './services/notifications';
+import { subscribeToPush } from './services/pushSubscription';
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -110,7 +111,10 @@ function AuthenticatedApp() {
   // Pedir permiso de notificaciones la primera vez que el usuario refresca
   const handleRefresh = async () => {
     if (isSupported() && getPermission() === 'default') {
-      await requestPermission();
+      const result = await requestPermission();
+      if (result === 'granted') {
+        subscribeToPush(currentUser.id);
+      }
     }
     refreshData();
   };

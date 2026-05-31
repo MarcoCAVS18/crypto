@@ -94,3 +94,38 @@ export async function setAiCache(key, data, ttlHours = 4) {
     expiresAt: new Date(Date.now() + ttlHours * 3600 * 1000)
   });
 }
+
+// ── Push subscriptions ────────────────────────────────────────────────────────
+
+export async function getPushSubscriptions() {
+  const snap = await db().collection('push_subscriptions').get();
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+export async function savePushSubscription(userId, subscription) {
+  const id = toDocId(`${userId}_${subscription.endpoint.slice(-40)}`);
+  await db().collection('push_subscriptions').doc(id).set({
+    userId,
+    subscription,
+    updatedAt: FieldValue.serverTimestamp()
+  }, { merge: true });
+}
+
+export async function deletePushSubscription(endpoint) {
+  const snap = await db().collection('push_subscriptions')
+    .where('subscription.endpoint', '==', endpoint).get();
+  await Promise.all(snap.docs.map(d => d.ref.delete()));
+}
+
+// ── Estado de zona por símbolo (para detección de cambio) ────────────────────
+
+export async function getZoneState(symbol) {
+  const doc = await db().collection('_zone_state').doc(symbol.toUpperCase()).get();
+  return doc.exists ? doc.data() : null;
+}
+
+export async function setZoneState(symbol, zone, price) {
+  await db().collection('_zone_state').doc(symbol.toUpperCase()).set({
+    zone, price, updatedAt: FieldValue.serverTimestamp()
+  });
+}
