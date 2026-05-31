@@ -25,5 +25,11 @@ service cloud.firestore {
     match /_ai_cache/{docId} {
       allow read, write: if false;
     }
+    match /_zone_state/{docId} {
+      allow read, write: if false;
+    }
+    match /push_subscriptions/{docId} {
+      allow read, write: if false;
+    }
   }
 }
