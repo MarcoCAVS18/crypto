@@ -19,10 +19,10 @@ function checkConfig() {
 // ── Timeout para evitar promesas colgadas ────────────────────────────────────
 // Firestore no rechaza si no puede conectar — cuelga indefinidamente.
 // Con esto, después de 12 s muestra un error claro en vez de quedarse en "Guardando".
-function withTimeout(promise, ms = 12000) {
+function withTimeout(promise, ms = 30000) {
   const timeout = new Promise((_, reject) =>
     setTimeout(
-      () => reject(new Error('No se pudo conectar a Firestore. Verificá que las variables de entorno estén configuradas y que las reglas de seguridad permitan escritura.')),
+      () => reject(new Error('Timeout de conexión con Firestore. Si tenés mala señal, la operación puede haberse guardado igual — actualizá el portfolio para verificar.')),
       ms
     )
   );
@@ -51,27 +51,39 @@ export async function fsAddOperation(op, userId) {
 }
 
 // ── Obtener operaciones ──────────────────────────────────────────────────────
-export async function fsGetOperations(symbolFilter = null, userId = null, limitCount = 200) {
+export async function fsGetOperations(symbolFilter = null, userId = null, limitCount = 500) {
   checkConfig();
-  // Siempre traemos todas las operaciones y filtramos client-side por userId
-  const q = query(
-    collection(db, COL),
-    orderBy('date', 'desc'),
-    limit(limitCount)
-  );
+  let q;
+  if (userId && userId !== 'marco') {
+    // Usuarios no-legacy: filtro server-side por userId (no necesita composite index)
+    // Ordenamos client-side después del fetch
+    q = query(
+      collection(db, COL),
+      where('userId', '==', userId),
+      limit(limitCount)
+    );
+  } else {
+    // Marco / legacy: trae todos ordenados y filtra client-side (ops sin userId = legacy de Marco)
+    q = query(
+      collection(db, COL),
+      orderBy('date', 'desc'),
+      limit(limitCount)
+    );
+  }
+
   const snap = await withTimeout(getDocs(q));
   let ops = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-  // Filtro por usuario
+  // Filtro y orden client-side
   if (userId === 'marco') {
-    // Operaciones sin userId (legacy) pertenecen a Marco
     ops = ops.filter(op => !op.userId || op.userId === 'marco');
-  } else if (userId) {
-    ops = ops.filter(op => op.userId === userId);
+  }
+  // Para usuarios no-legacy, ya están filtrados server-side — solo ordenar
+  if (userId && userId !== 'marco') {
+    ops.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   }
   // Si no hay userId: sin filtro (backward compat)
 
-  // Filtro por símbolo (post userId)
   if (symbolFilter) {
     ops = ops.filter(op => op.symbol === symbolFilter.toUpperCase());
   }
