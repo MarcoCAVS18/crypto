@@ -81,7 +81,17 @@ export const useAppStore = create(
 
       // ── Acciones de usuario ───────────────────────────────────────────────
 
-      setUserId: (id) => set({ userId: id }),
+      setUserId: (id) => {
+        const prev = get().userId;
+        set({ userId: id });
+        // Si cambió el usuario, invalidar caché y recargar portfolio
+        if (id && id !== prev) {
+          const { portfolio } = get();
+          if (portfolio.userId !== id || portfolio.operations.length === 0) {
+            get().loadPortfolio({ force: true });
+          }
+        }
+      },
 
       // ── Acciones de crypto ────────────────────────────────────────────────
 
@@ -187,6 +197,7 @@ export const useAppStore = create(
 
       loadPortfolio: async ({ force = false } = {}) => {
         const { portfolio, userId } = get();
+        if (!userId) return; // esperar que auth resuelva antes de leer Firestore
         // Skip si ya tenemos datos cacheados para este usuario y no se forzó
         if (!force && portfolio.userId === userId && portfolio.operations.length > 0) {
           return;
@@ -227,10 +238,13 @@ export const useAppStore = create(
             return { portfolio: { ...state.portfolio, operations: ops, summary: computePortfolioSummary(ops) } };
           });
         } catch (err) {
+          // Revertir update optimista
           set((state) => {
             const ops = state.portfolio.operations.filter(o => o.id !== tempId);
             return { portfolio: { ...state.portfolio, operations: ops, summary: computePortfolioSummary(ops) } };
           });
+          // Resync con Firestore por si el write llegó a completarse antes del timeout
+          setTimeout(() => get().loadPortfolio({ force: true }), 3500);
           throw err;
         }
       },
@@ -262,6 +276,7 @@ export const useAppStore = create(
       partialize: (state) => ({
         userState:      state.userState,
         selectedCrypto: state.selectedCrypto,
+        userId:         state.userId,
         // Cacheamos las operaciones del portfolio para evitar relecturas a Firestore.
         // No persistimos cryptoData (datos de mercado, deben ser frescos).
         portfolio: {
