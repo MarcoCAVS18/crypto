@@ -1,12 +1,12 @@
 import { motion } from 'framer-motion';
 
 const variants = {
-  default:     'bg-slate-900/70 border border-white/[0.06]',
-  highlighted: 'bg-slate-900/80 border border-blue-500/30 shadow-lg shadow-blue-500/[0.07]',
-  buy:         'bg-emerald-950/40 border border-emerald-500/20',
-  sell:        'bg-red-950/40 border border-red-500/20',
-  neutral:     'bg-amber-950/30 border border-amber-500/20',
-  flat:        'bg-slate-900/50 border border-white/[0.04]'
+  default:     'bg-slate-900/50 border border-white/[0.06]',
+  highlighted: 'bg-slate-900/70 border border-violet-500/25 shadow-lg shadow-violet-500/[0.06]',
+  buy:         'bg-emerald-950/35 border border-emerald-500/20',
+  sell:        'bg-rose-950/35 border border-rose-500/20',
+  neutral:     'bg-amber-950/25 border border-amber-500/20',
+  flat:        'bg-slate-900/40 border border-white/[0.04]'
 };
 
 export function Card({ children, className = '', variant = 'default', hover = false, animate = false }) {

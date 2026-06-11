@@ -88,13 +88,13 @@ function CashDistributionCard() {
             onChange={e => setInputVal(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleApply()}
             className="w-full pl-8 pr-3 py-2.5 text-sm bg-slate-900/60 border border-white/[0.08] rounded-xl text-slate-200
-                       placeholder:text-slate-600 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20"
+                       placeholder:text-slate-600 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20"
           />
         </div>
         <button
           onClick={handleApply}
           disabled={loading || !inputVal || parseFloat(inputVal) <= 0}
-          className="px-4 py-2.5 rounded-xl bg-blue-600/80 hover:bg-blue-600 text-white text-sm font-medium
+          className="px-4 py-2.5 rounded-xl bg-violet-600/80 hover:bg-violet-600 text-white text-sm font-medium
                      transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
         >
           {loading ? '...' : 'Calcular'}
@@ -264,7 +264,7 @@ export function PortfolioSection() {
             onClick={() => loadPortfolio({ force: true })}
             disabled={loading}
             title="Recargar desde Firestore"
-            className="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors disabled:opacity-50"
+            className="p-2 rounded-lg bg-slate-800/60 hover:bg-slate-700/60 border border-white/[0.06] transition-colors disabled:opacity-50"
           >
             <RefreshCw className={`w-4 h-4 text-gray-400 ${loading ? 'animate-spin' : ''}`} />
           </button>
@@ -343,9 +343,9 @@ export function PortfolioSection() {
                     onClick={() => handleFormChange('type', t)}
                     className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors
                       ${form.type === t
-                        ? t === 'BUY' ? 'bg-green-500/20 border border-green-500 text-green-400'
-                          : 'bg-red-500/20 border border-red-500 text-red-400'
-                        : 'bg-gray-800 border border-gray-700 text-gray-400 hover:border-gray-600'
+                        ? t === 'BUY' ? 'bg-emerald-500/15 border border-emerald-500/50 text-emerald-400'
+                          : 'bg-rose-500/15 border border-rose-500/50 text-rose-400'
+                        : 'bg-slate-800/60 border border-white/[0.08] text-slate-400 hover:border-white/[0.15]'
                       }`}
                   >
                     {t === 'BUY' ? 'Compra' : 'Venta'}
@@ -402,7 +402,7 @@ export function PortfolioSection() {
             </Button>
             <button
               onClick={() => { setShowForm(false); setError(null); }}
-              className="px-4 py-2 rounded-lg bg-gray-800 text-gray-400 hover:bg-gray-700 transition-colors text-sm"
+              className="px-4 py-2 rounded-xl bg-slate-800/60 text-slate-400 hover:bg-slate-700/60 border border-white/[0.06] transition-colors text-sm"
             >
               Cancelar
             </button>
@@ -425,8 +425,8 @@ export function PortfolioSection() {
                 onClick={() => setFilterSymbol(s)}
                 className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors
                   ${filterSymbol === s
-                    ? 'bg-blue-500/20 text-blue-400 border border-blue-500/50'
-                    : 'bg-gray-800 text-gray-500 hover:text-gray-300'
+                    ? 'bg-violet-500/15 text-violet-400 border border-violet-500/40'
+                    : 'bg-slate-800/50 text-slate-500 hover:text-slate-300 border border-white/[0.05]'
                   }`}
               >
                 {s}
@@ -464,7 +464,7 @@ export function PortfolioSection() {
               {hiddenCount > 0 && (
                 <button
                   onClick={() => setVisibleCount(c => c + 3)}
-                  className="text-sm text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1"
+                  className="text-sm text-violet-400 hover:text-violet-300 transition-colors flex items-center gap-1"
                 >
                   <ChevronDown className="w-4 h-4" />
                   Ver más ({hiddenCount} restante{hiddenCount === 1 ? '' : 's'})
@@ -544,8 +544,8 @@ function InlineMetric({ label, value, className = '' }) {
 function OperationRow({ op, expanded, onToggle, onDelete }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const isBuy = op.type === 'BUY';
-  const color = isBuy ? 'text-green-400' : 'text-red-400';
-  const bg = isBuy ? 'bg-green-500/5 border-green-500/20' : 'bg-red-500/5 border-red-500/20';
+  const color = isBuy ? 'text-emerald-400' : 'text-rose-400';
+  const bg = isBuy ? 'bg-emerald-500/[0.05] border-emerald-500/20' : 'bg-rose-500/[0.05] border-rose-500/20';
 
   return (
     <div className={`rounded-lg border ${bg} overflow-hidden`}>
@@ -621,7 +621,7 @@ function OperationRow({ op, expanded, onToggle, onDelete }) {
 function FormField({ label, children, className = '' }) {
   return (
     <div className={`space-y-1 ${className}`}>
-      <label className="text-xs text-gray-500">{label}</label>
+      <label className="text-xs text-slate-500">{label}</label>
       {children}
     </div>
   );
@@ -646,8 +646,8 @@ function NumericInput({ value, onChange, placeholder, prefix }) {
 function Metric({ label, value }) {
   return (
     <div>
-      <p className="text-xs text-gray-500">{label}</p>
-      <p className="text-sm text-gray-200 font-medium">{value}</p>
+      <p className="text-xs text-slate-500">{label}</p>
+      <p className="text-sm text-slate-200 font-medium">{value}</p>
     </div>
   );
 }
@@ -667,6 +667,6 @@ function formatUnits(units) {
   return u.toFixed(8);
 }
 
-const inputClass = 'w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 placeholder-gray-600';
+const inputClass = 'w-full bg-slate-900/70 border border-white/[0.08] rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 placeholder-slate-600';
 
 export default PortfolioSection;
