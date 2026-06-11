@@ -4,7 +4,7 @@
 @theme {
   --color-risk-on:      #10b981;
   --color-risk-neutral: #f59e0b;
-  --color-risk-off:     #ef4444;
+  --color-risk-off:     #f43f5e;
   --color-zone-buy:     #34d399;
   --color-zone-neutral: #fbbf24;
   --color-zone-sell:    #f87171;
@@ -16,22 +16,22 @@ html {
 }
 
 body {
-  background-color: #080c18;
+  background-color: #060916;
   background-image:
-    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(37,99,235,0.08), transparent),
-    linear-gradient(to bottom, transparent 80%, rgba(0,0,0,0.4));
+    radial-gradient(ellipse 90% 55% at 50% -20%, rgba(109,40,217,0.13), transparent),
+    radial-gradient(ellipse 60% 40% at 90% 100%, rgba(6,182,212,0.04), transparent);
   color: #e2e8f0;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
   min-height: 100svh;
   -webkit-font-smoothing: antialiased;
 }
 
-/* iOS zoom fix: font-size ≥ 16px al hacer foco en inputs */
+/* iOS zoom fix */
 input, select, textarea {
   font-size: 16px;
 }
 
-/* ── Range input styling ───────────────────────────────────────────────────── */
+/* ── Range input ──────────────────────────────────────────────────────────── */
 input[type='range'] {
   -webkit-appearance: none;
   appearance: none;
@@ -47,21 +47,21 @@ input[type='range']::-webkit-slider-thumb {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #3b82f6;
-  border: 2px solid rgba(59,130,246,0.4);
-  box-shadow: 0 0 8px rgba(59,130,246,0.5);
+  background: #7c3aed;
+  border: 2px solid rgba(124,58,237,0.4);
+  box-shadow: 0 0 8px rgba(124,58,237,0.5);
   cursor: pointer;
   transition: box-shadow 0.15s;
 }
 input[type='range']::-webkit-slider-thumb:hover {
-  box-shadow: 0 0 14px rgba(59,130,246,0.7);
+  box-shadow: 0 0 14px rgba(124,58,237,0.7);
 }
 input[type='range']::-moz-range-thumb {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #3b82f6;
-  border: 2px solid rgba(59,130,246,0.4);
+  background: #7c3aed;
+  border: 2px solid rgba(124,58,237,0.4);
   cursor: pointer;
 }
 
@@ -86,35 +86,29 @@ input[type='range']::-moz-range-thumb {
 }
 
 /* ── Custom scrollbar ─────────────────────────────────────────────────────── */
-::-webkit-scrollbar {
-  width: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.08);
   border-radius: 9999px;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255,255,255,0.18);
-}
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
 
 /* ── Glass card ───────────────────────────────────────────────────────────── */
 .glass {
-  background: rgba(15, 23, 42, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(8, 11, 28, 0.78);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-/* ── Tabular numbers everywhere financial data appears ────────────────────── */
+/* ── Tabular numbers ──────────────────────────────────────────────────────── */
 .tabular {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
 }
 
-/* ── Gradient fade at the bottom of a section (premium blur aesthetic) ─────── */
+/* ── Gradient fade ────────────────────────────────────────────────────────── */
 .fade-bottom {
   mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
   -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%);

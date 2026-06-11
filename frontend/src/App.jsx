@@ -14,7 +14,7 @@ import { PortfolioSection } from './components/PortfolioSection';
 import { PriceAlertBanner } from './components/PriceAlertBanner';
 import { OnboardingOverlay, useOnboarding } from './components/OnboardingOverlay';
 import { FloatingChat } from './components/FloatingChat';
-import { RefreshCw, AlertCircle, X, LayoutDashboard, Briefcase, AlertTriangle, UserCircle } from 'lucide-react';
+import { RefreshCw, AlertCircle, X, LayoutDashboard, Briefcase, AlertTriangle } from 'lucide-react';
 import { formatRelativeTime } from './utils/formatters';
 import { AUTO_REFRESH_INTERVAL } from './utils/constants';
 import { requestPermission, isSupported, getPermission } from './services/notifications';
@@ -31,7 +31,7 @@ const tabVariants = {
   exit:    (dir) => ({ opacity: 0, x: dir > 0 ? -24 : 24, transition: { duration: 0.2 } })
 };
 
-// ── Root: solo decide qué mostrar según auth ──────────────────────────────────
+// ── Root ──────────────────────────────────────────────────────────────────────
 export default function App() {
   const currentUser = useAuthStore((s) => s.currentUser);
   return currentUser ? <AuthenticatedApp /> : <ProfileSelector />;
@@ -72,50 +72,34 @@ function AuthenticatedApp() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCrypto]);
 
-  // Notificación cuando la señal cambia de WAIT/null → BUY o SELL
   const prevDecisionRef = useRef(null);
   useEffect(() => {
-    const prev   = prevDecisionRef.current;
-    const curr   = currentDecision?.action;
+    const prev = prevDecisionRef.current;
+    const curr = currentDecision?.action;
     prevDecisionRef.current = curr;
-
     if (!curr || curr === 'WAIT') return;
-    if (prev === curr) return;          // misma señal, no repetir
+    if (prev === curr) return;
     if (getPermission() !== 'granted') return;
-
-    const isBuy  = curr === 'BUY';
-    const symbol = selectedCrypto;
-    const price  = cryptoData[symbol]?.price;
+    const isBuy    = curr === 'BUY';
+    const symbol   = selectedCrypto;
+    const price    = cryptoData[symbol]?.price;
     const priceStr = price
       ? ` · $${price.toLocaleString('en-US', { maximumFractionDigits: 2 })}`
       : '';
-
     try {
       new Notification(
         isBuy ? `${symbol} — Señal de compra` : `${symbol} — Señal de venta`,
-        {
-          body:     `${currentDecision.reason ?? ''}${priceStr}`.trim(),
-          icon:     '/icon.svg',
-          badge:    '/icon.svg',
-          tag:      `signal_${symbol}`,
-          renotify: true,
-          silent:   false
-        }
+        { body: `${currentDecision.reason ?? ''}${priceStr}`.trim(), icon: '/icon.svg', badge: '/icon.svg', tag: `signal_${symbol}`, renotify: true, silent: false }
       );
-    } catch (e) {
-      console.warn('[Notifications] signal:', e.message);
-    }
+    } catch (e) { console.warn('[Notifications] signal:', e.message); }
   }, [currentDecision, selectedCrypto, cryptoData]);
 
   const handleLogout = () => { setUserId(null); logout(); };
 
-  // Pedir permiso de notificaciones la primera vez que el usuario refresca
   const handleRefresh = async () => {
     if (isSupported() && getPermission() === 'default') {
       const result = await requestPermission();
-      if (result === 'granted') {
-        subscribeToPush(currentUser.id);
-      }
+      if (result === 'granted') subscribeToPush(currentUser.id);
     }
     refreshData();
   };
@@ -133,25 +117,32 @@ function AuthenticatedApp() {
 
   const currentData      = cryptoData[selectedCrypto];
   const portfolioSummary = portfolio.summary.find(s => s.symbol === selectedCrypto) ?? null;
+  const userInitial      = currentUser.initial ?? currentUser.name?.[0] ?? '?';
 
   return (
     <div className="min-h-svh">
-      {/* ── Header ──────────────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-xl border-b border-white/[0.05]"
-              style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+
+      {/* ── Header ────────────────────────────────────────────────────────── */}
+      <header
+        className="sticky top-0 z-40 bg-[#060916]/92 backdrop-blur-xl border-b border-white/[0.05]"
+        style={{ paddingTop: 'env(safe-area-inset-top)' }}
+      >
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-1.5">
-              <div className="w-6 h-6 rounded-lg bg-blue-600/80 flex items-center justify-center">
-                <span className="text-white text-[10px] font-bold">C</span>
+
+          {/* Left: logo + crypto selector */}
+          <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-1.5 shrink-0">
+              <div className="w-7 h-7 rounded-xl bg-violet-600/80 flex items-center justify-center shadow-lg shadow-violet-500/20">
+                <span className="text-white text-[11px] font-bold">C</span>
               </div>
-              <span className="text-sm font-semibold text-slate-300 tracking-wide">Crypto Context</span>
+              <span className="hidden sm:block text-sm font-semibold text-slate-300 tracking-wide">Crypto Context</span>
             </div>
-            <div className="hidden sm:block w-px h-5 bg-white/[0.08]" />
+            <div className="hidden sm:block w-px h-4 bg-white/[0.08]" />
             <CryptoSelector selected={selectedCrypto} onSelect={setSelectedCrypto} cryptos={profileCryptos} />
           </div>
 
-          <nav className="hidden sm:flex items-center bg-slate-900/60 rounded-xl p-1 border border-white/[0.05]">
+          {/* Center: desktop tabs */}
+          <nav className="hidden sm:flex items-center bg-slate-900/50 rounded-xl p-1 border border-white/[0.05]">
             {TABS.map(tab => (
               <button
                 key={tab.id}
@@ -160,8 +151,9 @@ function AuthenticatedApp() {
                   ${activeTab === tab.id ? 'text-white' : 'text-slate-500 hover:text-slate-300'}`}
               >
                 {activeTab === tab.id && (
-                  <motion.div layoutId="tab-pill"
-                    className="absolute inset-0 bg-slate-700/60 border border-white/[0.08] rounded-lg -z-10"
+                  <motion.div
+                    layoutId="tab-pill"
+                    className="absolute inset-0 bg-violet-500/15 border border-violet-500/25 rounded-lg -z-10"
                     transition={{ type: 'spring', stiffness: 300, damping: 30 }}
                   />
                 )}
@@ -171,65 +163,59 @@ function AuthenticatedApp() {
             ))}
           </nav>
 
+          {/* Right: last update + refresh + user */}
           <div className="flex items-center gap-2">
             {lastUpdate && (
               <span className="text-[11px] text-slate-600 hidden sm:block tabular">
                 {formatRelativeTime(lastUpdate)}
               </span>
             )}
-            <motion.button onClick={handleRefresh} disabled={loading} whileTap={{ scale: 0.93 }}
-              className="w-8 h-8 rounded-lg bg-slate-800/80 border border-white/[0.06] flex items-center justify-center
-                         hover:bg-slate-700/80 transition-colors disabled:opacity-40">
+            <motion.button
+              onClick={handleRefresh}
+              disabled={loading}
+              whileTap={{ scale: 0.93 }}
+              className="w-8 h-8 rounded-lg bg-slate-800/50 border border-white/[0.06] flex items-center justify-center
+                         hover:bg-slate-700/60 transition-colors disabled:opacity-40"
+            >
               <RefreshCw className={`w-4 h-4 text-slate-400 ${loading ? 'animate-spin' : ''}`} />
             </motion.button>
-            <motion.button onClick={handleLogout} whileTap={{ scale: 0.93 }}
+            <motion.button
+              onClick={handleLogout}
+              whileTap={{ scale: 0.93 }}
               title={`Perfil: ${currentUser.name} — Cambiar`}
-              className="w-8 h-8 rounded-lg bg-slate-800/80 border border-white/[0.06] flex items-center justify-center
-                         hover:bg-slate-700/80 transition-colors">
-              <UserCircle className="w-4 h-4 text-slate-400" />
+              className="w-8 h-8 rounded-lg bg-violet-600/20 border border-violet-500/30 flex items-center justify-center
+                         hover:bg-violet-600/30 transition-colors"
+            >
+              <span className="text-xs font-bold text-violet-300">{userInitial}</span>
             </motion.button>
           </div>
-        </div>
-
-        {/* Mobile tabs */}
-        <div className="sm:hidden flex border-t border-white/[0.05]">
-          {TABS.map(tab => (
-            <button key={tab.id} onClick={() => switchTab(tab.id)}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-sm font-medium transition-colors relative
-                ${activeTab === tab.id ? 'text-blue-400' : 'text-slate-600 hover:text-slate-400'}`}>
-              {activeTab === tab.id && (
-                <motion.div layoutId="mobile-tab-indicator"
-                  className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500"
-                  transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                />
-              )}
-              <tab.icon className="w-4 h-4" />
-              {tab.label}
-            </button>
-          ))}
         </div>
       </header>
 
       {/* ── Banners ──────────────────────────────────────────────────────────── */}
       <AnimatePresence>
         {serverWaking && (
-          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-            className="bg-blue-500/10 border-b border-blue-500/20 px-4 py-2.5">
-            <div className="max-w-3xl mx-auto flex items-center justify-center gap-2 text-blue-400 text-sm">
+          <motion.div
+            initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+            className="bg-violet-500/10 border-b border-violet-500/20 px-4 py-2.5"
+          >
+            <div className="max-w-3xl mx-auto flex items-center justify-center gap-2 text-violet-400 text-sm">
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
               Despertando servidor... puede tardar ~30 segundos
             </div>
           </motion.div>
         )}
         {error && (
-          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-            className="bg-red-500/10 border-b border-red-500/20 px-4 py-2">
+          <motion.div
+            initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+            className="bg-rose-500/10 border-b border-rose-500/20 px-4 py-2"
+          >
             <div className="max-w-3xl mx-auto flex items-center justify-between">
-              <div className="flex items-center gap-2 text-red-400 text-sm">
+              <div className="flex items-center gap-2 text-rose-400 text-sm">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{error}</span>
               </div>
-              <button onClick={clearError} className="text-red-400/60 hover:text-red-400 transition-colors ml-3 shrink-0">
+              <button onClick={clearError} className="text-rose-400/60 hover:text-rose-400 transition-colors ml-3 shrink-0">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -237,16 +223,17 @@ function AuthenticatedApp() {
         )}
       </AnimatePresence>
 
-      {/* ── Page content ─────────────────────────────────────────────────────── */}
-      {/* Zone alert — siempre visible, independiente del tab activo */}
+      {/* ── Zone alert ───────────────────────────────────────────────────────── */}
       {currentData && (
         <div className="max-w-3xl mx-auto px-4 pt-4">
           <PriceAlertBanner symbol={selectedCrypto} price={currentData.price} zones={currentData.zones} />
         </div>
       )}
 
-      <main className="max-w-3xl mx-auto px-4 py-5">
+      {/* ── Page content ─────────────────────────────────────────────────────── */}
+      <main className="max-w-3xl mx-auto px-4 py-5 pb-24 sm:pb-8">
         <AnimatePresence mode="wait" custom={tabDir}>
+
           {activeTab === 'dashboard' && (
             <motion.div key="dashboard" custom={tabDir} variants={tabVariants}
               initial="initial" animate="animate" exit="exit" className="space-y-4">
@@ -257,18 +244,15 @@ function AuthenticatedApp() {
                 </div>
               ) : currentData ? (
                 <>
-                  {/* Calendar toast */}
                   <MacroCalendarBanner symbol={selectedCrypto} />
 
-                  {/* Synthetic candles warning */}
                   {currentData.candlesSource === 'synthetic' && (
-                    <div className="flex items-start gap-2.5 p-3 bg-amber-500/[0.08] border border-amber-500/20 rounded-xl text-amber-400 text-xs">
+                    <div className="flex items-start gap-2.5 p-3 bg-amber-500/[0.07] border border-amber-500/20 rounded-xl text-amber-400 text-xs">
                       <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                       <span>Indicadores basados en datos sintéticos. Refrescá para reintentar.</span>
                     </div>
                   )}
 
-                  {/* HERO — chart + decisión */}
                   <MarketHero
                     symbol={selectedCrypto}
                     price={currentData.price}
@@ -278,34 +262,36 @@ function AuthenticatedApp() {
                     onOpenDetails={() => setSheetOpen(true)}
                   />
 
-                  {/* PAXG: contexto macro de oro */}
                   {selectedCrypto === 'PAXG' && currentData.marketMode?.goldContext && (
                     <MacroContext goldContext={currentData.marketMode.goldContext} />
                   )}
 
-                  {/* Órdenes específicas (BUY/SELL) — accionables, siempre visibles */}
                   {decisionLoading ? (
                     <div className="flex items-center justify-center py-8">
                       <Spinner />
                     </div>
                   ) : (
-                    <DecisionPanel decision={currentDecision} portfolioSummary={portfolioSummary} compact />
+                    <DecisionPanel
+                      decision={currentDecision}
+                      portfolioSummary={portfolioSummary}
+                      compact
+                      onOpenDetails={() => setSheetOpen(true)}
+                    />
                   )}
 
-                  {/* Empty state si no hay decisión todavía */}
                   {!currentDecision && !decisionLoading && (
                     <button
                       onClick={() => setSheetOpen(true)}
-                      className="w-full py-4 rounded-2xl bg-blue-500/10 border border-blue-500/30 text-blue-400 text-sm font-medium
-                                 hover:bg-blue-500/15 transition-colors"
+                      className="w-full py-4 rounded-2xl bg-violet-500/10 border border-violet-500/25 text-violet-400 text-sm font-medium
+                                 hover:bg-violet-500/15 transition-colors"
                     >
                       Configurá tu posición para ver una señal personalizada →
                     </button>
                   )}
                 </>
               ) : (
-                <div className="text-center py-16 rounded-2xl bg-slate-900/50 border border-white/[0.05]">
-                  <p className="text-slate-500 text-sm">No se pudieron cargar los datos. Intenta refrescar.</p>
+                <div className="text-center py-16 rounded-2xl bg-slate-900/40 border border-white/[0.05]">
+                  <p className="text-slate-500 text-sm">No se pudieron cargar los datos. Intentá refrescar.</p>
                 </div>
               )}
             </motion.div>
@@ -317,17 +303,16 @@ function AuthenticatedApp() {
               <PortfolioSection />
             </motion.div>
           )}
+
         </AnimatePresence>
       </main>
 
-      {/* ── Onboarding overlay ───────────────────────────────────────────────── */}
+      {/* ── Onboarding ───────────────────────────────────────────────────────── */}
       <AnimatePresence>
-        {showOnboarding && (
-          <OnboardingOverlay onDone={() => setShowOnboarding(false)} />
-        )}
+        {showOnboarding && <OnboardingOverlay onDone={() => setShowOnboarding(false)} />}
       </AnimatePresence>
 
-      {/* ── Details bottom sheet ─────────────────────────────────────────────── */}
+      {/* ── Details sheet ────────────────────────────────────────────────────── */}
       <DetailsSheet
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}
@@ -338,16 +323,53 @@ function AuthenticatedApp() {
         decisionLoading={decisionLoading}
       />
 
-      {/* ── Floating chat ───────────────────────────────────────────────────── */}
+      {/* ── Floating chat ─────────────────────────────────────────────────────── */}
       <FloatingChat />
 
-      {/* ── Footer ───────────────────────────────────────────────────────────── */}
-      <footer className="border-t border-white/[0.04] mt-12 py-5"
-              style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+      {/* ── Mobile bottom tab bar ─────────────────────────────────────────────── */}
+      <BottomTabBar activeTab={activeTab} onTabChange={switchTab} />
+
+      {/* ── Footer (desktop only) ─────────────────────────────────────────────── */}
+      <footer className="hidden sm:block border-t border-white/[0.04] mt-8 py-5">
         <p className="text-center text-[11px] text-slate-700">
           Crypto Context · Herramienta de análisis personal. No constituye asesoramiento financiero.
         </p>
       </footer>
     </div>
+  );
+}
+
+// ── Bottom tab bar (mobile only) ──────────────────────────────────────────────
+function BottomTabBar({ activeTab, onTabChange }) {
+  return (
+    <nav
+      className="sm:hidden fixed bottom-0 left-0 right-0 z-40
+                 bg-[#060916]/95 backdrop-blur-xl border-t border-white/[0.06]"
+      style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+    >
+      <div className="flex">
+        {TABS.map(tab => {
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => onTabChange(tab.id)}
+              className={`flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 transition-all relative
+                ${isActive ? 'text-violet-400' : 'text-slate-600 hover:text-slate-400'}`}
+            >
+              {isActive && (
+                <motion.div
+                  layoutId="bottom-tab-indicator"
+                  className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-violet-500 rounded-full"
+                  transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                />
+              )}
+              <tab.icon className="w-5 h-5" />
+              <span className="text-[10px] font-medium">{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </nav>
   );
 }

@@ -1,34 +1,30 @@
-// Selector de criptomoneda — acepta una lista dinámica de símbolos
 const CRYPTO_META = {
-  BTC:  { label: 'Bitcoin',  colorClass: 'text-orange-400 border-orange-500 bg-orange-500/20', icon: '₿' },
-  ETH:  { label: 'Ethereum', colorClass: 'text-blue-400 border-blue-500 bg-blue-500/20',       icon: 'Ξ' },
-  PAXG: { label: 'PAX Gold', colorClass: 'text-yellow-400 border-yellow-500 bg-yellow-500/20', icon: 'Au' },
+  BTC:  { label: 'Bitcoin',  icon: '₿', active: 'text-orange-300 border-orange-500/60 bg-orange-500/15 shadow-orange-500/15' },
+  ETH:  { label: 'Ethereum', icon: 'Ξ', active: 'text-blue-300  border-blue-500/60  bg-blue-500/15  shadow-blue-500/15'  },
+  PAXG: { label: 'PAX Gold', icon: 'Au', active: 'text-yellow-300 border-yellow-500/60 bg-yellow-500/15 shadow-yellow-500/15' },
 };
 
-const UNSELECTED_CLASS = 'bg-gray-800 border-2 border-gray-700 text-gray-400 hover:border-gray-600';
+const INACTIVE = 'text-slate-500 border-white/[0.07] bg-slate-800/40 hover:border-white/[0.14] hover:text-slate-300';
 
 export function CryptoSelector({ selected, onSelect, cryptos = ['BTC', 'PAXG'] }) {
   return (
-    <div className="flex gap-1 sm:gap-2">
+    <div className="flex gap-1.5">
       {cryptos.map((id) => {
-        const meta = CRYPTO_META[id] ?? { label: id, colorClass: 'text-slate-400 border-slate-500 bg-slate-500/20', icon: id[0] };
-        const isSelected = selected === id;
+        const meta     = CRYPTO_META[id] ?? { label: id, icon: id[0], active: 'text-violet-300 border-violet-500/60 bg-violet-500/15 shadow-violet-500/15' };
+        const isActive = selected === id;
         return (
           <button
             key={id}
             onClick={() => onSelect(id)}
-            className={`
-              flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg font-medium transition-all text-sm sm:text-base
-              ${isSelected
-                ? `border-2 ${meta.colorClass}`
-                : UNSELECTED_CLASS
-              }
-            `}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-sm font-semibold
+                        border-2 transition-all duration-200
+                        ${isActive ? `${meta.active} shadow-lg` : INACTIVE}`}
           >
-            <span className="w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center font-bold text-xs sm:text-sm">
+            <span className="w-4 h-4 flex items-center justify-center font-bold text-[11px]">
               {meta.icon}
             </span>
-            <span>{id}</span>
+            <span className="hidden xs:inline">{id}</span>
+            <span className="xs:hidden">{id}</span>
           </button>
         );
       })}
