@@ -1,4 +1,4 @@
-// Análisis con Groq (Llama 3.3 70B, free tier ~14,400 req/día)
+// Análisis con Groq (moonshotai/kimi-k2-instruct)
 // 1. analyzeGoldSentiment     — sentimiento macro para oro/PAXG (caché 2h)
 // 2. translateHeadlines       — traducción de titulares al español (caché 2h)
 // 3. analyzeCalendarRisk      — modulación de decisión por eventos macro (caché 4h)
@@ -17,28 +17,17 @@ function getClient() {
   return groqClient;
 }
 
-/**
- * Analiza el sentimiento del mercado de oro con Groq Llama 3.1 70B.
- *
- * @param {string[]} headlines - Titulares de noticias recientes
- * @param {{ dxy, tenYearYield }} macroData - Datos macroeconómicos
- * @returns {{ sentiment, score, reasoning, keyFactors }}
- */
 export async function analyzeGoldSentiment(headlines, macroData) {
   const client = getClient();
 
   const macroLines = [];
   if (macroData?.dxy) {
     const sign = macroData.dxy.changePercent >= 0 ? '+' : '';
-    macroLines.push(
-      `- DXY (US Dollar Index): ${macroData.dxy.value.toFixed(2)} (${sign}${macroData.dxy.changePercent.toFixed(2)}% hoy)`
-    );
+    macroLines.push(`- DXY (US Dollar Index): ${macroData.dxy.value.toFixed(2)} (${sign}${macroData.dxy.changePercent.toFixed(2)}% hoy)`);
   }
   if (macroData?.tenYearYield) {
     const sign = macroData.tenYearYield.changePercent >= 0 ? '+' : '';
-    macroLines.push(
-      `- Bono EE.UU. 10 años (nominal): ${macroData.tenYearYield.value.toFixed(2)}% (${sign}${macroData.tenYearYield.changePercent.toFixed(2)}% hoy)`
-    );
+    macroLines.push(`- Bono EE.UU. 10 años (nominal): ${macroData.tenYearYield.value.toFixed(2)}% (${sign}${macroData.tenYearYield.changePercent.toFixed(2)}% hoy)`);
   }
   if (macroData?.realYield) {
     const { value: ry, sentiment: rySent } = macroData.realYield;
@@ -59,15 +48,10 @@ export async function analyzeGoldSentiment(headlines, macroData) {
       crowded_long:    'extremo largo especulativo → riesgo de corrección (posición abarrotada)'
     }[cotSent] ?? cotSent;
     const wkSign = weekChange >= 0 ? '+' : '';
-    macroLines.push(
-      `- COT CFTC (posición especulativa neta en futuros de oro): ${(netSpec / 1000).toFixed(0)}k contratos (${cotLabel}), cambio semanal: ${wkSign}${(weekChange / 1000).toFixed(0)}k`
-    );
+    macroLines.push(`- COT CFTC (posición especulativa neta en futuros de oro): ${(netSpec / 1000).toFixed(0)}k contratos (${cotLabel}), cambio semanal: ${wkSign}${(weekChange / 1000).toFixed(0)}k`);
   }
-  const macroText = macroLines.length > 0
-    ? macroLines.join('\n')
-    : 'Sin datos macroeconómicos disponibles';
+  const macroText = macroLines.length > 0 ? macroLines.join('\n') : 'Sin datos macroeconómicos disponibles';
 
-  // Incluir antigüedad en cada titular para que Groq pese noticias recientes más
   function headlineAge(h) {
     if (!h.pubDate) return '';
     const min = Math.floor((Date.now() - new Date(h.pubDate).getTime()) / 60000);
@@ -108,22 +92,17 @@ Respondé SOLO con un objeto JSON válido (sin markdown, sin texto extra):
 }`;
 
   const completion = await client.chat.completions.create({
-    model: 'llama-3.3-70b-versatile',
+    model: 'moonshotai/kimi-k2-instruct',
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.2,
     max_tokens: 350
   });
 
   const content = completion.choices[0]?.message?.content ?? '';
-
-  // Extract JSON — model sometimes wraps it in ```json ... ```
   const jsonMatch = content.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    throw new Error(`Groq response did not contain JSON. Raw: ${content.slice(0, 200)}`);
-  }
+  if (!jsonMatch) throw new Error(`Groq response did not contain JSON. Raw: ${content.slice(0, 200)}`);
 
   const parsed = JSON.parse(jsonMatch[0]);
-
   const validSentiments = ['bullish', 'neutral', 'bearish'];
   return {
     sentiment: validSentiments.includes(parsed.sentiment) ? parsed.sentiment : 'neutral',
@@ -133,20 +112,11 @@ Respondé SOLO con un objeto JSON válido (sin markdown, sin texto extra):
   };
 }
 
-/**
- * Traduce un array de titulares al español en una sola llamada a Groq.
- * Devuelve los mismos objetos con el campo `title` traducido.
- * Si Groq falla, devuelve los titulares originales sin modificar.
- *
- * @param {Array<{title,url,source,pubDate}>} headlines
- * @returns {Promise<Array<{title,url,source,pubDate}>>}
- */
 export async function translateHeadlines(headlines) {
   if (!headlines.length) return headlines;
   const client = getClient();
 
   const numbered = headlines.map((h, i) => `${i + 1}. ${h.title}`).join('\n');
-
   const prompt = `Traducí al español rioplatense (Argentina) cada uno de estos titulares financieros.
 Mantené nombres propios, siglas (Fed, DXY, CPI, NFP) y cifras tal como están.
 Respondé ÚNICAMENTE con un array JSON de strings, en el mismo orden, sin texto extra:
@@ -156,39 +126,25 @@ TITULARES:
 ${numbered}`;
 
   const completion = await client.chat.completions.create({
-    model:       'llama-3.3-70b-versatile',
+    model:       'moonshotai/kimi-k2-instruct',
     messages:    [{ role: 'user', content: prompt }],
     temperature: 0.1,
     max_tokens:  600
   });
 
-  const content   = completion.choices[0]?.message?.content ?? '';
+  const content    = completion.choices[0]?.message?.content ?? '';
   const arrayMatch = content.match(/\[[\s\S]*\]/);
   if (!arrayMatch) throw new Error('Translation response has no JSON array');
 
   const translated = JSON.parse(arrayMatch[0]);
-  if (!Array.isArray(translated) || translated.length !== headlines.length) {
-    throw new Error('Translation array length mismatch');
-  }
+  if (!Array.isArray(translated) || translated.length !== headlines.length) throw new Error('Translation array length mismatch');
 
   return headlines.map((h, i) => ({
     ...h,
-    title: typeof translated[i] === 'string' && translated[i].trim()
-      ? translated[i].trim()
-      : h.title
+    title: typeof translated[i] === 'string' && translated[i].trim() ? translated[i].trim() : h.title
   }));
 }
 
-/**
- * Evalúa si una señal de inversión debe modularse por eventos macro próximos.
- * Llama razona sobre el contexto completo y devuelve instrucciones concretas.
- *
- * @param {string}   asset          - 'BTC' | 'PAXG'
- * @param {object}   decision       - { action, strength, reason }
- * @param {Array}    upcomingEvents - eventos de macroCalendar dentro de 7 días
- * @param {object}   marketCtx      - { mode, currentZone, rsi, goldSentiment? }
- * @returns {{ modulate, action, strength, capitalFraction, reasoning, calendarNote }}
- */
 export async function analyzeCalendarRisk(asset, decision, upcomingEvents, marketCtx = {}) {
   const client = getClient();
 
@@ -201,7 +157,7 @@ export async function analyzeCalendarRisk(asset, decision, upcomingEvents, marke
     .join('\n');
 
   const mktText = [
-    marketCtx.mode      && `Modo de mercado: ${marketCtx.mode}`,
+    marketCtx.mode        && `Modo de mercado: ${marketCtx.mode}`,
     marketCtx.currentZone && `Zona actual: ${marketCtx.currentZone}`,
     marketCtx.rsi != null && `RSI: ${marketCtx.rsi.toFixed(1)}`,
     marketCtx.goldSentiment && `Sentimiento IA sobre oro: ${marketCtx.goldSentiment}`
@@ -235,17 +191,15 @@ Guía de criterio:
 - Sin eventos inminentes o señal débil existente → modulate=false`;
 
   const completion = await client.chat.completions.create({
-    model: 'llama-3.3-70b-versatile',
+    model: 'moonshotai/kimi-k2-instruct',
     messages: [{ role: 'user', content: prompt }],
-    temperature: 0.15,   // baja temperatura: queremos juicio consistente
+    temperature: 0.15,
     max_tokens: 250
   });
 
-  const content = completion.choices[0]?.message?.content ?? '';
+  const content   = completion.choices[0]?.message?.content ?? '';
   const jsonMatch = content.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    throw new Error(`Calendar risk response has no JSON. Raw: ${content.slice(0, 200)}`);
-  }
+  if (!jsonMatch) throw new Error(`Calendar risk response has no JSON. Raw: ${content.slice(0, 200)}`);
 
   const p = JSON.parse(jsonMatch[0]);
   const validActions   = ['BUY', 'WAIT', 'SELL'];
@@ -253,30 +207,14 @@ Guía de criterio:
 
   return {
     modulate:        p.modulate === true,
-    action:          validActions.includes(p.action)    ? p.action    : decision.action,
+    action:          validActions.includes(p.action)     ? p.action    : decision.action,
     strength:        validStrengths.includes(p.strength) ? p.strength  : decision.strength,
-    capitalFraction: typeof p.capitalFraction === 'number'
-                       ? Math.max(0, Math.min(1, p.capitalFraction))
-                       : 1.0,
+    capitalFraction: typeof p.capitalFraction === 'number' ? Math.max(0, Math.min(1, p.capitalFraction)) : 1.0,
     reasoning:    typeof p.reasoning    === 'string' ? p.reasoning    : '',
     calendarNote: typeof p.calendarNote === 'string' ? p.calendarNote : ''
   };
 }
 
-/**
- * Genera una nota personalizada analizando la posición real del usuario.
- * Considera P&L actual, historial de compras, capital desplegado y la señal técnica.
- * Se cachea 1h porque cambia con el precio pero no en cada carga.
- *
- * @param {string} asset            - 'BTC' | 'ETH' | 'PAXG'
- * @param {number} currentPrice
- * @param {object} indicators       - { rsi, trendShort, trendLong }
- * @param {object} portfolioCtx     - { units, avgBuyPrice, netInvested, allBuys, operations }
- * @param {object} userState        - { cashPercent, totalCapital }
- * @param {object} decision         - { action, strength, recommendation }
- * @param {Array}  recentDecisions  - últimas N decisiones del sistema para este activo
- * @returns {{ insight: string, optimalEntryPrice: number|null }}
- */
 export async function generatePortfolioInsight(asset, currentPrice, indicators, portfolioCtx, userState, decision, recentDecisions = []) {
   const client = getClient();
 
@@ -286,13 +224,9 @@ export async function generatePortfolioInsight(asset, currentPrice, indicators, 
   const unrealizedPnl    = (currentPrice - avgBuyPrice) * units;
   const unrealizedPnlPct = avgBuyPrice > 0 ? ((currentPrice - avgBuyPrice) / avgBuyPrice) * 100 : 0;
   const deployedPct      = totalCapital > 0 ? (netInvested / totalCapital) * 100 : null;
-
-  const firstBuy       = allBuys[0] ?? null;
-  const daysSinceFirst = firstBuy
-    ? Math.floor((Date.now() - new Date(firstBuy.date).getTime()) / 86400000)
-    : null;
-
-  const assetName = asset === 'PAXG' ? 'PAXG (oro tokenizado)' : asset === 'ETH' ? 'Ethereum (ETH)' : 'Bitcoin (BTC)';
+  const firstBuy         = allBuys[0] ?? null;
+  const daysSinceFirst   = firstBuy ? Math.floor((Date.now() - new Date(firstBuy.date).getTime()) / 86400000) : null;
+  const assetName        = asset === 'PAXG' ? 'PAXG (oro tokenizado)' : asset === 'ETH' ? 'Ethereum (ETH)' : 'Bitcoin (BTC)';
 
   const buysText = allBuys.length > 0
     ? allBuys.map((b, i) => {
@@ -302,26 +236,21 @@ export async function generatePortfolioInsight(asset, currentPrice, indicators, 
       }).join('\n')
     : '  Sin historial disponible';
 
-  const pnlSign   = unrealizedPnl >= 0 ? '+' : '';
-  const pnlColor  = unrealizedPnl >= 0 ? 'GANANCIA' : 'PÉRDIDA';
-  const deployed  = deployedPct != null
+  const pnlSign  = unrealizedPnl >= 0 ? '+' : '';
+  const pnlColor = unrealizedPnl >= 0 ? 'GANANCIA' : 'PÉRDIDA';
+  const deployed = deployedPct != null
     ? `$${Math.round(netInvested).toLocaleString('en-US')} de $${Math.round(totalCapital).toLocaleString('en-US')} totales (${deployedPct.toFixed(1)}% invertido · ${(100 - deployedPct).toFixed(1)}% libre en cash)`
     : `$${Math.round(netInvested).toLocaleString('en-US')} USD invertidos`;
 
-  // Formatear historial de señales del sistema con resultado retrospectivo
   const decisionsText = recentDecisions.length > 0
     ? recentDecisions.map(d => {
         const ts = d.timestamp?.toDate ? d.timestamp.toDate() : new Date(d.timestamp);
         const daysAgo = Math.floor((Date.now() - ts.getTime()) / 86400000);
         const timeLabel = daysAgo === 0 ? 'hoy' : daysAgo === 1 ? 'ayer' : `hace ${daysAgo}d`;
         const priceAtDecision = d.price ?? 0;
-        const pnlPct = priceAtDecision > 0
-          ? ((currentPrice - priceAtDecision) / priceAtDecision) * 100
-          : null;
+        const pnlPct = priceAtDecision > 0 ? ((currentPrice - priceAtDecision) / priceAtDecision) * 100 : null;
         const outcome = pnlPct != null
-          ? (pnlPct >= 0
-              ? `→ hoy ${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}% ✓`
-              : `→ hoy ${pnlPct.toFixed(1)}% ✗`)
+          ? (pnlPct >= 0 ? `→ hoy ${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}% ✓` : `→ hoy ${pnlPct.toFixed(1)}% ✗`)
           : '';
         return `  [${timeLabel}] ${d.decision} @ $${Math.round(priceAtDecision).toLocaleString('en-US')} ${outcome}`;
       }).join('\n')
@@ -366,19 +295,19 @@ Respondé SOLO con JSON válido (sin markdown):
 }`;
 
   const completion = await client.chat.completions.create({
-    model:       'llama-3.3-70b-versatile',
+    model:       'moonshotai/kimi-k2-instruct',
     messages:    [{ role: 'user', content: prompt }],
     temperature: 0.3,
     max_tokens:  280
   });
 
-  const content    = completion.choices[0]?.message?.content ?? '';
-  const jsonMatch  = content.match(/\{[\s\S]*\}/);
+  const content   = completion.choices[0]?.message?.content ?? '';
+  const jsonMatch = content.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error(`Portfolio insight response has no JSON. Raw: ${content.slice(0, 200)}`);
 
   const parsed = JSON.parse(jsonMatch[0]);
   return {
-    insight:            typeof parsed.insight === 'string' ? parsed.insight.trim() : '',
-    optimalEntryPrice:  typeof parsed.optimalEntryPrice === 'number' ? parsed.optimalEntryPrice : null
+    insight:           typeof parsed.insight === 'string' ? parsed.insight.trim() : '',
+    optimalEntryPrice: typeof parsed.optimalEntryPrice === 'number' ? parsed.optimalEntryPrice : null
   };
 }
