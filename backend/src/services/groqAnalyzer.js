@@ -108,7 +108,7 @@ Respondé SOLO con un objeto JSON válido (sin markdown, sin texto extra):
 }`;
 
   const completion = await client.chat.completions.create({
-    model: 'moonshotai/kimi-k2-instruct-0905',
+    model: 'openai/gpt-oss-120b',
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.2,
     max_tokens: 350
@@ -156,7 +156,7 @@ TITULARES:
 ${numbered}`;
 
   const completion = await client.chat.completions.create({
-    model:       'moonshotai/kimi-k2-instruct-0905',
+    model:       'openai/gpt-oss-120b',
     messages:    [{ role: 'user', content: prompt }],
     temperature: 0.1,
     max_tokens:  600
@@ -235,7 +235,7 @@ Guía de criterio:
 - Sin eventos inminentes o señal débil existente → modulate=false`;
 
   const completion = await client.chat.completions.create({
-    model: 'moonshotai/kimi-k2-instruct-0905',
+    model: 'openai/gpt-oss-120b',
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.15,   // baja temperatura: queremos juicio consistente
     max_tokens: 250
@@ -366,7 +366,7 @@ Respondé SOLO con JSON válido (sin markdown):
 }`;
 
   const completion = await client.chat.completions.create({
-    model:       'moonshotai/kimi-k2-instruct-0905',
+    model:       'openai/gpt-oss-120b',
     messages:    [{ role: 'user', content: prompt }],
     temperature: 0.3,
     max_tokens:  280
