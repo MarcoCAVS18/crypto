@@ -95,7 +95,7 @@ Respondé SOLO con un objeto JSON válido (sin markdown, sin texto extra):
     model: 'moonshotai/kimi-k2-instruct',
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.2,
-    max_tokens: 350
+    max_tokens: 600
   });
 
   const content = completion.choices[0]?.message?.content ?? '';
@@ -194,7 +194,7 @@ Guía de criterio:
     model: 'moonshotai/kimi-k2-instruct',
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.15,
-    max_tokens: 250
+    max_tokens: 400
   });
 
   const content   = completion.choices[0]?.message?.content ?? '';
@@ -298,7 +298,7 @@ Respondé SOLO con JSON válido (sin markdown):
     model:       'moonshotai/kimi-k2-instruct',
     messages:    [{ role: 'user', content: prompt }],
     temperature: 0.3,
-    max_tokens:  280
+    max_tokens:  450
   });
 
   const content   = completion.choices[0]?.message?.content ?? '';
