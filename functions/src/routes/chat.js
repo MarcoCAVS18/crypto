@@ -64,15 +64,13 @@ router.post('/', async (req, res) => {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) return res.status(503).json({ error: 'AI no disponible' });
 
-  // Keep only last 6 exchanges (12 messages) for better context
   const trimmedHistory = history.slice(-12);
-
   const systemContent = SYSTEM_PROMPT + buildContextBlock(context);
 
   try {
     const groq = new Groq({ apiKey });
     const completion = await groq.chat.completions.create({
-      model:       'openai/gpt-oss-120b',
+      model:       'moonshotai/kimi-k2-instruct',
       max_tokens:  200,
       temperature: 0.4,
       messages: [
