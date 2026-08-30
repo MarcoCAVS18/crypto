@@ -46,11 +46,6 @@ jobs:
       - name: Write service account credentials
         run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > /tmp/sa.json
 
-      # ── Write functions runtime env vars ──────────────────────────────────
-      # Firebase lee functions/.env como variables de entorno del runtime.
-      - name: Write functions .env
-        run: echo "GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}" > functions/.env
-
       # ── Deploy ────────────────────────────────────────────────────────────
       - name: Deploy to Firebase
         run: |
