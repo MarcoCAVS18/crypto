@@ -8,7 +8,7 @@ import { ProfileSelector } from './components/ProfileSelector';
 import { MarketHero } from './components/MarketHero';
 import { DetailsSheet } from './components/DetailsSheet';
 import { DecisionPanel } from './components/DecisionPanel';
-import { MacroContext } from './components/MacroContext';
+import { MacroContext, CryptoNewsContext } from './components/MacroContext';
 import { MacroCalendarBanner } from './components/MacroCalendarBanner';
 import { PortfolioSection } from './components/PortfolioSection';
 import { PriceAlertBanner } from './components/PriceAlertBanner';
@@ -264,6 +264,10 @@ function AuthenticatedApp() {
 
                   {selectedCrypto === 'PAXG' && currentData.marketMode?.goldContext && (
                     <MacroContext goldContext={currentData.marketMode.goldContext} />
+                  )}
+
+                  {(selectedCrypto === 'BTC' || selectedCrypto === 'ETH') && currentData.newsContext && (
+                    <CryptoNewsContext context={currentData.newsContext} symbol={selectedCrypto} />
                   )}
 
                   {decisionLoading ? (

@@ -1,5 +1,5 @@
 // Autenticación por PIN usando Firestore + Web Crypto API (sin librerías externas)
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
 const COL = 'user_profiles';
@@ -43,4 +43,20 @@ export async function verifyPin(userId, pin) {
   const { pinHash } = snap.data();
   const attemptHash = await hashPin(pin, userId);
   return attemptHash === pinHash;
+}
+
+// ── Guarda los coins elegidos por el usuario ──────────────────────────────────
+
+export async function saveUserCryptos(userId, cryptos) {
+  const ref = doc(db, COL, userId);
+  await updateDoc(ref, { cryptos });
+}
+
+// ── Carga los coins guardados en Firestore (null si no hay documento) ─────────
+
+export async function getUserCryptos(userId) {
+  const ref = doc(db, COL, userId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return null;
+  return snap.data().cryptos ?? null;
 }
