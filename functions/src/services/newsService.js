@@ -165,12 +165,26 @@ export async function getEthHeadlines() {
 }
 
 /**
+ * Obtiene noticias de cualquier token via Google News genérico.
+ * @param {string} symbol
+ * @returns {Promise<Array<{title,url,source,pubDate}>>}
+ */
+export async function getTokenHeadlines(symbol) {
+  const feeds = [
+    `https://news.google.com/rss/search?q=${symbol}+crypto+price+when:2d&hl=en-US&gl=US&ceid=US:en`,
+    `https://news.google.com/rss/search?q=${symbol}+cryptocurrency+market+when:2d&hl=en-US&gl=US&ceid=US:en`,
+  ];
+  return fetchHeadlines(feeds, symbol);
+}
+
+/**
  * Dispatcher genérico — obtiene noticias según el símbolo.
- * @param {'BTC'|'ETH'|'PAXG'} symbol
+ * @param {string} symbol
  * @returns {Promise<Array<{title,url,source,pubDate}>>}
  */
 export async function getAssetHeadlines(symbol) {
   if (symbol === 'PAXG') return getGoldHeadlines();
   if (symbol === 'ETH')  return getEthHeadlines();
-  return getBtcHeadlines(); // BTC por defecto
+  if (symbol === 'BTC')  return getBtcHeadlines();
+  return getTokenHeadlines(symbol);
 }

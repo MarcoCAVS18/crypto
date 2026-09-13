@@ -25,11 +25,4 @@ export const PROFILES = {
   },
 };
 
-// Activos disponibles para selección en el onboarding
-export const SELECTABLE_CRYPTOS = [
-  { symbol: 'BTC',  label: 'Bitcoin',   sub: 'La cripto más consolidada' },
-  { symbol: 'ETH',  label: 'Ethereum',  sub: 'Smart contracts y DeFi' },
-  { symbol: 'PAXG', label: 'PAXG',      sub: 'Oro tokenizado 1:1' },
-];
-
 export const PROFILE_LIST = Object.values(PROFILES);
