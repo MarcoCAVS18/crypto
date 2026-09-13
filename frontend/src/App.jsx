@@ -14,7 +14,8 @@ import { PortfolioSection } from './components/PortfolioSection';
 import { PriceAlertBanner } from './components/PriceAlertBanner';
 import { OnboardingOverlay, useOnboarding } from './components/OnboardingOverlay';
 import { FloatingChat } from './components/FloatingChat';
-import { RefreshCw, AlertCircle, X, LayoutDashboard, Briefcase, AlertTriangle } from 'lucide-react';
+import { ProfileSettingsSheet } from './components/ProfileSettingsSheet';
+import { RefreshCw, AlertCircle, X, LayoutDashboard, Briefcase, AlertTriangle, Settings } from 'lucide-react';
 import { formatRelativeTime } from './utils/formatters';
 import { AUTO_REFRESH_INTERVAL } from './utils/constants';
 import { requestPermission, isSupported, getPermission } from './services/notifications';
@@ -41,7 +42,8 @@ export default function App() {
 function AuthenticatedApp() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [tabDir, setTabDir]       = useState(1);
-  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetOpen, setSheetOpen]         = useState(false);
+  const [settingsOpen, setSettingsOpen]   = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(useOnboarding());
 
   const {
@@ -53,7 +55,7 @@ function AuthenticatedApp() {
   } = useAppStore();
 
   const { currentUser, logout } = useAuthStore();
-  const profileCryptos = currentUser.cryptos ?? ['BTC', 'PAXG'];
+  const profileCryptos = currentUser?.cryptos?.length > 0 ? currentUser.cryptos : ['BTC', 'PAXG'];
 
   useEffect(() => {
     setUserId(currentUser.id);
@@ -163,7 +165,7 @@ function AuthenticatedApp() {
             ))}
           </nav>
 
-          {/* Right: last update + refresh + user */}
+          {/* Right: last update + refresh + settings + user */}
           <div className="flex items-center gap-2">
             {lastUpdate && (
               <span className="text-[11px] text-slate-600 hidden sm:block tabular">
@@ -178,6 +180,15 @@ function AuthenticatedApp() {
                          hover:bg-slate-700/60 transition-colors disabled:opacity-40"
             >
               <RefreshCw className={`w-4 h-4 text-slate-400 ${loading ? 'animate-spin' : ''}`} />
+            </motion.button>
+            <motion.button
+              onClick={() => setSettingsOpen(true)}
+              whileTap={{ scale: 0.93 }}
+              title="Editar activos"
+              className="w-8 h-8 rounded-lg bg-slate-800/50 border border-white/[0.06] flex items-center justify-center
+                         hover:bg-slate-700/60 transition-colors"
+            >
+              <Settings className="w-4 h-4 text-slate-400" />
             </motion.button>
             <motion.button
               onClick={handleLogout}
@@ -310,6 +321,20 @@ function AuthenticatedApp() {
 
         </AnimatePresence>
       </main>
+
+      {/* ── Profile settings ─────────────────────────────────────────────────── */}
+      <ProfileSettingsSheet
+        open={settingsOpen}
+        onClose={() => {
+          setSettingsOpen(false);
+          // Si el crypto activo ya no está en las coins, cambiar al primero
+          const updatedCryptos = useAuthStore.getState().currentUser?.cryptos ?? profileCryptos;
+          if (!updatedCryptos.includes(selectedCrypto) && updatedCryptos.length > 0) {
+            setSelectedCrypto(updatedCryptos[0]);
+            loadCryptoData(updatedCryptos[0]);
+          }
+        }}
+      />
 
       {/* ── Onboarding ───────────────────────────────────────────────────────── */}
       <AnimatePresence>
