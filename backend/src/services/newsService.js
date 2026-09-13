@@ -1,4 +1,4 @@
-// Headlines de noticias sobre oro y macro — múltiples fuentes RSS
+// Headlines de noticias sobre oro, BTC y ETH — múltiples fuentes RSS
 // Retorna objetos { title, url, source, pubDate } ordenados por fecha
 
 import https from 'https';
@@ -8,7 +8,7 @@ const MAX_AGE_MS   = 72 * 60 * 60 * 1000; // descartar noticias > 72h
 const MAX_PER_FEED = 10;
 const TIMEOUT_MS   = 10000;
 
-const RSS_FEEDS = [
+const RSS_FEEDS_GOLD = [
   // Google News — ángulo financiero/macro
   'https://news.google.com/rss/search?q=gold+price+dollar+federal+reserve+treasury&hl=en-US&gl=US&ceid=US:en',
   // Google News — ángulo geopolítico
@@ -17,6 +17,26 @@ const RSS_FEEDS = [
   'https://www.kitco.com/rss/news.rss',
   // Yahoo Finance — ETF GLD y mercados de oro
   'https://finance.yahoo.com/rss/headline?s=GLD&region=US&lang=en-US'
+];
+
+const RSS_FEEDS_BTC = [
+  // Google News — precio y mercado Bitcoin
+  'https://news.google.com/rss/search?q=bitcoin+price+BTC+when:2d&hl=en-US&gl=US&ceid=US:en',
+  // Google News — macro y regulación cripto
+  'https://news.google.com/rss/search?q=bitcoin+federal+reserve+ETF+crypto+regulation+when:2d&hl=en-US&gl=US&ceid=US:en',
+  // CoinTelegraph — Bitcoin
+  'https://cointelegraph.com/rss/tag/bitcoin',
+  // Yahoo Finance — ticker BTC-USD
+  'https://finance.yahoo.com/rss/headline?s=BTC-USD&region=US&lang=en-US'
+];
+
+const RSS_FEEDS_ETH = [
+  // Google News — Ethereum precio
+  'https://news.google.com/rss/search?q=ethereum+ETH+price+when:2d&hl=en-US&gl=US&ceid=US:en',
+  // Google News — Ethereum L2, staking, EIP
+  'https://news.google.com/rss/search?q=ethereum+staking+layer2+defi+when:2d&hl=en-US&gl=US&ceid=US:en',
+  // CoinTelegraph — Ethereum
+  'https://cointelegraph.com/rss/tag/ethereum',
 ];
 
 function fetchUrl(url, redirectCount = 0) {
@@ -91,20 +111,15 @@ function parseRssItems(xml) {
   return items;
 }
 
-/**
- * Obtiene noticias recientes de oro desde múltiples feeds RSS.
- * Descarta artículos con más de 72 horas de antigüedad.
- * @returns {Promise<Array<{title,url,source,pubDate}>>}
- */
-export async function getGoldHeadlines() {
-  const results = await Promise.allSettled(RSS_FEEDS.map(fetchUrl));
+async function fetchHeadlines(feeds, label) {
+  const results = await Promise.allSettled(feeds.map(fetchUrl));
 
   const seen     = new Set();
   const allItems = [];
 
   for (const r of results) {
     if (r.status !== 'fulfilled') {
-      console.warn('[NewsService] Feed failed:', r.reason?.message);
+      console.warn(`[NewsService:${label}] Feed failed:`, r.reason?.message);
       continue;
     }
     for (const item of parseRssItems(r.value)) {
@@ -115,13 +130,30 @@ export async function getGoldHeadlines() {
     }
   }
 
-  // Más recientes primero
   allItems.sort((a, b) => {
     const da = a.pubDate ? new Date(a.pubDate).getTime() : 0;
     const db = b.pubDate ? new Date(b.pubDate).getTime() : 0;
     return db - da;
   });
 
-  console.log(`[NewsService] ${allItems.length} headlines frescos (≤72h, ${RSS_FEEDS.length} feeds)`);
+  console.log(`[NewsService:${label}] ${allItems.length} headlines frescos (≤72h, ${feeds.length} feeds)`);
   return allItems.slice(0, 14);
+}
+
+export async function getGoldHeadlines() {
+  return fetchHeadlines(RSS_FEEDS_GOLD, 'PAXG');
+}
+
+export async function getBtcHeadlines() {
+  return fetchHeadlines(RSS_FEEDS_BTC, 'BTC');
+}
+
+export async function getEthHeadlines() {
+  return fetchHeadlines(RSS_FEEDS_ETH, 'ETH');
+}
+
+export async function getAssetHeadlines(symbol) {
+  if (symbol === 'PAXG') return getGoldHeadlines();
+  if (symbol === 'ETH')  return getEthHeadlines();
+  return getBtcHeadlines();
 }

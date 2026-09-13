@@ -5,6 +5,7 @@ import { calculateZones } from '../services/zoneCalculator.js';
 import { determineMarketMode } from '../services/marketMode.js';
 import { determineGoldMarketMode } from '../services/goldMarketMode.js';
 import { getGoldContext } from '../services/goldContext.js';
+import { getCryptoNewsContext } from '../services/cryptoNewsContext.js';
 import { makeDecision } from '../services/decisionEngine.js';
 import { analyzeCalendarRisk, generatePortfolioInsight } from '../services/groqAnalyzer.js';
 import { getUpcomingEvents } from '../data/macroCalendar.js';
@@ -103,6 +104,15 @@ router.get('/:symbol', async (req, res) => {
       marketMode = determineMarketMode(marketData.price, indicators, volumeAnalysis);
     }
 
+    let newsContext = null;
+    if (symbol.toUpperCase() !== 'PAXG') {
+      try {
+        newsContext = await getCryptoNewsContext(symbol.toUpperCase());
+      } catch (newsErr) {
+        console.warn(`[crypto route] News context error for ${symbol}:`, newsErr.message);
+      }
+    }
+
     res.json({
       symbol: symbol.toUpperCase(),
       timestamp: marketData.timestamp,
@@ -113,6 +123,7 @@ router.get('/:symbol', async (req, res) => {
       marketMode: marketMode,
       zones: zones,
       candlesSource: marketData.candlesSource,
+      newsContext,
       technicalAnalysis: {
         trendShort: indicators.trendShort,
         trendLong: indicators.trendLong,
@@ -136,6 +147,21 @@ router.get('/:symbol', async (req, res) => {
       error: 'Error obteniendo datos del mercado',
       message: error.message
     });
+  }
+});
+
+// POST /api/crypto/:symbol/news/refresh — fuerza actualización del contexto de noticias
+router.post('/:symbol/news/refresh', async (req, res) => {
+  try {
+    const symbol = req.params.symbol.toUpperCase();
+    if (!['BTC', 'ETH'].includes(symbol)) {
+      return res.status(400).json({ error: 'Solo BTC y ETH soportan refresh de noticias' });
+    }
+    const context = await getCryptoNewsContext(symbol, true);
+    res.json(context);
+  } catch (err) {
+    console.error(`[news/refresh] Error for ${req.params.symbol}:`, err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
