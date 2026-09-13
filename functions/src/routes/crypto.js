@@ -5,6 +5,7 @@ import { calculateZones } from '../services/zoneCalculator.js';
 import { determineMarketMode } from '../services/marketMode.js';
 import { determineGoldMarketMode } from '../services/goldMarketMode.js';
 import { getGoldContext } from '../services/goldContext.js';
+import { getCryptoNewsContext } from '../services/cryptoNewsContext.js';
 import { makeDecision } from '../services/decisionEngine.js';
 import { analyzeCalendarRisk, generatePortfolioInsight } from '../services/groqAnalyzer.js';
 import { getUpcomingEvents } from '../data/macroCalendar.js';
@@ -94,6 +95,7 @@ router.get('/:symbol', async (req, res) => {
 
     // Determinar market mode (PAXG usa lógica macro de oro)
     let marketMode;
+    let newsContext = null;
     if (symbol.toUpperCase() === 'PAXG') {
       try {
         const goldCtx = await getGoldContext();
@@ -104,6 +106,12 @@ router.get('/:symbol', async (req, res) => {
       }
     } else {
       marketMode = determineMarketMode(marketData.price, indicators, volumeAnalysis);
+      // Obtener contexto de noticias + sentimiento para BTC/ETH (no bloquea la respuesta)
+      try {
+        newsContext = await getCryptoNewsContext(symbol.toUpperCase());
+      } catch (newsErr) {
+        console.warn(`[crypto route] News context for ${symbol} failed:`, newsErr.message);
+      }
     }
 
     res.json({
@@ -115,6 +123,7 @@ router.get('/:symbol', async (req, res) => {
       low24h: marketData.low24h,
       marketMode: marketMode,
       zones: zones,
+      newsContext,
       candlesSource: marketData.candlesSource,
       technicalAnalysis: {
         trendShort: indicators.trendShort,
@@ -355,5 +364,20 @@ function applyCalendarModulation(decision, calendarRisk) {
     calendarRisk: { capitalFraction, reasoning, calendarNote, originalAction: decision.action }
   };
 }
+
+// POST /api/crypto/:symbol/news/refresh — fuerza recarga de noticias (BTC o ETH)
+router.post('/:symbol/news/refresh', async (req, res) => {
+  const symbol = req.params.symbol.toUpperCase();
+  if (!['BTC', 'ETH'].includes(symbol)) {
+    return res.status(400).json({ error: 'Solo BTC y ETH tienen contexto de noticias cripto' });
+  }
+  try {
+    const context = await getCryptoNewsContext(symbol, true);
+    res.json(context);
+  } catch (err) {
+    console.error(`[POST /news/refresh ${symbol}]`, err);
+    res.status(500).json({ error: `Error refrescando noticias de ${symbol}`, message: err.message });
+  }
+});
 
 export default router;

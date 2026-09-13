@@ -1,8 +1,9 @@
-// Análisis con Groq (Llama 3.3 70B, free tier ~14,400 req/día)
+// Análisis con Groq
 // 1. analyzeGoldSentiment     — sentimiento macro para oro/PAXG (caché 2h)
-// 2. translateHeadlines       — traducción de titulares al español (caché 2h)
-// 3. analyzeCalendarRisk      — modulación de decisión por eventos macro (caché 4h)
-// 4. generatePortfolioInsight — nota personalizada según posición del usuario (caché 1h)
+// 2. analyzeAssetSentiment    — sentimiento para BTC o ETH (caché 2h)
+// 3. translateHeadlines       — traducción de titulares al español (caché 2h)
+// 4. analyzeCalendarRisk      — modulación de decisión por eventos macro (caché 4h)
+// 5. generatePortfolioInsight — nota personalizada según posición del usuario (caché 1h)
 
 import Groq from 'groq-sdk';
 
@@ -129,6 +130,95 @@ Respondé SOLO con un objeto JSON válido (sin markdown, sin texto extra):
     sentiment: validSentiments.includes(parsed.sentiment) ? parsed.sentiment : 'neutral',
     score: typeof parsed.score === 'number' ? Math.max(-1, Math.min(1, parsed.score)) : 0,
     reasoning: typeof parsed.reasoning === 'string' ? parsed.reasoning : '',
+    keyFactors: Array.isArray(parsed.keyFactors) ? parsed.keyFactors.slice(0, 3) : []
+  };
+}
+
+/**
+ * Analiza el sentimiento del mercado para BTC o ETH.
+ * Versión genérica de analyzeGoldSentiment para activos cripto.
+ *
+ * @param {'BTC'|'ETH'} symbol
+ * @param {Array<{title,pubDate}>} headlines
+ * @param {{ dxy, tenYearYield }} macroData
+ * @returns {{ sentiment, score, reasoning, keyFactors }}
+ */
+export async function analyzeAssetSentiment(symbol, headlines, macroData) {
+  const client = getClient();
+
+  const assetDesc = symbol === 'ETH'
+    ? 'Ethereum (ETH) — sensible a actividad DeFi, staking, upgrades de red y flujo de capital cripto'
+    : 'Bitcoin (BTC) — sensible a adopción institucional, ETFs spot, ciclo de halvings y liquidez global';
+
+  const macroLines = [];
+  if (macroData?.dxy) {
+    const sign = macroData.dxy.changePercent >= 0 ? '+' : '';
+    macroLines.push(`- DXY (US Dollar Index): ${macroData.dxy.value.toFixed(2)} (${sign}${macroData.dxy.changePercent.toFixed(2)}% hoy) — dólar fuerte presiona activos de riesgo`);
+  }
+  if (macroData?.tenYearYield) {
+    const sign = macroData.tenYearYield.changePercent >= 0 ? '+' : '';
+    macroLines.push(`- Bono EE.UU. 10 años: ${macroData.tenYearYield.value.toFixed(2)}% (${sign}${macroData.tenYearYield.changePercent.toFixed(2)}% hoy) — yield alto reduce apetito por riesgo`);
+  }
+  const macroText = macroLines.length > 0 ? macroLines.join('\n') : 'Sin datos macro disponibles';
+
+  function headlineAge(h) {
+    if (!h.pubDate) return '';
+    const min = Math.floor((Date.now() - new Date(h.pubDate).getTime()) / 60000);
+    if (min < 60)   return ` [hace ${min}m]`;
+    if (min < 1440) return ` [hace ${Math.floor(min/60)}h]`;
+    return ` [hace ${Math.floor(min/1440)}d]`;
+  }
+
+  const headlinesText = headlines.length > 0
+    ? headlines.map((h, i) => {
+        const title = typeof h === 'string' ? h : h.title;
+        const age   = typeof h === 'object' ? headlineAge(h) : '';
+        return `${i + 1}.${age} ${title}`;
+      }).join('\n')
+    : 'Sin titulares disponibles';
+
+  const prompt = `Sos un analista de mercados cripto especializado en ${assetDesc}.
+
+DATOS MACRO ACTUALES:
+${macroText}
+
+TITULARES RECIENTES (más nuevos primero; antigüedad entre corchetes):
+${headlinesText}
+
+Analizá estos datos y determiná el sentimiento para ${symbol} en el corto plazo (24-72h).
+Guía de ponderación:
+- Noticias recientes (< 6h) pesan más que las antiguas (> 48h)
+- Aprobaciones de ETF, compras institucionales y halvings son señales alcistas estructurales
+- Restricciones regulatorias, hacks de exchanges o caída de liquidez son señales bajistas
+- DXY alto y yields altos correlacionan negativamente con activos de riesgo
+
+Respondé SOLO con un objeto JSON válido (sin markdown, sin texto extra):
+{
+  "sentiment": "bullish" | "neutral" | "bearish",
+  "score": <número entre -1.0 (muy bajista) y 1.0 (muy alcista)>,
+  "reasoning": "<1-2 oraciones en español explicando el análisis>",
+  "keyFactors": ["<factor 1 en español>", "<factor 2 en español>", "<factor 3 en español>"]
+}`;
+
+  const completion = await client.chat.completions.create({
+    model:       'openai/gpt-oss-120b',
+    messages:    [{ role: 'user', content: prompt }],
+    temperature: 0.2,
+    max_tokens:  600
+  });
+
+  const content   = completion.choices[0]?.message?.content ?? '';
+  const jsonMatch = content.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    throw new Error(`Groq response did not contain JSON. Raw: ${content.slice(0, 200)}`);
+  }
+
+  const parsed = JSON.parse(jsonMatch[0]);
+  const validSentiments = ['bullish', 'neutral', 'bearish'];
+  return {
+    sentiment:  validSentiments.includes(parsed.sentiment) ? parsed.sentiment : 'neutral',
+    score:      typeof parsed.score === 'number' ? Math.max(-1, Math.min(1, parsed.score)) : 0,
+    reasoning:  typeof parsed.reasoning   === 'string' ? parsed.reasoning   : '',
     keyFactors: Array.isArray(parsed.keyFactors) ? parsed.keyFactors.slice(0, 3) : []
   };
 }

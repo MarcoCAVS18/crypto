@@ -46,6 +46,11 @@ export async function refreshGoldContext() {
   return response.data;
 }
 
+export async function refreshCryptoNews(symbol) {
+  const response = await api.post(`/crypto/${symbol}/news/refresh`);
+  return response.data;
+}
+
 export async function fetchCandles(symbol, granularity = '1d', count = 120) {
   const response = await api.get(`/crypto/${symbol}/candles`, { params: { granularity, count } });
   return response.data;
