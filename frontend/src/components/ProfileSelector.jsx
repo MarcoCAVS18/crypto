@@ -1,10 +1,10 @@
 // Selector de perfil con autenticación por PIN
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check } from 'lucide-react';
+import { X } from 'lucide-react';
 import { hasProfile, setupPin, verifyPin, saveUserCryptos, getUserCryptos } from '../services/firestoreAuth';
 import { useAuthStore } from '../store/authStore';
-import { PROFILE_LIST, SELECTABLE_CRYPTOS } from '../data/profiles';
+import { PROFILE_LIST } from '../data/profiles';
 
 // ── Colores por perfil ────────────────────────────────────────────────────────
 
@@ -50,8 +50,15 @@ export function ProfileSelector() {
   const [confirmPin, setConfirmPin]     = useState('');
   const [error, setError]               = useState('');
   const [shake, setShake]               = useState(false);
-  const [selectedCoins, setSelectedCoins] = useState([]);
-  const [savingCoins, setSavingCoins]   = useState(false);
+  const [selectedCoins, setSelectedCoins]   = useState([]);
+  const [savingCoins, setSavingCoins]       = useState(false);
+  const [searchQuery, setSearchQuery]       = useState('');
+  const [searchResults, setSearchResults]   = useState([]);
+  const [searchLoading, setSearchLoading]   = useState(false);
+  const [searchError, setSearchError]       = useState('');
+  const [showDropdown, setShowDropdown]     = useState(false);
+  const searchDebounce                      = useRef(null);
+  const dropdownRef                         = useRef(null);
 
   // ── Selección de perfil ───────────────────────────────────────────────────
 
@@ -161,15 +168,66 @@ export function ProfileSelector() {
     setConfirmPin('');
     setError('');
     setSelectedCoins([]);
+    setSearchQuery('');
+    setSearchResults([]);
+    setShowDropdown(false);
+    setSearchError('');
   };
 
   // ── Selección de coins ────────────────────────────────────────────────────
 
-  const toggleCoin = (symbol) => {
-    setSelectedCoins(prev =>
-      prev.includes(symbol) ? prev.filter(s => s !== symbol) : [...prev, symbol]
-    );
+  const MAX_COINS = 2;
+
+  const removeCoin = (symbol) =>
+    setSelectedCoins(prev => prev.filter(s => s !== symbol));
+
+  const selectCoin = (symbol) => {
+    if (selectedCoins.includes(symbol) || selectedCoins.length >= MAX_COINS) return;
+    setSelectedCoins(prev => [...prev, symbol]);
+    setSearchQuery('');
+    setSearchResults([]);
+    setShowDropdown(false);
   };
+
+  // Búsqueda CoinGecko con debounce 350ms
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (!q) { setSearchResults([]); setShowDropdown(false); return; }
+
+    clearTimeout(searchDebounce.current);
+    setSearchLoading(true);
+    searchDebounce.current = setTimeout(async () => {
+      try {
+        const res  = await fetch(`https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        const coins = (data.coins ?? []).slice(0, 8).map(c => ({
+          symbol: c.symbol.toUpperCase(),
+          name:   c.name,
+          thumb:  c.thumb,
+        }));
+        setSearchResults(coins);
+        setShowDropdown(coins.length > 0);
+        setSearchError('');
+      } catch {
+        setSearchError('Error buscando — probá escribir el símbolo directamente.');
+        setShowDropdown(false);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 350);
+
+    return () => clearTimeout(searchDebounce.current);
+  }, [searchQuery]);
+
+  // Cerrar dropdown al hacer click afuera
+  useEffect(() => {
+    const handler = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target))
+        setShowDropdown(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   const handleConfirmCoins = async () => {
     if (selectedCoins.length === 0) return;
@@ -339,46 +397,81 @@ export function ProfileSelector() {
               transition={{ duration: 0.25 }}
               className="flex flex-col gap-5"
             >
-              <div className="text-center">
-                <p className="text-white font-semibold text-base mb-1">
-                  ¿Qué activos seguís?
-                </p>
-                <p className="text-slate-500 text-xs">
-                  Podés cambiarlos más adelante desde tu perfil.
-                </p>
+              {/* Encabezado + contador */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-white font-semibold text-base">¿Qué activos seguís?</p>
+                  <p className="text-slate-500 text-xs mt-0.5">Buscá cualquier crypto. Máximo 2.</p>
+                </div>
+                <span className={`text-sm font-bold tabular-nums ${selectedCoins.length === MAX_COINS ? accent.dot.replace('bg-', 'text-') : 'text-slate-500'}`}>
+                  {selectedCoins.length}/{MAX_COINS}
+                </span>
               </div>
 
-              <div className="flex flex-col gap-3">
-                {SELECTABLE_CRYPTOS.map((coin, i) => {
-                  const isSelected = selectedCoins.includes(coin.symbol);
-                  return (
-                    <motion.button
-                      key={coin.symbol}
-                      onClick={() => toggleCoin(coin.symbol)}
-                      initial={{ opacity: 0, y: 12 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.07 }}
-                      whileTap={{ scale: 0.98 }}
-                      className={`flex items-center justify-between px-4 py-3.5 rounded-xl border transition-all
-                        ${isSelected
-                          ? accent.selected
-                          : 'border-white/[0.06] bg-slate-900/60 hover:bg-slate-800/60'
-                        }`}
+              {/* Chips seleccionados */}
+              {selectedCoins.length > 0 && (
+                <div className="flex gap-2 flex-wrap">
+                  {selectedCoins.map(sym => (
+                    <motion.span
+                      key={sym}
+                      initial={{ scale: 0.8, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold ${accent.chip}`}
                     >
-                      <div className="text-left">
-                        <p className="text-white font-semibold text-sm">{coin.symbol}</p>
-                        <p className="text-slate-500 text-xs">{coin.label} · {coin.sub}</p>
-                      </div>
-                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all
-                        ${isSelected ? `border-current ${accent.dot.replace('bg-', 'bg-')}` : 'border-slate-700'}`}
-                      >
-                        {isSelected && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
-                      </div>
-                    </motion.button>
-                  );
-                })}
+                      {sym}
+                      <button onClick={() => removeCoin(sym)} className="opacity-60 hover:opacity-100 transition-opacity">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </motion.span>
+                  ))}
+                </div>
+              )}
+
+              {/* Búsqueda con dropdown */}
+              <div className="relative" ref={dropdownRef}>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder={selectedCoins.length >= MAX_COINS ? 'Límite alcanzado' : 'Bitcoin, Solana, Dogecoin…'}
+                  disabled={selectedCoins.length >= MAX_COINS}
+                  className="w-full bg-slate-900/80 border border-white/[0.08] rounded-xl px-4 py-3
+                    text-sm text-white placeholder-slate-600 focus:outline-none focus:border-slate-500
+                    disabled:opacity-30 disabled:cursor-not-allowed transition-opacity"
+                />
+                {searchLoading && (
+                  <div className="absolute right-3 top-3.5 w-4 h-4 border-2 border-slate-700 border-t-slate-400 rounded-full animate-spin" />
+                )}
+                {showDropdown && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="absolute z-10 w-full mt-1 bg-slate-900 border border-white/[0.08] rounded-xl overflow-hidden shadow-xl"
+                  >
+                    {searchResults.map(coin => {
+                      const already = selectedCoins.includes(coin.symbol);
+                      return (
+                        <button
+                          key={coin.symbol}
+                          onClick={() => selectCoin(coin.symbol)}
+                          disabled={already}
+                          className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors
+                            ${already ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-800/80'}`}
+                        >
+                          {coin.thumb && (
+                            <img src={coin.thumb} alt="" className="w-5 h-5 rounded-full flex-shrink-0" />
+                          )}
+                          <span className="text-white text-sm font-semibold">{coin.symbol}</span>
+                          <span className="text-slate-500 text-xs truncate">{coin.name}</span>
+                          {already && <span className="ml-auto text-xs text-slate-600">ya agregado</span>}
+                        </button>
+                      );
+                    })}
+                  </motion.div>
+                )}
               </div>
 
+              {searchError && <p className="text-amber-400 text-xs -mt-2">{searchError}</p>}
               {error && <p className="text-red-400 text-xs text-center">{error}</p>}
 
               <motion.button

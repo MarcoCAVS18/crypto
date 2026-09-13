@@ -13,13 +13,15 @@ import { saveDecision, getPortfolioSummaryBySymbol, getAiCache, setAiCache, getD
 
 const router = express.Router();
 
+const isValidSymbol = s => /^[A-Z0-9]{2,10}$/.test(s);
+
 // GET /api/crypto/:symbol/decisions - Historial de señales IA para backtesting
 router.get('/:symbol/decisions', async (req, res) => {
   try {
     const symbol = req.params.symbol.toUpperCase();
     const limit  = Math.min(200, Math.max(1, parseInt(req.query.limit) || 100));
 
-    if (!['BTC', 'ETH', 'PAXG'].includes(symbol)) {
+    if (!isValidSymbol(symbol)) {
       return res.status(400).json({ error: 'Símbolo no válido' });
     }
 
@@ -50,7 +52,7 @@ router.get('/:symbol/candles', async (req, res) => {
     const symbol = req.params.symbol.toUpperCase();
     const { granularity = '1d', count = '120' } = req.query;
 
-    if (!['BTC', 'ETH', 'PAXG'].includes(symbol)) {
+    if (!isValidSymbol(symbol)) {
       return res.status(400).json({ error: 'Símbolo no válido' });
     }
 
@@ -73,12 +75,8 @@ router.get('/:symbol', async (req, res) => {
     const { timeframe = '4h' } = req.query;
 
     // Validar símbolo
-    const validSymbols = ['BTC', 'ETH', 'PAXG'];
-    if (!validSymbols.includes(symbol.toUpperCase())) {
-      return res.status(400).json({
-        error: 'Símbolo no válido',
-        validSymbols: validSymbols
-      });
+    if (!isValidSymbol(symbol.toUpperCase())) {
+      return res.status(400).json({ error: 'Símbolo no válido' });
     }
 
     // Obtener datos de mercado
@@ -161,9 +159,8 @@ router.post('/decision', async (req, res) => {
       return res.status(400).json({ error: 'El símbolo es requerido' });
     }
 
-    const validSymbols = ['BTC', 'ETH', 'PAXG'];
-    if (!validSymbols.includes(symbol.toUpperCase())) {
-      return res.status(400).json({ error: 'Símbolo no válido. Usa BTC, ETH o PAXG' });
+    if (!isValidSymbol(symbol.toUpperCase())) {
+      return res.status(400).json({ error: 'Símbolo no válido' });
     }
 
     const validModes = ['inversion', 'trading', 'observacion'];
@@ -365,11 +362,14 @@ function applyCalendarModulation(decision, calendarRisk) {
   };
 }
 
-// POST /api/crypto/:symbol/news/refresh — fuerza recarga de noticias (BTC o ETH)
+// POST /api/crypto/:symbol/news/refresh — fuerza recarga de noticias
 router.post('/:symbol/news/refresh', async (req, res) => {
   const symbol = req.params.symbol.toUpperCase();
-  if (!['BTC', 'ETH'].includes(symbol)) {
-    return res.status(400).json({ error: 'Solo BTC y ETH tienen contexto de noticias cripto' });
+  if (symbol === 'PAXG') {
+    return res.status(400).json({ error: 'PAXG usa contexto de oro, no cripto news' });
+  }
+  if (!isValidSymbol(symbol)) {
+    return res.status(400).json({ error: 'Símbolo no válido' });
   }
   try {
     const context = await getCryptoNewsContext(symbol, true);
