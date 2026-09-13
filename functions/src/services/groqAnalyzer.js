@@ -18,6 +18,11 @@ function getClient() {
   return groqClient;
 }
 
+// Limpia markdown code fences que el modelo a veces agrega alrededor del JSON
+function cleanContent(raw) {
+  return (raw ?? '').replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+}
+
 /**
  * Analiza el sentimiento del mercado de oro con Groq Llama 3.1 70B.
  *
@@ -112,10 +117,10 @@ Respondé SOLO con un objeto JSON válido (sin markdown, sin texto extra):
     model: 'openai/gpt-oss-120b',
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.2,
-    max_tokens: 600
+    max_tokens: 800
   });
 
-  const content = completion.choices[0]?.message?.content ?? '';
+  const content = cleanContent(completion.choices[0]?.message?.content);
 
   // Extract JSON — model sometimes wraps it in ```json ... ```
   const jsonMatch = content.match(/\{[\s\S]*\}/);
@@ -206,10 +211,10 @@ Respondé SOLO con un objeto JSON válido (sin markdown, sin texto extra):
     model:       'openai/gpt-oss-120b',
     messages:    [{ role: 'user', content: prompt }],
     temperature: 0.2,
-    max_tokens:  600
+    max_tokens:  800
   });
 
-  const content   = completion.choices[0]?.message?.content ?? '';
+  const content   = cleanContent(completion.choices[0]?.message?.content);
   const jsonMatch = content.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
     throw new Error(`Groq response did not contain JSON. Raw: ${content.slice(0, 200)}`);
@@ -251,10 +256,10 @@ ${numbered}`;
     model:       'openai/gpt-oss-120b',
     messages:    [{ role: 'user', content: prompt }],
     temperature: 0.1,
-    max_tokens:  600
+    max_tokens:  1500
   });
 
-  const content   = completion.choices[0]?.message?.content ?? '';
+  const content   = cleanContent(completion.choices[0]?.message?.content);
   const arrayMatch = content.match(/\[[\s\S]*\]/);
   if (!arrayMatch) throw new Error('Translation response has no JSON array');
 
@@ -330,10 +335,10 @@ Guía de criterio:
     model: 'openai/gpt-oss-120b',
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.15,   // baja temperatura: queremos juicio consistente
-    max_tokens: 400
+    max_tokens: 600
   });
 
-  const content = completion.choices[0]?.message?.content ?? '';
+  const content = cleanContent(completion.choices[0]?.message?.content);
   const jsonMatch = content.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
     throw new Error(`Calendar risk response has no JSON. Raw: ${content.slice(0, 200)}`);
@@ -461,10 +466,10 @@ Respondé SOLO con JSON válido (sin markdown):
     model:       'openai/gpt-oss-120b',
     messages:    [{ role: 'user', content: prompt }],
     temperature: 0.3,
-    max_tokens:  450
+    max_tokens:  700
   });
 
-  const content    = completion.choices[0]?.message?.content ?? '';
+  const content    = cleanContent(completion.choices[0]?.message?.content);
   const jsonMatch  = content.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error(`Portfolio insight response has no JSON. Raw: ${content.slice(0, 200)}`);
 

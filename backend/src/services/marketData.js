@@ -1,30 +1,25 @@
 // Coinbase API - datos reales de mercado + candles históricos reales
 
-const COINBASE_IDS = {
+const KNOWN_PAIRS = {
   BTC: 'BTC-USD',
   ETH: 'ETH-USD',
   PAXG: 'PAXG-USD'
 };
 
-const cache = {
-  BTC: null,
-  ETH: null,
-  PAXG: null,
-  lastUpdate: null
-};
+const cache = {};
+
+function getPair(symbol) {
+  return KNOWN_PAIRS[symbol] ?? `${symbol}-USD`;
+}
 
 export async function getCryptoData(symbol) {
-  if (!COINBASE_IDS[symbol]) {
-    throw new Error(`Símbolo no soportado: ${symbol}`);
-  }
-
   // Cache de 2 minutos
   if (cache[symbol] && (Date.now() - new Date(cache[symbol].timestamp).getTime()) < 120000) {
     return cache[symbol];
   }
 
   try {
-    const pair = COINBASE_IDS[symbol];
+    const pair = getPair(symbol);
 
     // Obtener precio actual y stats 24h en paralelo
     const [tickerRes, statsRes] = await Promise.all([
@@ -145,15 +140,11 @@ function generateSyntheticCandles(high, low, volume) {
  * @param {number} count  - cantidad de velas (máx 300 por limitación Coinbase)
  */
 export async function getDailyCandles(symbol, count = 120) {
-  const pair = COINBASE_IDS[symbol];
-  if (!pair) throw new Error(`Símbolo no soportado: ${symbol}`);
-  return fetchRealCandles(pair, 86400, count);
+  return fetchRealCandles(getPair(symbol), 86400, count);
 }
 
 export async function getHistoricalCandles(symbol, granularity = 14400, count = 100) {
-  const pair = COINBASE_IDS[symbol];
-  if (!pair) throw new Error(`Símbolo no soportado: ${symbol}`);
-  return fetchRealCandles(pair, granularity, count);
+  return fetchRealCandles(getPair(symbol), granularity, count);
 }
 
 export function getCache() {
