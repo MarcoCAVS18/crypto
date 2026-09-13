@@ -148,7 +148,9 @@ export async function analyzeAssetSentiment(symbol, headlines, macroData) {
 
   const assetDesc = symbol === 'ETH'
     ? 'Ethereum (ETH) — sensible a actividad DeFi, staking, upgrades de red y flujo de capital cripto'
-    : 'Bitcoin (BTC) — sensible a adopción institucional, ETFs spot, ciclo de halvings y liquidez global';
+    : symbol === 'BTC'
+    ? 'Bitcoin (BTC) — sensible a adopción institucional, ETFs spot, ciclo de halvings y liquidez global'
+    : `${symbol} — criptomoneda; analizá adopción, liquidez, regulación y factores propios del proyecto`;
 
   const macroLines = [];
   if (macroData?.dxy) {

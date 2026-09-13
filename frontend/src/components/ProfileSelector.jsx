@@ -1,10 +1,10 @@
 // Selector de perfil con autenticación por PIN
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check } from 'lucide-react';
+import { Check, X } from 'lucide-react';
 import { hasProfile, setupPin, verifyPin, saveUserCryptos, getUserCryptos } from '../services/firestoreAuth';
 import { useAuthStore } from '../store/authStore';
-import { PROFILE_LIST, SELECTABLE_CRYPTOS } from '../data/profiles';
+import { PROFILE_LIST, POPULAR_CRYPTOS } from '../data/profiles';
 
 // ── Colores por perfil ────────────────────────────────────────────────────────
 
@@ -52,6 +52,8 @@ export function ProfileSelector() {
   const [shake, setShake]               = useState(false);
   const [selectedCoins, setSelectedCoins] = useState([]);
   const [savingCoins, setSavingCoins]   = useState(false);
+  const [customInput, setCustomInput]   = useState('');
+  const [customError, setCustomError]   = useState('');
 
   // ── Selección de perfil ───────────────────────────────────────────────────
 
@@ -161,14 +163,41 @@ export function ProfileSelector() {
     setConfirmPin('');
     setError('');
     setSelectedCoins([]);
+    setCustomInput('');
+    setCustomError('');
   };
 
   // ── Selección de coins ────────────────────────────────────────────────────
 
+  const MAX_COINS = 2;
+
   const toggleCoin = (symbol) => {
-    setSelectedCoins(prev =>
-      prev.includes(symbol) ? prev.filter(s => s !== symbol) : [...prev, symbol]
-    );
+    setCustomError('');
+    setSelectedCoins(prev => {
+      if (prev.includes(symbol)) return prev.filter(s => s !== symbol);
+      if (prev.length >= MAX_COINS) return prev; // ya en el límite — silencioso
+      return [...prev, symbol];
+    });
+  };
+
+  const addCustomCoin = () => {
+    const sym = customInput.trim().toUpperCase();
+    setCustomError('');
+    if (!sym) return;
+    if (!/^[A-Z0-9]{2,10}$/.test(sym)) {
+      setCustomError('Usá solo letras y números (2–10 caracteres).');
+      return;
+    }
+    if (selectedCoins.includes(sym)) {
+      setCustomError(`${sym} ya está seleccionado.`);
+      return;
+    }
+    if (selectedCoins.length >= MAX_COINS) {
+      setCustomError(`Máximo ${MAX_COINS} activos. Quitá uno primero.`);
+      return;
+    }
+    setSelectedCoins(prev => [...prev, sym]);
+    setCustomInput('');
   };
 
   const handleConfirmCoins = async () => {
@@ -337,47 +366,89 @@ export function ProfileSelector() {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
               transition={{ duration: 0.25 }}
-              className="flex flex-col gap-5"
+              className="flex flex-col gap-4"
             >
-              <div className="text-center">
-                <p className="text-white font-semibold text-base mb-1">
-                  ¿Qué activos seguís?
-                </p>
-                <p className="text-slate-500 text-xs">
-                  Podés cambiarlos más adelante desde tu perfil.
-                </p>
+              {/* Encabezado + contador */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-white font-semibold text-base">¿Qué activos seguís?</p>
+                  <p className="text-slate-500 text-xs mt-0.5">Máximo 2 activos.</p>
+                </div>
+                <span className={`text-sm font-bold tabular-nums ${selectedCoins.length === MAX_COINS ? 'text-emerald-400' : 'text-slate-500'}`}>
+                  {selectedCoins.length}/{MAX_COINS}
+                </span>
               </div>
 
-              <div className="flex flex-col gap-3">
-                {SELECTABLE_CRYPTOS.map((coin, i) => {
+              {/* Seleccionados */}
+              {selectedCoins.length > 0 && (
+                <div className="flex gap-2 flex-wrap">
+                  {selectedCoins.map(sym => (
+                    <motion.span
+                      key={sym}
+                      initial={{ scale: 0.8, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold ${accent.chip}`}
+                    >
+                      {sym}
+                      <button onClick={() => toggleCoin(sym)} className="opacity-70 hover:opacity-100">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </motion.span>
+                  ))}
+                </div>
+              )}
+
+              {/* Grid de populares */}
+              <div className="flex flex-wrap gap-2">
+                {POPULAR_CRYPTOS.map((coin) => {
                   const isSelected = selectedCoins.includes(coin.symbol);
+                  const isDisabled = !isSelected && selectedCoins.length >= MAX_COINS;
                   return (
                     <motion.button
                       key={coin.symbol}
                       onClick={() => toggleCoin(coin.symbol)}
-                      initial={{ opacity: 0, y: 12 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.07 }}
-                      whileTap={{ scale: 0.98 }}
-                      className={`flex items-center justify-between px-4 py-3.5 rounded-xl border transition-all
+                      whileTap={{ scale: 0.95 }}
+                      disabled={isDisabled}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all
                         ${isSelected
-                          ? accent.selected
-                          : 'border-white/[0.06] bg-slate-900/60 hover:bg-slate-800/60'
+                          ? `${accent.selected} text-white`
+                          : isDisabled
+                          ? 'border-white/[0.04] bg-slate-900/30 text-slate-600 cursor-not-allowed'
+                          : 'border-white/[0.08] bg-slate-900/60 text-slate-300 hover:bg-slate-800/60'
                         }`}
                     >
-                      <div className="text-left">
-                        <p className="text-white font-semibold text-sm">{coin.symbol}</p>
-                        <p className="text-slate-500 text-xs">{coin.label} · {coin.sub}</p>
-                      </div>
-                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all
-                        ${isSelected ? `border-current ${accent.dot.replace('bg-', 'bg-')}` : 'border-slate-700'}`}
-                      >
-                        {isSelected && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
-                      </div>
+                      {isSelected && <Check className="inline w-3 h-3 mr-1" strokeWidth={3} />}
+                      {coin.symbol}
+                      <span className="ml-1 text-slate-500 font-normal">{coin.label}</span>
                     </motion.button>
                   );
                 })}
               </div>
+
+              {/* Input personalizado */}
+              <div className="flex gap-2 mt-1">
+                <input
+                  type="text"
+                  value={customInput}
+                  onChange={e => { setCustomInput(e.target.value.toUpperCase()); setCustomError(''); }}
+                  onKeyDown={e => e.key === 'Enter' && addCustomCoin()}
+                  placeholder="Otra (ej: SOL, LINK…)"
+                  maxLength={10}
+                  className="flex-1 bg-slate-900/80 border border-white/[0.08] rounded-lg px-3 py-2
+                    text-sm text-white placeholder-slate-600 focus:outline-none focus:border-slate-500"
+                />
+                <button
+                  onClick={addCustomCoin}
+                  disabled={selectedCoins.length >= MAX_COINS}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all
+                    ${selectedCoins.length < MAX_COINS
+                      ? `${accent.btn} text-white`
+                      : 'bg-slate-800 text-slate-600 cursor-not-allowed'}`}
+                >
+                  +
+                </button>
+              </div>
+              {customError && <p className="text-amber-400 text-xs -mt-2">{customError}</p>}
 
               {error && <p className="text-red-400 text-xs text-center">{error}</p>}
 
@@ -385,7 +456,7 @@ export function ProfileSelector() {
                 onClick={handleConfirmCoins}
                 disabled={selectedCoins.length === 0 || savingCoins}
                 whileTap={{ scale: 0.97 }}
-                className={`w-full py-3.5 rounded-xl text-white font-semibold text-sm transition-all
+                className={`w-full py-3.5 rounded-xl text-white font-semibold text-sm transition-all mt-1
                   ${selectedCoins.length > 0
                     ? `${accent.btn} opacity-100`
                     : 'bg-slate-800 opacity-40 cursor-not-allowed'

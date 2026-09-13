@@ -25,11 +25,18 @@ export const PROFILES = {
   },
 };
 
-// Activos disponibles para selección en el onboarding
-export const SELECTABLE_CRYPTOS = [
-  { symbol: 'BTC',  label: 'Bitcoin',   sub: 'La cripto más consolidada' },
-  { symbol: 'ETH',  label: 'Ethereum',  sub: 'Smart contracts y DeFi' },
-  { symbol: 'PAXG', label: 'PAXG',      sub: 'Oro tokenizado 1:1' },
+// Activos populares sugeridos en el onboarding (máx 2 seleccionables)
+export const POPULAR_CRYPTOS = [
+  { symbol: 'BTC',  label: 'Bitcoin'   },
+  { symbol: 'ETH',  label: 'Ethereum'  },
+  { symbol: 'SOL',  label: 'Solana'    },
+  { symbol: 'ADA',  label: 'Cardano'   },
+  { symbol: 'AVAX', label: 'Avalanche' },
+  { symbol: 'DOGE', label: 'Dogecoin'  },
+  { symbol: 'DOT',  label: 'Polkadot'  },
+  { symbol: 'LINK', label: 'Chainlink' },
+  { symbol: 'MATIC',label: 'Polygon'   },
+  { symbol: 'PAXG', label: 'PAXG'      },
 ];
 
 export const PROFILE_LIST = Object.values(PROFILES);

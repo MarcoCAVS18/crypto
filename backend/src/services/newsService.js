@@ -152,8 +152,17 @@ export async function getEthHeadlines() {
   return fetchHeadlines(RSS_FEEDS_ETH, 'ETH');
 }
 
+export async function getTokenHeadlines(symbol) {
+  const feeds = [
+    `https://news.google.com/rss/search?q=${symbol}+crypto+price+when:2d&hl=en-US&gl=US&ceid=US:en`,
+    `https://news.google.com/rss/search?q=${symbol}+cryptocurrency+market+when:2d&hl=en-US&gl=US&ceid=US:en`,
+  ];
+  return fetchHeadlines(feeds, symbol);
+}
+
 export async function getAssetHeadlines(symbol) {
   if (symbol === 'PAXG') return getGoldHeadlines();
   if (symbol === 'ETH')  return getEthHeadlines();
-  return getBtcHeadlines();
+  if (symbol === 'BTC')  return getBtcHeadlines();
+  return getTokenHeadlines(symbol);
 }
