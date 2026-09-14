@@ -17,6 +17,10 @@ function getClient() {
   return groqClient;
 }
 
+function cleanContent(raw) {
+  return (raw ?? '').replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+}
+
 export async function analyzeGoldSentiment(headlines, macroData) {
   const client = getClient();
 
@@ -309,5 +313,161 @@ Respondé SOLO con JSON válido (sin markdown):
   return {
     insight:           typeof parsed.insight === 'string' ? parsed.insight.trim() : '',
     optimalEntryPrice: typeof parsed.optimalEntryPrice === 'number' ? parsed.optimalEntryPrice : null
+  };
+}
+
+export async function analyzeAssetSentiment(symbol, headlines, macroData) {
+  const client = getClient();
+
+  const assetDesc = symbol === 'ETH'
+    ? 'Ethereum (ETH) — sensible a actividad DeFi, staking, upgrades de red y flujo de capital cripto'
+    : symbol === 'BTC'
+    ? 'Bitcoin (BTC) — sensible a adopción institucional, ETFs spot, ciclo de halvings y liquidez global'
+    : `${symbol} — criptomoneda; analizá adopción, liquidez, regulación y factores propios del proyecto`;
+
+  const macroLines = [];
+  if (macroData?.dxy) {
+    const sign = macroData.dxy.changePercent >= 0 ? '+' : '';
+    macroLines.push(`- DXY: ${macroData.dxy.value.toFixed(2)} (${sign}${macroData.dxy.changePercent.toFixed(2)}% hoy)`);
+  }
+  if (macroData?.tenYearYield) {
+    const sign = macroData.tenYearYield.changePercent >= 0 ? '+' : '';
+    macroLines.push(`- Bono 10Y: ${macroData.tenYearYield.value.toFixed(2)}% (${sign}${macroData.tenYearYield.changePercent.toFixed(2)}% hoy)`);
+  }
+  const macroText = macroLines.length > 0 ? macroLines.join('\n') : 'Sin datos macro disponibles';
+
+  function headlineAge(h) {
+    if (!h.pubDate) return '';
+    const min = Math.floor((Date.now() - new Date(h.pubDate).getTime()) / 60000);
+    if (min < 60)   return ` [hace ${min}m]`;
+    if (min < 1440) return ` [hace ${Math.floor(min/60)}h]`;
+    return ` [hace ${Math.floor(min/1440)}d]`;
+  }
+
+  const headlinesText = headlines.length > 0
+    ? headlines.map((h, i) => {
+        const title = typeof h === 'string' ? h : h.title;
+        const age   = typeof h === 'object' ? headlineAge(h) : '';
+        return `${i + 1}.${age} ${title}`;
+      }).join('\n')
+    : 'Sin titulares disponibles';
+
+  const prompt = `Sos un analista de mercados cripto especializado en ${assetDesc}.
+
+DATOS MACRO:
+${macroText}
+
+TITULARES RECIENTES (más nuevos primero; antigüedad entre corchetes):
+${headlinesText}
+
+Respondé SOLO con JSON válido (sin markdown):
+{
+  "sentiment": "bullish" | "neutral" | "bearish",
+  "score": <número entre -1.0 y 1.0>,
+  "reasoning": "<1-2 oraciones en español>",
+  "keyFactors": ["<factor 1>", "<factor 2>", "<factor 3>"]
+}`;
+
+  const completion = await client.chat.completions.create({
+    model: 'moonshotai/kimi-k2-instruct',
+    messages: [{ role: 'user', content: prompt }],
+    temperature: 0.2,
+    max_tokens: 800,
+  });
+
+  const content   = cleanContent(completion.choices[0]?.message?.content);
+  const jsonMatch = content.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error(`analyzeAssetSentiment: no JSON in response. Raw: ${content.slice(0, 200)}`);
+
+  const parsed = JSON.parse(jsonMatch[0]);
+  const validSentiments = ['bullish', 'neutral', 'bearish'];
+  return {
+    sentiment:  validSentiments.includes(parsed.sentiment) ? parsed.sentiment : 'neutral',
+    score:      typeof parsed.score === 'number' ? Math.max(-1, Math.min(1, parsed.score)) : 0,
+    reasoning:  typeof parsed.reasoning  === 'string' ? parsed.reasoning  : '',
+    keyFactors: Array.isArray(parsed.keyFactors) ? parsed.keyFactors.slice(0, 3) : [],
+  };
+}
+
+export async function analyzeFuturesDirection(technicals, goldContext, fundingRate, maxLeverage = 10) {
+  const client = getClient();
+
+  const techLines = [
+    `- Tendencia corta: ${technicals.trendShort ?? 'N/A'}`,
+    `- Tendencia larga: ${technicals.trendLong ?? 'N/A'}`,
+    `- RSI (14): ${technicals.rsi?.toFixed(1) ?? 'N/A'}`,
+    `- ATR: $${technicals.atr?.toFixed(2) ?? 'N/A'} (${technicals.atrPercent?.toFixed(2) ?? 'N/A'}% del precio)`,
+    `- Zona actual: ${technicals.currentZone ?? 'N/A'}`,
+  ].join('\n');
+
+  const macroLines = [];
+  if (goldContext?.macro?.dxy) {
+    const sign = goldContext.macro.dxy.changePercent >= 0 ? '+' : '';
+    macroLines.push(`- DXY: ${goldContext.macro.dxy.value?.toFixed(2)} (${sign}${goldContext.macro.dxy.changePercent?.toFixed(2)}% hoy)`);
+  }
+  if (goldContext?.macro?.tenYearYield) {
+    macroLines.push(`- Bono 10Y: ${goldContext.macro.tenYearYield.value?.toFixed(2)}%`);
+  }
+  const macroText = macroLines.length > 0 ? macroLines.join('\n') : 'Sin datos macro';
+
+  const headlinesText = goldContext?.headlines?.length > 0
+    ? goldContext.headlines.slice(0, 8).map((h, i) => `${i + 1}. ${typeof h === 'string' ? h : h.title}`).join('\n')
+    : 'Sin titulares';
+
+  const fundingDir = fundingRate > 0.02
+    ? 'positivo alto — longs pagan a shorts'
+    : fundingRate < -0.02
+    ? 'negativo alto — shorts pagan a longs'
+    : 'neutro';
+
+  const prompt = `Sos un trader institucional en futuros perpetuos de oro (XAUUSDT).
+
+TÉCNICOS:
+${techLines}
+
+MACRO:
+${macroText}
+
+TITULARES ORO:
+${headlinesText}
+
+FUNDING: ${fundingRate.toFixed(4)}%/8h → ${fundingDir}
+SENTIMIENTO ORO: ${goldContext?.sentiment ?? 'N/A'} (score: ${goldContext?.score ?? 'N/A'})
+LEVERAGE MÁXIMO PERMITIDO: ${maxLeverage}x
+
+Respondé SOLO con JSON válido (sin markdown):
+{
+  "direction": "LONG" | "SHORT" | "NEUTRAL",
+  "leverage": <entero entre 1 y ${maxLeverage}>,
+  "stopLossPercent": <número, ej: 1.2>,
+  "confidence": "high" | "medium" | "low",
+  "reasoning": "<2-3 oraciones en español>",
+  "keyRisks": ["<riesgo 1>", "<riesgo 2>"],
+  "fundingImpact": "positive" | "negative" | "neutral"
+}`;
+
+  const completion = await client.chat.completions.create({
+    model: 'moonshotai/kimi-k2-instruct',
+    messages: [{ role: 'user', content: prompt }],
+    temperature: 0.15,
+    max_tokens: 700,
+  });
+
+  const content   = cleanContent(completion.choices[0]?.message?.content);
+  const jsonMatch = content.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error(`analyzeFuturesDirection: no JSON in response. Raw: ${content.slice(0, 200)}`);
+
+  const parsed = JSON.parse(jsonMatch[0]);
+  const validDirections  = ['LONG', 'SHORT', 'NEUTRAL'];
+  const validConfidences = ['high', 'medium', 'low'];
+
+  return {
+    direction:       validDirections.includes(parsed.direction)   ? parsed.direction  : 'NEUTRAL',
+    leverage:        typeof parsed.leverage === 'number'          ? Math.max(1, Math.min(maxLeverage, Math.round(parsed.leverage))) : 1,
+    stopLossPercent: typeof parsed.stopLossPercent === 'number'   ? Math.max(0.3, Math.min(3, parsed.stopLossPercent)) : 1.5,
+    confidence:      validConfidences.includes(parsed.confidence) ? parsed.confidence : 'low',
+    reasoning:       typeof parsed.reasoning  === 'string'        ? parsed.reasoning  : '',
+    keyRisks:        Array.isArray(parsed.keyRisks)               ? parsed.keyRisks.slice(0, 3) : [],
+    fundingImpact:   ['positive','negative','neutral'].includes(parsed.fundingImpact) ? parsed.fundingImpact : 'neutral',
   };
 }
