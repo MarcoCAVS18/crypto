@@ -57,9 +57,9 @@ async function getYahooFuturesData(ticker = 'GC=F') {
   const high24h   = meta.regularMarketDayHigh  ?? price;
   const low24h    = meta.regularMarketDayLow   ?? price;
 
-  // Velas 1h — Yahoo devuelve hasta ~30 días de 1h para futuros
+  // Velas 1d — sin auth (intraday requiere crumb en GCP)
   const klinesJson = await fetchYahoo(
-    `/v8/finance/chart/${encoded}?interval=1h&range=11d&includePrePost=false`
+    `/v8/finance/chart/${encoded}?interval=1d&range=60d&includePrePost=false`
   );
   const kResult = klinesJson.chart?.result?.[0];
   if (!kResult) throw new Error(`No klines for ${ticker}`);

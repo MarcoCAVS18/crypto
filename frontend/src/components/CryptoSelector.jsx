@@ -1,10 +1,10 @@
-import { BarChart2 } from 'lucide-react';
+import { TrendingUp } from 'lucide-react';
 
 const CRYPTO_META = {
-  BTC:     { tab: 'BTC',  icon: null, iconText: '₿',  active: 'text-orange-300 border-orange-500/60 bg-orange-500/15 shadow-orange-500/15' },
-  ETH:     { tab: 'ETH',  icon: null, iconText: 'Ξ',  active: 'text-blue-300  border-blue-500/60  bg-blue-500/15  shadow-blue-500/15'  },
-  PAXG:    { tab: 'PAXG', icon: null, iconText: 'Au', active: 'text-yellow-300 border-yellow-500/60 bg-yellow-500/15 shadow-yellow-500/15' },
-  XAUUSDT: { tab: 'XAUT', icon: BarChart2, iconText: null, active: 'text-amber-300 border-amber-500/60 bg-amber-500/15 shadow-amber-500/15' },
+  BTC:     { tab: 'BTC',  icon: null,        iconText: '₿',  active: 'text-orange-300 border-orange-500/60 bg-orange-500/15 shadow-orange-500/15' },
+  ETH:     { tab: 'ETH',  icon: null,        iconText: 'Ξ',  active: 'text-blue-300  border-blue-500/60  bg-blue-500/15  shadow-blue-500/15'  },
+  PAXG:    { tab: 'PAXG', icon: null,        iconText: 'Au', active: 'text-yellow-300 border-yellow-500/60 bg-yellow-500/15 shadow-yellow-500/15' },
+  XAUUSDT: { tab: 'XAUT', icon: TrendingUp,  iconText: null, active: 'text-amber-300 border-amber-500/60 bg-amber-500/15 shadow-amber-500/15' },
 };
 
 const INACTIVE = 'text-slate-500 border-white/[0.07] bg-slate-800/40 hover:border-white/[0.14] hover:text-slate-300';
