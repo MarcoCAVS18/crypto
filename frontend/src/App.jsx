@@ -15,6 +15,7 @@ import { PriceAlertBanner } from './components/PriceAlertBanner';
 import { OnboardingOverlay, useOnboarding } from './components/OnboardingOverlay';
 import { FloatingChat } from './components/FloatingChat';
 import { ProfileSettingsSheet } from './components/ProfileSettingsSheet';
+import { FuturesPanel } from './components/FuturesPanel';
 import { RefreshCw, AlertCircle, X, LayoutDashboard, Briefcase, AlertTriangle } from 'lucide-react';
 import { formatRelativeTime } from './utils/formatters';
 import { AUTO_REFRESH_INTERVAL } from './utils/constants';
@@ -236,7 +237,14 @@ function AuthenticatedApp() {
       <main className="max-w-3xl mx-auto px-4 py-5 pb-24 sm:pb-8">
         <AnimatePresence mode="wait" custom={tabDir}>
 
-          {activeTab === 'dashboard' && (
+          {activeTab === 'dashboard' && selectedCrypto === 'XAUUSDT' && (
+            <motion.div key="futures" custom={tabDir} variants={tabVariants}
+              initial="initial" animate="animate" exit="exit">
+              <FuturesPanel />
+            </motion.div>
+          )}
+
+          {activeTab === 'dashboard' && selectedCrypto !== 'XAUUSDT' && (
             <motion.div key="dashboard" custom={tabDir} variants={tabVariants}
               initial="initial" animate="animate" exit="exit" className="space-y-4">
 

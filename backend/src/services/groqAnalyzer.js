@@ -476,3 +476,97 @@ Respondé SOLO con JSON válido (sin markdown):
     optimalEntryPrice:  typeof parsed.optimalEntryPrice === 'number' ? parsed.optimalEntryPrice : null
   };
 }
+
+/**
+ * Analiza dirección y leverage para futuros perpetuos (XAUUSDT).
+ * @returns {{ direction, leverage, stopLossPercent, confidence, reasoning, keyRisks, fundingImpact }}
+ */
+export async function analyzeFuturesDirection(technicals, goldContext, fundingRate, maxLeverage = 10) {
+  const client = getClient();
+
+  const techLines = [
+    `- Tendencia corta (EMA20 vs EMA50): ${technicals.trendShort ?? 'N/A'}`,
+    `- Tendencia larga (EMA50 vs EMA200): ${technicals.trendLong ?? 'N/A'}`,
+    `- RSI (14): ${technicals.rsi?.toFixed(1) ?? 'N/A'}`,
+    `- ATR: $${technicals.atr?.toFixed(2) ?? 'N/A'} (${technicals.atrPercent?.toFixed(2) ?? 'N/A'}% del precio)`,
+    `- Zona actual: ${technicals.currentZone ?? 'N/A'}`,
+  ].join('\n');
+
+  const macroLines = [];
+  if (goldContext?.macro?.dxy) {
+    const sign = goldContext.macro.dxy.changePercent >= 0 ? '+' : '';
+    macroLines.push(`- DXY: ${goldContext.macro.dxy.value?.toFixed(2)} (${sign}${goldContext.macro.dxy.changePercent?.toFixed(2)}% hoy)`);
+  }
+  if (goldContext?.macro?.tenYearYield) {
+    macroLines.push(`- Bono 10Y: ${goldContext.macro.tenYearYield.value?.toFixed(2)}%`);
+  }
+  const macroText = macroLines.length > 0 ? macroLines.join('\n') : 'Sin datos macro';
+
+  const headlinesText = goldContext?.headlines?.length > 0
+    ? goldContext.headlines.slice(0, 8).map((h, i) => `${i + 1}. ${typeof h === 'string' ? h : h.title}`).join('\n')
+    : 'Sin titulares disponibles';
+
+  const fundingDir = fundingRate > 0.02
+    ? 'positivo alto — longs pagan a shorts (señal de mercado sobrecomprado en LONG)'
+    : fundingRate < -0.02
+    ? 'negativo alto — shorts pagan a longs (señal de mercado sobrevendido en SHORT)'
+    : 'neutro';
+
+  const prompt = `Sos un trader institucional especializado en futuros perpetuos de oro (XAUUSDT).
+
+ANÁLISIS TÉCNICO (timeframe 1h):
+${techLines}
+
+DATOS MACRO:
+${macroText}
+
+TITULARES RECIENTES DE ORO:
+${headlinesText}
+
+FUNDING RATE: ${fundingRate.toFixed(4)}%/8h → ${fundingDir}
+SENTIMENT MACRO ORO: ${goldContext?.sentiment ?? 'N/A'} (score: ${goldContext?.score ?? 'N/A'})
+
+El usuario permite un máximo de ${maxLeverage}x de apalancamiento.
+
+Determiná la mejor operación para las próximas 12-24h considerando:
+- La dirección (LONG/SHORT) debe tener al menos 2 de 3 confluencias (técnica + macro + noticias)
+- Si hay conflicto entre indicadores, recomendá NEUTRAL y leverage 1
+- El leverage debe ser conservador: alta volatilidad (ATR% > 1.5%) = máximo 5x; mercado claro = hasta ${Math.min(maxLeverage, 10)}x
+- El stop-loss debe ser al menos 1.2× el ATR% para evitar ruido, y nunca > 3% (riesgo de liquidación)
+
+Respondé SOLO con JSON válido (sin markdown, sin texto extra):
+{
+  "direction": "LONG" | "SHORT" | "NEUTRAL",
+  "leverage": <entero entre 1 y ${maxLeverage}>,
+  "stopLossPercent": <número con 1 decimal, ej: 1.2>,
+  "confidence": "high" | "medium" | "low",
+  "reasoning": "<2-3 oraciones en español explicando la lógica>",
+  "keyRisks": ["<riesgo 1>", "<riesgo 2>"],
+  "fundingImpact": "positive" | "negative" | "neutral"
+}`;
+
+  const completion = await client.chat.completions.create({
+    model:       'openai/gpt-oss-120b',
+    messages:    [{ role: 'user', content: prompt }],
+    temperature: 0.15,
+    max_tokens:  700,
+  });
+
+  const content   = cleanContent(completion.choices[0]?.message?.content);
+  const jsonMatch = content.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error(`Futures analysis response has no JSON. Raw: ${content.slice(0, 200)}`);
+
+  const parsed = JSON.parse(jsonMatch[0]);
+  const validDirections  = ['LONG', 'SHORT', 'NEUTRAL'];
+  const validConfidences = ['high', 'medium', 'low'];
+
+  return {
+    direction:       validDirections.includes(parsed.direction)   ? parsed.direction  : 'NEUTRAL',
+    leverage:        typeof parsed.leverage === 'number'          ? Math.max(1, Math.min(maxLeverage, Math.round(parsed.leverage))) : 1,
+    stopLossPercent: typeof parsed.stopLossPercent === 'number'   ? Math.max(0.3, Math.min(3, parsed.stopLossPercent))              : 1.5,
+    confidence:      validConfidences.includes(parsed.confidence) ? parsed.confidence : 'low',
+    reasoning:       typeof parsed.reasoning   === 'string'       ? parsed.reasoning  : '',
+    keyRisks:        Array.isArray(parsed.keyRisks)               ? parsed.keyRisks.slice(0, 3) : [],
+    fundingImpact:   ['positive','negative','neutral'].includes(parsed.fundingImpact) ? parsed.fundingImpact : 'neutral',
+  };
+}

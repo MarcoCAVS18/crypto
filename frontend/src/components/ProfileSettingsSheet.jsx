@@ -6,6 +6,7 @@ import { saveUserCryptos } from '../services/firestoreAuth';
 import { useAuthStore } from '../store/authStore';
 
 const MAX_COINS = 2;
+const FUTURES_SYMBOL = 'XAUUSDT';
 
 const ACCENT = {
   blue: {
@@ -29,6 +30,7 @@ export function ProfileSettingsSheet({ open, onClose, onLogout }) {
   const { currentUser, updateCryptos } = useAuthStore();
 
   const [coins, setCoins]               = useState([]);
+  const [futuresOn, setFuturesOn]       = useState(false);
   const [searchQuery, setSearchQuery]   = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -42,7 +44,9 @@ export function ProfileSettingsSheet({ open, onClose, onLogout }) {
   // Sincronizar coins al abrir
   useEffect(() => {
     if (open && currentUser) {
-      setCoins([...(currentUser.cryptos ?? [])]);
+      const all = currentUser.cryptos ?? [];
+      setCoins(all.filter(c => c !== FUTURES_SYMBOL));
+      setFuturesOn(all.includes(FUTURES_SYMBOL));
       setSearchQuery('');
       setSearchResults([]);
       setShowDropdown(false);
@@ -99,12 +103,13 @@ export function ProfileSettingsSheet({ open, onClose, onLogout }) {
   const removeCoin = (symbol) => setCoins(prev => prev.filter(s => s !== symbol));
 
   const handleSave = async () => {
-    if (coins.length === 0) return;
+    if (coins.length === 0 && !futuresOn) return;
     setSaving(true);
     setSaveError('');
     try {
-      await saveUserCryptos(currentUser.id, coins);
-      updateCryptos(coins);
+      const all = [...coins, ...(futuresOn ? [FUTURES_SYMBOL] : [])];
+      await saveUserCryptos(currentUser.id, all);
+      updateCryptos(all);
       onClose();
     } catch {
       setSaveError('Error guardando. Reintentá.');
@@ -184,6 +189,25 @@ export function ProfileSettingsSheet({ open, onClose, onLogout }) {
               <p className="text-slate-600 text-sm mb-4">Ningún activo seleccionado</p>
             )}
 
+            {/* Futuros — sección especial */}
+            <div className="my-4 border-t border-white/[0.05]" />
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="text-slate-300 text-sm font-medium">XAUUSDT Perp</p>
+                <p className="text-slate-600 text-xs mt-0.5">Futuros perpetuos de oro (Binance)</p>
+              </div>
+              <button
+                onClick={() => setFuturesOn(v => !v)}
+                className={`relative w-11 h-6 rounded-full transition-colors duration-200
+                  ${futuresOn ? 'bg-amber-500' : 'bg-slate-700'}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200
+                  ${futuresOn ? 'translate-x-5' : 'translate-x-0'}`}
+                />
+              </button>
+            </div>
+            <div className="my-4 border-t border-white/[0.05]" />
+
             {/* Buscador */}
             <div className="relative mb-1" ref={dropdownRef}>
               <input
@@ -234,10 +258,10 @@ export function ProfileSettingsSheet({ open, onClose, onLogout }) {
             {/* Botón guardar */}
             <motion.button
               onClick={handleSave}
-              disabled={coins.length === 0 || saving}
+              disabled={(coins.length === 0 && !futuresOn) || saving}
               whileTap={{ scale: 0.97 }}
               className={`w-full mt-4 py-3 rounded-xl text-white font-semibold text-sm transition-all
-                ${coins.length > 0 ? `${accent.btn} opacity-100` : 'bg-slate-800 opacity-40 cursor-not-allowed'}`}
+                ${coins.length > 0 || futuresOn ? `${accent.btn} opacity-100` : 'bg-slate-800 opacity-40 cursor-not-allowed'}`}
             >
               {saving ? 'Guardando…' : 'Guardar cambios'}
             </motion.button>

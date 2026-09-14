@@ -61,4 +61,9 @@ export async function fetchDecisions(symbol, limit = 100) {
   return response.data;
 }
 
+export async function fetchFuturesData(symbol = 'xauusdt', maxLeverage = 10) {
+  const response = await api.get(`/futures/${symbol}`, { params: { leverage: maxLeverage } });
+  return response.data;
+}
+
 export default api;

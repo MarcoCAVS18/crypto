@@ -97,10 +97,11 @@ export const useAppStore = create(
 
       setSelectedCrypto: (symbol) => {
         set({ selectedCrypto: symbol, currentDecision: null });
-        get().loadCryptoData(symbol);
+        if (symbol !== 'XAUUSDT') get().loadCryptoData(symbol);
       },
 
       loadCryptoData: async (symbol) => {
+        if (symbol === 'XAUUSDT') return;
         set({ loading: true, error: null });
         const wakeTimer = setTimeout(() => set({ serverWaking: true }), 3000);
         try {
@@ -127,6 +128,7 @@ export const useAppStore = create(
 
       getDecision: async () => {
         const { selectedCrypto, userState, portfolio } = get();
+        if (selectedCrypto === 'XAUUSDT') return;
         set({ decisionLoading: true, error: null });
 
         // Calcular contexto del portfolio para el símbolo seleccionado
