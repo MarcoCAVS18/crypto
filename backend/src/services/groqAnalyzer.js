@@ -391,6 +391,7 @@ Respondé SOLO con JSON válido (sin markdown):
 
 export async function analyzeFuturesDirection(technicals, goldContext, fundingRate, maxLeverage = 10) {
   const client = getClient();
+  const fr = fundingRate ?? 0;
 
   const techLines = [
     `- Tendencia corta: ${technicals.trendShort ?? 'N/A'}`,
@@ -414,9 +415,9 @@ export async function analyzeFuturesDirection(technicals, goldContext, fundingRa
     ? goldContext.headlines.slice(0, 8).map((h, i) => `${i + 1}. ${typeof h === 'string' ? h : h.title}`).join('\n')
     : 'Sin titulares';
 
-  const fundingDir = fundingRate > 0.02
+  const fundingDir = fr > 0.02
     ? 'positivo alto — longs pagan a shorts'
-    : fundingRate < -0.02
+    : fr < -0.02
     ? 'negativo alto — shorts pagan a longs'
     : 'neutro';
 
@@ -431,7 +432,7 @@ ${macroText}
 TITULARES ORO:
 ${headlinesText}
 
-FUNDING: ${fundingRate.toFixed(4)}%/8h → ${fundingDir}
+FUNDING: ${fr.toFixed(4)}%/8h → ${fundingDir}
 SENTIMIENTO ORO: ${goldContext?.sentiment ?? 'N/A'} (score: ${goldContext?.score ?? 'N/A'})
 LEVERAGE MÁXIMO: ${maxLeverage}x
 
