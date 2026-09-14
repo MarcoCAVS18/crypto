@@ -1,99 +1,168 @@
-// Binance USDM Futures API — datos de mercado para perpetuos (XAUUSDT, etc.)
+// Datos de mercado para XAUUSDT Perp
+// Precio y velas: Yahoo Finance GC=F (gold futures, accesible desde GCP)
+// Funding rate: Binance fapi (opcional — puede estar bloqueado según el proveedor)
 
-const BINANCE_FUTURES_BASE = 'https://fapi.binance.com/fapi/v1';
-const TIMEOUT_MS = 10000;
+import https from 'https';
 
-const cache = {};
+const TIMEOUT_MS   = 10000;
+const CACHE_MS     = 120_000; // 2 min
+const cache        = {};
 
-async function fetchBinance(path) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  try {
-    const res = await fetch(`${BINANCE_FUTURES_BASE}${path}`, {
-      signal: controller.signal,
-      headers: { 'Accept': 'application/json' }
+// ── Yahoo Finance (fuente principal) ────────────────────────────────────────
+
+function fetchYahoo(path) {
+  return new Promise((resolve, reject) => {
+    const options = {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept':     'application/json',
+      },
+      timeout: TIMEOUT_MS,
+    };
+    const req = https.get(`https://query1.finance.yahoo.com${path}`, options, (res) => {
+      if ([301, 302].includes(res.statusCode) && res.headers.location) {
+        return fetchYahoo(res.headers.location.replace('https://query1.finance.yahoo.com', ''))
+          .then(resolve).catch(reject);
+      }
+      let data = '';
+      res.on('data', c => { data += c; });
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); }
+        catch (e) { reject(new Error(`Yahoo JSON parse error: ${e.message}`)); }
+      });
     });
-    if (!res.ok) throw new Error(`Binance Futures API ${res.status}: ${path}`);
-    return res.json();
-  } finally {
-    clearTimeout(timer);
-  }
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('Yahoo timeout')); });
+  });
+}
+
+async function getYahooFuturesData(ticker = 'GC=F') {
+  const encoded = encodeURIComponent(ticker);
+
+  // Quote: precio actual, cambio 24h, high/low
+  const quoteJson = await fetchYahoo(
+    `/v8/finance/chart/${encoded}?interval=1d&range=2d&includePrePost=false`
+  );
+  const result   = quoteJson.chart?.result?.[0];
+  if (!result) throw new Error(`No Yahoo data for ${ticker}`);
+
+  const meta      = result.meta;
+  const price     = meta.regularMarketPrice ?? meta.price;
+  const prevClose = meta.chartPreviousClose ?? meta.previousClose;
+  if (price == null) throw new Error(`No price for ${ticker}`);
+
+  const change24h = prevClose && prevClose > 0
+    ? ((price - prevClose) / prevClose) * 100
+    : 0;
+  const high24h   = meta.regularMarketDayHigh  ?? price;
+  const low24h    = meta.regularMarketDayLow   ?? price;
+
+  // Velas 1h — Yahoo devuelve hasta ~30 días de 1h para futuros
+  const klinesJson = await fetchYahoo(
+    `/v8/finance/chart/${encoded}?interval=1h&range=11d&includePrePost=false`
+  );
+  const kResult = klinesJson.chart?.result?.[0];
+  if (!kResult) throw new Error(`No klines for ${ticker}`);
+
+  const timestamps = kResult.timestamp ?? [];
+  const ohlcv      = kResult.indicators?.quote?.[0] ?? {};
+  const opens      = ohlcv.open   ?? [];
+  const highs      = ohlcv.high   ?? [];
+  const lows       = ohlcv.low    ?? [];
+  const closes     = ohlcv.close  ?? [];
+  const volumes    = ohlcv.volume ?? [];
+
+  const candles = timestamps.map((t, i) => ({
+    timestamp: t * 1000,
+    open:      opens[i]   ?? closes[i] ?? price,
+    high:      highs[i]   ?? closes[i] ?? price,
+    low:       lows[i]    ?? closes[i] ?? price,
+    close:     closes[i]  ?? price,
+    volume:    volumes[i] ?? 0,
+  })).filter(c => c.close != null && !isNaN(c.close));
+
+  return { price, change24h, high24h, low24h, candles };
+}
+
+// ── Binance fapi (opcional — solo para funding rate) ────────────────────────
+
+async function getBinanceFundingRate(symbol = 'XAUUSDT') {
+  return new Promise((resolve) => {
+    const options = {
+      headers: { 'Accept': 'application/json' },
+      timeout: 8000,
+    };
+    const req = https.get(
+      `https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${symbol}`,
+      options,
+      (res) => {
+        let data = '';
+        res.on('data', c => { data += c; });
+        res.on('end', () => {
+          try {
+            const json = JSON.parse(data);
+            const rate = parseFloat(json.lastFundingRate);
+            const next = parseInt(json.nextFundingTime, 10);
+            resolve(isNaN(rate) ? null : { rate: rate * 100, nextFundingTime: next });
+          } catch { resolve(null); }
+        });
+      }
+    );
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+  });
 }
 
 /**
- * Datos completos de un perpetuo de Binance Futures.
- * @param {string} symbol  e.g. 'XAUUSDT'
- * @returns {object}  price, markPrice, change24h, volume, fundingRate, candles, ...
+ * Datos completos de XAUUSDT Perp.
+ * Usa Yahoo Finance (GC=F) para precio/velas; Binance para funding rate (opcional).
  */
-export async function getFuturesData(symbol) {
-  const sym = symbol.toUpperCase();
-
-  // Cache 2 min
-  if (cache[sym] && Date.now() - cache[sym].ts < 120_000) {
-    return cache[sym].data;
+export async function getFuturesData(symbol = 'XAUUSDT') {
+  const cacheKey = symbol;
+  if (cache[cacheKey] && Date.now() - cache[cacheKey].ts < CACHE_MS) {
+    return cache[cacheKey].data;
   }
 
-  const [ticker, premium, klines] = await Promise.all([
-    fetchBinance(`/ticker/24hr?symbol=${sym}`),
-    fetchBinance(`/premiumIndex?symbol=${sym}`),
-    fetchBinance(`/klines?symbol=${sym}&interval=1h&limit=250`),
+  // GC=F = gold futures front-month (equivalent del perpetual de oro en Binance)
+  const [yahooData, fundingData] = await Promise.all([
+    getYahooFuturesData('GC=F'),
+    getBinanceFundingRate(symbol),
   ]);
 
-  const price      = parseFloat(ticker.lastPrice);
-  const markPrice  = parseFloat(premium.markPrice);
-  const indexPrice = parseFloat(premium.indexPrice);
-  const change24h  = parseFloat(ticker.priceChangePercent);
-  const high24h    = parseFloat(ticker.highPrice);
-  const low24h     = parseFloat(ticker.lowPrice);
-  const volume     = parseFloat(ticker.volume);
-
-  // Funding rate: valor cada 8h (Binance devuelve como decimal, ej: 0.0001 = 0.01%)
-  const fundingRate    = parseFloat(premium.lastFundingRate);
-  const nextFundingMs  = parseInt(premium.nextFundingTime, 10);
-  const fundingRatePct = fundingRate * 100;
-
-  const candles = klines.map(([time, open, high, low, close, vol]) => ({
-    timestamp: parseInt(time, 10),
-    open:      parseFloat(open),
-    high:      parseFloat(high),
-    low:       parseFloat(low),
-    close:     parseFloat(close),
-    volume:    parseFloat(vol),
-  }));
+  const { price, change24h, high24h, low24h, candles } = yahooData;
+  const fundingRate    = fundingData?.rate    ?? 0;
+  const nextFundingTime = fundingData?.nextFundingTime ?? null;
 
   const data = {
-    symbol: sym,
-    pair: `${sym} Perp`,
+    symbol,
+    pair:             'XAUUSDT Perp',
     price,
-    markPrice,
-    indexPrice,
+    markPrice:        price,  // GC=F ≈ mark price (futuros front-month)
+    indexPrice:       price,
     change24h,
     high24h,
     low24h,
-    volume,
-    fundingRate: fundingRatePct,       // % cada 8h
-    fundingRatePerDay: fundingRatePct * 3, // % por día (3 fundings de 8h)
-    nextFundingTime: nextFundingMs,
+    volume:           0,      // Yahoo v8 no da volumen confiable en 24h
+    fundingRate:      fundingData ? fundingRate    : null,   // null si Binance no responde
+    fundingRatePerDay: fundingData ? fundingRate * 3 : null,
+    nextFundingTime,
     candles,
-    candlesSource: 'real',
-    timestamp: new Date().toISOString(),
-    isFutures: true,
+    candlesSource:    'yahoo-gcf',
+    timestamp:        new Date().toISOString(),
+    isFutures:        true,
+    fundingAvailable: fundingData !== null,
   };
 
-  cache[sym] = { ts: Date.now(), data };
-  console.log(`[${sym} Futures] Mark: $${markPrice.toFixed(2)} | Funding: ${fundingRatePct.toFixed(4)}%/8h`);
+  cache[cacheKey] = { ts: Date.now(), data };
+  console.log(`[XAUUSDT Futures] Price: $${price?.toFixed(2)} | Funding: ${fundingData ? `${fundingRate.toFixed(4)}%/8h` : 'N/A'}`);
   return data;
 }
 
 /**
  * Calcula el precio de liquidación estimado.
- * @param {number} entry    precio de entrada
- * @param {number} leverage apalancamiento
- * @param {'LONG'|'SHORT'} direction
  */
 export function calcLiquidationPrice(entry, leverage, direction) {
-  // Margen de mantenimiento ~0.5% aprox. (Binance cross-margin)
-  const maintMargin = 0.005;
+  const maintMargin      = 0.005;
   const initialMarginRate = 1 / leverage;
   if (direction === 'LONG') {
     return entry * (1 - initialMarginRate + maintMargin);
@@ -103,16 +172,10 @@ export function calcLiquidationPrice(entry, leverage, direction) {
 
 /**
  * Calcula el tamaño de posición recomendado.
- * @param {number} capital       capital total en USD
- * @param {number} riskPercent   % del capital a arriesgar (ej: 2)
- * @param {number} stopLossPct   % de SL desde entry (ej: 1.5)
- * @param {number} leverage
  */
 export function calcPositionSize(capital, riskPercent, stopLossPct, leverage) {
-  const maxLoss      = capital * (riskPercent / 100);
-  // Valor de posición = maxLoss / (SL% / 100)
+  const maxLoss       = capital * (riskPercent / 100);
   const positionValue = maxLoss / (stopLossPct / 100);
-  // Capital comprometido como margen
   const margin        = positionValue / leverage;
   const capitalPct    = (margin / capital) * 100;
   return {
