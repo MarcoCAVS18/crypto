@@ -14,6 +14,7 @@ import { PortfolioSection } from './components/PortfolioSection';
 import { PriceAlertBanner } from './components/PriceAlertBanner';
 import { OnboardingOverlay, useOnboarding } from './components/OnboardingOverlay';
 import { FloatingChat } from './components/FloatingChat';
+import { ProfileSettingsSheet } from './components/ProfileSettingsSheet';
 import { RefreshCw, AlertCircle, X, LayoutDashboard, Briefcase, AlertTriangle } from 'lucide-react';
 import { formatRelativeTime } from './utils/formatters';
 import { AUTO_REFRESH_INTERVAL } from './utils/constants';
@@ -41,7 +42,8 @@ export default function App() {
 function AuthenticatedApp() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [tabDir, setTabDir]       = useState(1);
-  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetOpen, setSheetOpen]         = useState(false);
+  const [settingsOpen, setSettingsOpen]   = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(useOnboarding());
 
   const {
@@ -53,7 +55,7 @@ function AuthenticatedApp() {
   } = useAppStore();
 
   const { currentUser, logout } = useAuthStore();
-  const profileCryptos = currentUser.cryptos ?? ['BTC', 'PAXG'];
+  const profileCryptos = currentUser?.cryptos?.length > 0 ? currentUser.cryptos : ['BTC', 'PAXG'];
 
   useEffect(() => {
     setUserId(currentUser.id);
@@ -180,9 +182,9 @@ function AuthenticatedApp() {
               <RefreshCw className={`w-4 h-4 text-slate-400 ${loading ? 'animate-spin' : ''}`} />
             </motion.button>
             <motion.button
-              onClick={handleLogout}
+              onClick={() => setSettingsOpen(true)}
               whileTap={{ scale: 0.93 }}
-              title={`Perfil: ${currentUser.name} — Cambiar`}
+              title={`Perfil: ${currentUser.name}`}
               className="w-8 h-8 rounded-lg bg-violet-600/20 border border-violet-500/30 flex items-center justify-center
                          hover:bg-violet-600/30 transition-colors"
             >
@@ -310,6 +312,20 @@ function AuthenticatedApp() {
 
         </AnimatePresence>
       </main>
+
+      {/* ── Profile settings ─────────────────────────────────────────────────── */}
+      <ProfileSettingsSheet
+        open={settingsOpen}
+        onClose={() => {
+          setSettingsOpen(false);
+          const updatedCryptos = useAuthStore.getState().currentUser?.cryptos ?? profileCryptos;
+          if (!updatedCryptos.includes(selectedCrypto) && updatedCryptos.length > 0) {
+            setSelectedCrypto(updatedCryptos[0]);
+            loadCryptoData(updatedCryptos[0]);
+          }
+        }}
+        onLogout={() => { setSettingsOpen(false); handleLogout(); }}
+      />
 
       {/* ── Onboarding ───────────────────────────────────────────────────────── */}
       <AnimatePresence>

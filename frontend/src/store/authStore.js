@@ -11,6 +11,13 @@ export const useAuthStore = create(
       login: (userProfile) => set({ currentUser: userProfile }),
 
       logout: () => set({ currentUser: null }),
+
+      updateCryptos: (cryptos) =>
+        set((state) => ({
+          currentUser: state.currentUser
+            ? { ...state.currentUser, cryptos, defaultCrypto: cryptos[0] ?? state.currentUser.defaultCrypto }
+            : null,
+        })),
     }),
     {
       name: 'crypto-auth-v1',
