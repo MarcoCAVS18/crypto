@@ -6,6 +6,7 @@ import portfolioRoutes   from './routes/portfolio.js';
 import goldContextRoutes from './routes/goldContext.js';
 import pushRoutes        from './routes/push.js';
 import chatRoutes        from './routes/chat.js';
+import futuresRoutes     from './routes/futures.js';
 
 const app = express();
 
@@ -13,6 +14,7 @@ app.use(cors({ origin: true }));
 app.use(express.json());
 
 app.use('/api/crypto',        cryptoRoutes);
+app.use('/api/futures',       futuresRoutes);
 app.use('/api',               historyRoutes);
 app.use('/api/portfolio',     portfolioRoutes);
 app.use('/api/gold-context',  goldContextRoutes);

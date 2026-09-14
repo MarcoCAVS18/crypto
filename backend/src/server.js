@@ -5,6 +5,7 @@ import cryptoRoutes from './routes/crypto.js';
 import historyRoutes from './routes/history.js';
 import portfolioRoutes from './routes/portfolio.js';
 import goldContextRoutes from './routes/goldContext.js';
+import futuresRoutes from './routes/futures.js';
 import { initDatabase } from './config/database.js';
 import { startUpdateJob } from './jobs/updateData.js';
 
@@ -19,6 +20,7 @@ app.use(express.json());
 
 // Rutas
 app.use('/api/crypto', cryptoRoutes);
+app.use('/api/futures', futuresRoutes);
 app.use('/api', historyRoutes);
 app.use('/api/portfolio', portfolioRoutes);
 app.use('/api/gold-context', goldContextRoutes);

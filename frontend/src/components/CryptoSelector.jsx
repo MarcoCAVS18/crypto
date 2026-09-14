@@ -1,7 +1,8 @@
 const CRYPTO_META = {
-  BTC:  { label: 'Bitcoin',  icon: '₿', active: 'text-orange-300 border-orange-500/60 bg-orange-500/15 shadow-orange-500/15' },
-  ETH:  { label: 'Ethereum', icon: 'Ξ', active: 'text-blue-300  border-blue-500/60  bg-blue-500/15  shadow-blue-500/15'  },
-  PAXG: { label: 'PAX Gold', icon: 'Au', active: 'text-yellow-300 border-yellow-500/60 bg-yellow-500/15 shadow-yellow-500/15' },
+  BTC:     { label: 'Bitcoin',  icon: '₿',  active: 'text-orange-300 border-orange-500/60 bg-orange-500/15 shadow-orange-500/15' },
+  ETH:     { label: 'Ethereum', icon: 'Ξ',  active: 'text-blue-300  border-blue-500/60  bg-blue-500/15  shadow-blue-500/15'  },
+  PAXG:    { label: 'PAX Gold', icon: 'Au', active: 'text-yellow-300 border-yellow-500/60 bg-yellow-500/15 shadow-yellow-500/15' },
+  XAUUSDT: { label: 'XAU Perp', icon: '⚡', active: 'text-amber-300 border-amber-500/60 bg-amber-500/15 shadow-amber-500/15' },
 };
 
 const INACTIVE = 'text-slate-500 border-white/[0.07] bg-slate-800/40 hover:border-white/[0.14] hover:text-slate-300';
