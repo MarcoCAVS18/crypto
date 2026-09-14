@@ -107,15 +107,15 @@ export function FuturesPanel() {
             className={`flex items-center gap-3 px-4 py-3.5 rounded-xl border ${dir.bg} ${dir.border}`}
           >
             <DirIcon className={`w-6 h-6 ${dir.text} shrink-0`} />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-0.5">
+            <div className="flex-1 min-w-0 overflow-hidden">
+              <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                 <span className={`font-bold text-lg tracking-wide ${dir.text}`}>{dir.label}</span>
                 {data.signal?.confidence && (
                   <span className="text-xs text-slate-500 capitalize">· confianza {data.signal.confidence}</span>
                 )}
               </div>
               {data.signal?.reasoning && (
-                <p className="text-xs text-slate-400 leading-relaxed line-clamp-2">{data.signal.reasoning}</p>
+                <p className="text-xs text-slate-400 leading-relaxed line-clamp-2 break-words">{data.signal.reasoning}</p>
               )}
             </div>
           </motion.div>
@@ -255,11 +255,11 @@ export function FuturesPanel() {
               {data.goldContext.headlines?.length > 0 && (
                 <ul className="space-y-1.5">
                   {data.goldContext.headlines.slice(0, 4).map((h, i) => (
-                    <li key={i} className="text-slate-400 text-xs leading-relaxed">
+                    <li key={i} className="text-slate-400 text-xs leading-relaxed break-words min-w-0">
                       <span className="text-slate-600 mr-1.5">·</span>
                       {h.url ? (
                         <a href={h.url} target="_blank" rel="noopener noreferrer"
-                           className="hover:text-slate-200 transition-colors">
+                           className="hover:text-slate-200 transition-colors break-words">
                           {h.title}
                         </a>
                       ) : h.title}
@@ -292,9 +292,9 @@ export function FuturesPanel() {
                   >
                     <ul className="px-5 pb-4 space-y-1.5">
                       {data.signal.keyRisks.map((risk, i) => (
-                        <li key={i} className="flex items-start gap-2 text-xs text-slate-400">
+                        <li key={i} className="flex items-start gap-2 text-xs text-slate-400 break-words min-w-0">
                           <span className="text-amber-400 mt-0.5 shrink-0">·</span>
-                          {risk}
+                          <span className="min-w-0 break-words">{risk}</span>
                         </li>
                       ))}
                     </ul>

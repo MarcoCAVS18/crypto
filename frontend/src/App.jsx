@@ -123,7 +123,7 @@ function AuthenticatedApp() {
   const userInitial      = currentUser.initial ?? currentUser.name?.[0] ?? '?';
 
   return (
-    <div className="min-h-svh">
+    <div className="min-h-svh overflow-x-hidden">
 
       {/* ── Header ────────────────────────────────────────────────────────── */}
       <header
