@@ -68,9 +68,9 @@ export function FuturesPanel() {
         <div className="flex items-start justify-between mb-4">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-white font-bold text-lg">XAUUSDT Perp</span>
+              <span className="text-white font-bold text-lg">XAUT Perp</span>
               <span className="text-xs text-slate-500 bg-slate-800/80 border border-white/[0.06] rounded-md px-2 py-0.5">
-                Binance Futures
+                Gold Futures
               </span>
             </div>
             {data && (
@@ -203,12 +203,16 @@ export function FuturesPanel() {
               </div>
               <div className="bg-slate-800/50 rounded-xl p-3">
                 <p className="text-slate-500 text-xs mb-1">Funding (8h)</p>
-                <p className={`font-semibold text-sm ${(data.market?.fundingRate ?? 0) < 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {fmtPct(data.market?.fundingRate, 4)}
-                  <span className="text-xs font-normal ml-1 text-slate-500">
-                    ({fmtPct(data.market?.fundingRatePerDay, 3)}/día)
-                  </span>
-                </p>
+                {data.market?.fundingRate != null ? (
+                  <p className={`font-semibold text-sm ${(data.market.fundingRate ?? 0) < 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {fmtPct(data.market.fundingRate, 4)}
+                    <span className="text-xs font-normal ml-1 text-slate-500">
+                      ({fmtPct(data.market.fundingRatePerDay, 3)}/día)
+                    </span>
+                  </p>
+                ) : (
+                  <p className="text-slate-500 text-sm">N/A</p>
+                )}
               </div>
             </div>
           </div>
