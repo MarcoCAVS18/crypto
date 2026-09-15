@@ -12,10 +12,11 @@ const CACHE_TTL_H = 1; // caché de señal: 1h (más corto que spot por volatili
 
 /**
  * Análisis completo de XAUUSDT Perp.
- * @param {number} maxLeverage   leverage máximo que el usuario tolera
- * @param {boolean} forceRefresh ignorar caché
+ * @param {number} maxLeverage     leverage máximo que el usuario tolera
+ * @param {boolean} forceRefresh   ignorar caché
+ * @param {object|null} portfolioContext  { totalCapital, cashPercent, paxgUnits, paxgAvgPrice, paxgCurrentPrice }
  */
-export async function getXAUUSDTAnalysis(maxLeverage = 10, forceRefresh = false) {
+export async function getXAUUSDTAnalysis(maxLeverage = 10, forceRefresh = false, portfolioContext = null) {
   // 1 — Datos de mercado (Binance Futures)
   const marketData = await getFuturesData('XAUUSDT');
 
@@ -44,8 +45,11 @@ export async function getXAUUSDTAnalysis(maxLeverage = 10, forceRefresh = false)
     console.warn('[XAUUSDT] Gold context error:', err.message);
   }
 
-  // 4 — Señal Groq: dirección + leverage (con caché de 1h por maxLeverage)
-  const cacheKey = `futures_signal_xauusdt_lev${maxLeverage}`;
+  // 4 — Señal Groq: dirección + leverage (con caché de 1h por maxLeverage + bucket de capital)
+  const capitalBucket = portfolioContext?.totalCapital > 0
+    ? `_cap${Math.round(portfolioContext.totalCapital / 100) * 100}`
+    : '';
+  const cacheKey = `futures_signal_xauusdt_lev${maxLeverage}${capitalBucket}`;
   let signal = null;
 
   if (!forceRefresh) {
@@ -62,6 +66,7 @@ export async function getXAUUSDTAnalysis(maxLeverage = 10, forceRefresh = false)
         goldContext,
         marketData.fundingRate,
         maxLeverage,
+        portfolioContext,
       );
       setAiCache(cacheKey, signal, CACHE_TTL_H).catch(e =>
         console.warn('[XAUUSDT] Cache write error:', e.message)
