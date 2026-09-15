@@ -1,4 +1,4 @@
-// Análisis con Groq (llama-3.3-70b-versatile)
+// Análisis con OpenRouter (moonshotai/kimi-k2-instruct via GROQ_API_KEY=OpenRouter key)
 // 1. analyzeGoldSentiment     — sentimiento macro para oro/PAXG (caché 2h)
 // 2. translateHeadlines       — traducción de titulares al español (caché 2h)
 // 3. analyzeCalendarRisk      — modulación de decisión por eventos macro (caché 4h)
@@ -12,7 +12,10 @@ function getClient() {
   if (!groqClient) {
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) throw new Error('GROQ_API_KEY no configurada en las variables de entorno');
-    groqClient = new Groq({ apiKey });
+    groqClient = new Groq({
+      apiKey,
+      baseURL: 'https://openrouter.ai/api/v1',
+    });
   }
   return groqClient;
 }
@@ -96,7 +99,7 @@ Respondé SOLO con un objeto JSON válido (sin markdown, sin texto extra):
 }`;
 
   const completion = await client.chat.completions.create({
-    model: 'llama-3.3-70b-versatile',
+    model: 'moonshotai/kimi-k2-instruct',
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.2,
     max_tokens: 600
@@ -130,7 +133,7 @@ TITULARES:
 ${numbered}`;
 
   const completion = await client.chat.completions.create({
-    model:       'llama-3.3-70b-versatile',
+    model:       'moonshotai/kimi-k2-instruct',
     messages:    [{ role: 'user', content: prompt }],
     temperature: 0.1,
     max_tokens:  600
@@ -195,7 +198,7 @@ Guía de criterio:
 - Sin eventos inminentes o señal débil existente → modulate=false`;
 
   const completion = await client.chat.completions.create({
-    model: 'llama-3.3-70b-versatile',
+    model: 'moonshotai/kimi-k2-instruct',
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.15,
     max_tokens: 400
@@ -299,7 +302,7 @@ Respondé SOLO con JSON válido (sin markdown):
 }`;
 
   const completion = await client.chat.completions.create({
-    model:       'llama-3.3-70b-versatile',
+    model:       'moonshotai/kimi-k2-instruct',
     messages:    [{ role: 'user', content: prompt }],
     temperature: 0.3,
     max_tokens:  450
@@ -369,7 +372,7 @@ Respondé SOLO con JSON válido (sin markdown):
 }`;
 
   const completion = await client.chat.completions.create({
-    model: 'llama-3.3-70b-versatile',
+    model: 'moonshotai/kimi-k2-instruct',
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.2,
     max_tokens: 800,
@@ -448,7 +451,7 @@ Respondé SOLO con JSON válido (sin markdown):
 }`;
 
   const completion = await client.chat.completions.create({
-    model: 'llama-3.3-70b-versatile',
+    model: 'moonshotai/kimi-k2-instruct',
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.15,
     max_tokens: 700,
