@@ -389,7 +389,7 @@ Respondé SOLO con JSON válido (sin markdown):
   };
 }
 
-export async function analyzeFuturesDirection(technicals, goldContext, fundingRate, maxLeverage = 10) {
+export async function analyzeFuturesDirection(technicals, goldContext, fundingRate, maxLeverage = 10, portfolioContext = null) {
   const client = getClient();
   const fr = fundingRate ?? 0;
 
@@ -421,6 +421,24 @@ export async function analyzeFuturesDirection(technicals, goldContext, fundingRa
     ? 'negativo alto — shorts pagan a longs'
     : 'neutro';
 
+  let portfolioBlock = '';
+  let availableCashUsd = 0;
+  if (portfolioContext) {
+    const { totalCapital = 0, cashPercent = 100, paxgUnits = 0, paxgAvgPrice = 0, paxgCurrentPrice = 0 } = portfolioContext;
+    availableCashUsd = totalCapital * (cashPercent / 100);
+    const paxgValue = paxgUnits * (paxgCurrentPrice || paxgAvgPrice);
+    portfolioBlock = `
+PORTFOLIO DEL USUARIO:
+- Capital total: $${totalCapital.toFixed(2)}
+- Cash disponible (${cashPercent}%): $${availableCashUsd.toFixed(2)}
+- Posición PAXG/Oro spot: ${paxgUnits > 0 ? `${paxgUnits.toFixed(6)} oz · valor $${paxgValue.toFixed(2)} · precio promedio $${paxgAvgPrice.toFixed(2)}` : 'Sin posición'}
+`;
+  }
+
+  const positionSizeInstruction = availableCashUsd > 0
+    ? `- "positionUsd": <monto en USD a destinar a esta operación, entre $10 y $${availableCashUsd.toFixed(2)} según confianza — usá el cash disponible del usuario>`
+    : `- "positionUsd": null`;
+
   const prompt = `Sos un trader institucional en futuros perpetuos de oro (XAUUSDT).
 
 TÉCNICOS:
@@ -435,7 +453,7 @@ ${headlinesText}
 FUNDING: ${fr.toFixed(4)}%/8h → ${fundingDir}
 SENTIMIENTO ORO: ${goldContext?.sentiment ?? 'N/A'} (score: ${goldContext?.score ?? 'N/A'})
 LEVERAGE MÁXIMO PERMITIDO: ${maxLeverage}x
-
+${portfolioBlock}
 Respondé SOLO con JSON válido (sin markdown):
 {
   "direction": "LONG" | "SHORT" | "NEUTRAL",
@@ -444,14 +462,15 @@ Respondé SOLO con JSON válido (sin markdown):
   "confidence": "high" | "medium" | "low",
   "reasoning": "<2-3 oraciones en español>",
   "keyRisks": ["<riesgo 1>", "<riesgo 2>"],
-  "fundingImpact": "positive" | "negative" | "neutral"
+  "fundingImpact": "positive" | "negative" | "neutral",
+  ${positionSizeInstruction}
 }`;
 
   const completion = await client.chat.completions.create({
     model: 'openai/gpt-oss-120b',
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.15,
-    max_tokens: 700,
+    max_tokens: 800,
   });
 
   const content   = cleanContent(completion.choices[0]?.message?.content);
@@ -470,5 +489,8 @@ Respondé SOLO con JSON válido (sin markdown):
     reasoning:       typeof parsed.reasoning  === 'string'        ? parsed.reasoning  : '',
     keyRisks:        Array.isArray(parsed.keyRisks)               ? parsed.keyRisks.slice(0, 3) : [],
     fundingImpact:   ['positive','negative','neutral'].includes(parsed.fundingImpact) ? parsed.fundingImpact : 'neutral',
+    positionUsd:     typeof parsed.positionUsd === 'number' && availableCashUsd > 0
+                       ? Math.max(10, Math.min(availableCashUsd, Math.round(parsed.positionUsd)))
+                       : null,
   };
 }
