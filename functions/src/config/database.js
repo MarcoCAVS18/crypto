@@ -2,7 +2,11 @@
 // Las funciones de caché son async; las demás mantienen la misma firma.
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 
-const db = () => getFirestore();
+let _db = null;
+const db = () => {
+  if (!_db) _db = getFirestore();
+  return _db;
+};
 
 // Sanitiza una clave arbitraria para usarla como ID de documento Firestore
 function toDocId(key) {

@@ -70,7 +70,7 @@ router.post('/', async (req, res) => {
   const systemContent = SYSTEM_PROMPT + buildContextBlock(context);
 
   try {
-    const groq = new Groq({ apiKey, baseURL: 'https://openrouter.ai/api/v1' });
+    const groq = new Groq({ apiKey });
     const completion = await groq.chat.completions.create({
       model:       'openai/gpt-oss-120b',
       max_tokens:  200,
