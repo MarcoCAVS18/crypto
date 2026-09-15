@@ -142,10 +142,7 @@ router.get('/:symbol', async (req, res) => {
     });
   } catch (error) {
     console.error('Error en /api/crypto/:symbol:', error);
-    res.status(500).json({
-      error: 'Error obteniendo datos del mercado',
-      message: error.message
-    });
+    res.status(500).json({ error: 'Error obteniendo datos del mercado' });
   }
 });
 
@@ -312,10 +309,7 @@ router.post('/decision', async (req, res) => {
     });
   } catch (error) {
     console.error('Error en /api/decision:', error);
-    res.status(500).json({
-      error: 'Error generando decisión',
-      message: error.message
-    });
+    res.status(500).json({ error: 'Error generando decisión' });
   }
 });
 
@@ -376,7 +370,7 @@ router.post('/:symbol/news/refresh', async (req, res) => {
     res.json(context);
   } catch (err) {
     console.error(`[POST /news/refresh ${symbol}]`, err);
-    res.status(500).json({ error: `Error refrescando noticias de ${symbol}`, message: err.message });
+    res.status(500).json({ error: `Error refrescando noticias de ${symbol}` });
   }
 });
 

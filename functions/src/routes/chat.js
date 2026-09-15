@@ -72,7 +72,7 @@ router.post('/', async (req, res) => {
   try {
     const groq = new Groq({ apiKey });
     const completion = await groq.chat.completions.create({
-      model:       'openai/gpt-oss-120b',
+      model:       'llama-3.3-70b-versatile',
       max_tokens:  200,
       temperature: 0.4,
       messages: [
