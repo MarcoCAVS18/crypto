@@ -12,6 +12,7 @@ const fredApiKey    = defineSecret('FRED_API_KEY');   // series macro de FRED (g
 
 import app from './src/app.js';
 import { handler as zoneWatcherHandler } from './src/scheduled/zoneWatcher.js';
+import { handler as snapshotHandler } from './src/scheduled/snapshotJob.js';
 
 // ── API HTTP ──────────────────────────────────────────────────────────────────
 export const api = onRequest(
@@ -33,4 +34,17 @@ export const zoneWatcher = onSchedule(
     secrets:        [vapidPublic, vapidPrivate]
   },
   zoneWatcherHandler
+);
+
+// ── Scheduled: snapshot horario de features de mercado (PAXG, BTC) ────────────
+// Refresca el contexto de oro si su caché venció, por eso necesita los secretos de IA y FRED.
+export const snapshotJob = onSchedule(
+  {
+    schedule:       'every 60 minutes',
+    region:         'us-central1',
+    memory:         '512MiB',
+    timeoutSeconds: 120,
+    secrets:        [groqApiKey, fredApiKey]
+  },
+  snapshotHandler
 );

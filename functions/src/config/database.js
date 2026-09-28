@@ -84,6 +84,37 @@ export async function getDecisionsBySymbol(symbol, limit = 10) {
   }
 }
 
+// ── Snapshots horarios del mercado (features point-in-time) ───────────────────
+
+/**
+ * Guarda la foto de la hora (id `SYMBOL_YYYYMMDDHH`); la primera de cada hora gana.
+ * @returns {Promise<boolean>} true si se guardó, false si esa hora ya tenía snapshot.
+ */
+export async function saveSnapshot(record) {
+  const { id, ...data } = record;
+  try {
+    await db().collection('snapshots').doc(id).create({ ...data, createdAt: FieldValue.serverTimestamp() });
+    return true;
+  } catch (err) {
+    if (err?.code === 6 || /ALREADY_EXISTS/i.test(err?.message ?? '')) return false;
+    throw err;
+  }
+}
+
+/** Últimos N snapshots de un símbolo (más nuevo primero), por rango de ID: sin índice compuesto. */
+export async function getLatestSnapshots(symbol, limit = 1) {
+  const prefix = `${String(symbol).toUpperCase()}_`;
+  const docId = FieldPath.documentId();
+  const snap = await db()
+    .collection('snapshots')
+    .where(docId, '>=', prefix)
+    .where(docId, '<', prefix + '')
+    .orderBy(docId, 'desc')
+    .limit(limit)
+    .get();
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
 // ── Portfolio (stub — el frontend usa el cliente Firestore directamente) ──────
 
 export function getPortfolioSummaryBySymbol(_symbol) {

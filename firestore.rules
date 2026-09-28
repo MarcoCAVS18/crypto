@@ -18,6 +18,13 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Snapshots horarios de mercado — solo el servidor (Admin SDK) escribe y lee.
+    // (Sin regla el cliente ya estaría denegado por defecto; se deja explícito. Las reglas no se
+    // despliegan desde deploy.yml: aplicar con `firebase deploy --only firestore:rules`.)
+    match /snapshots/{docId} {
+      allow read, write: if false;
+    }
+
     // Cachés internas de la Function — solo acceso desde el servidor (Admin SDK)
     match /_cache/{docId} {
       allow read, write: if false;

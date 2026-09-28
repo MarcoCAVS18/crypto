@@ -12,6 +12,7 @@ import { analyzeCalendarRisk, generatePortfolioInsight } from '../services/groqA
 import { getUpcomingEvents } from '../data/macroCalendar.js';
 import { buildDecisionRecord } from '../services/decisionLog.js';
 import { insightCacheKey } from '../services/aiHelpers.js';
+import { applyDataQuality } from '../services/dataHealth.js';
 import { saveDecision, getPortfolioSummaryBySymbol, getAiCache, setAiCache, getDecisionsBySymbol } from '../config/database.js';
 
 const router = express.Router();
@@ -221,6 +222,9 @@ router.post('/decision', async (req, res) => {
       marketMode, zones, marketData.price, userState, indicators, symbol.toUpperCase(), portfolioContext,
       { candlesSource: marketData.candlesSource }
     );
+
+    // Con datos macro degradados (fuentes caídas/viejas) se advierte y una compra pierde intensidad
+    decision = applyDataQuality(decision, marketMode.goldContext?.dataHealth);
 
     // ── Modulación por calendario macro (solo en BUY, via Groq) ───────────────
     // Solo llamamos a Groq si la señal es BUY y hay eventos críticos en 7 días.

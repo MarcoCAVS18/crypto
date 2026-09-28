@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { TrendingUp, TrendingDown, Minus, Newspaper, BrainCircuit, Clock, RefreshCw, ExternalLink } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Newspaper, BrainCircuit, Clock, RefreshCw, ExternalLink, AlertTriangle } from 'lucide-react';
 import { refreshGoldContext, refreshCryptoNews } from '../services/api';
 
 const SENTIMENT = {
@@ -374,7 +374,7 @@ export function MacroContext({ goldContext: initialContext }) {
   if (!context) return null;
 
   const { macro, sentiment, reasoning, keyFactors = [], headlines = [], fetchedAt, fromCache, analysisError,
-          cot, realYield, gvz, goldSilverRatio, dailyBias, premium } = context;
+          cot, realYield, gvz, goldSilverRatio, dailyBias, premium, dataHealth } = context;
   const s = SENTIMENT[sentiment] ?? SENTIMENT.neutral;
   const SentIcon = s.Icon;
   const groqMissing = !!analysisError;
@@ -430,6 +430,19 @@ export function MacroContext({ goldContext: initialContext }) {
           <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
             {refreshError}
           </p>
+        )}
+
+        {/* Modo degradado: algún insumo del score falló o está desactualizado */}
+        {dataHealth?.degraded && (
+          <div
+            className={`flex items-start gap-2.5 p-3 rounded-xl border text-xs
+              ${dataHealth.level === 'severe'
+                ? 'bg-red-500/[0.07] border-red-500/25 text-red-300'
+                : 'bg-amber-500/[0.07] border-amber-500/20 text-amber-400'}`}
+          >
+            <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+            <span>{dataHealth.message}</span>
+          </div>
         )}
 
         {/* AI sentiment block */}

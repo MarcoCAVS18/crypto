@@ -3,6 +3,7 @@
 import { getMacroData, getCOTData, getRealYield, getGoldVolatilityData } from './macroService.js';
 import { getFredMacro, applyFredFallbacks } from './fredService.js';
 import { getGoldSpotDaily, computeRegime } from './spotGold.js';
+import { buildGoldSources } from './dataHealth.js';
 import { getDailyCandles } from './marketData.js';
 import { calculateAllIndicators } from './technicalAnalysis.js';
 import { getGoldHeadlines } from './newsService.js';
@@ -137,7 +138,14 @@ export async function getGoldContext(forceRefresh = false) {
     console.warn('[GoldContext] Traducción fallida, usando inglés:', trErr.message);
   }
 
+  // Estado de cada insumo (ok/stale/failed + fuente + antigüedad) para el modo degradado y /api/health/deep
+  const sources = buildGoldSources({
+    macro, dailyBias, headlines, analysisError, fred,
+    results: { macro: macroResult, realYield: realYieldResult, cot: cotResult, volData: volDataResult, spot: spotResult }
+  });
+
   const context = {
+    sources,
     fetchedAt: new Date().toISOString(),
     fromCache:  false,
     macro,
