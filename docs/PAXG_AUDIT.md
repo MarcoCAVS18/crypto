@@ -171,9 +171,14 @@ Cada fase = un PR. Marcar `[x]` al mergear.
 - [x] **Seguimiento**: `followStats` cruza señales con operaciones registradas (BUY/SELL del mismo símbolo dentro de 24 h) y compara el resultado de las seguidas vs no seguidas.
 - [x] **Alerta de fuente caída**: push (con antispam de 12 h) tras 3 ciclos horarios seguidos con degradación severa (`healthAlert.js`, dentro de `snapshotJob`).
 
-### P5 — Ingeniería y seguridad
-- [ ] Decidir/eliminar `backend/`; núcleo puro compartido; config versionada; README
-- [ ] Reglas de Firestore con auth real; rate-limit en `/api/chat` y `/refresh`; App Check
+### P5 — Ingeniería y seguridad  → implementado con alcance acotado (rama `claude/paxg-phase5-engineering`)
+- [x] `backend/` **deprecado** (`backend/DEPRECATED.md`, README): no se elimina en este PR porque no puedo confirmar que nada dependa de él en Render; recomendación: `git rm -r backend` cuando lo confirmes (D9).
+- [x] Config versionada: `config/versions.js` reúne versiones (decisión, snapshot, política de DCA, revisión) y parámetros vigentes; sale en `GET /api/health/deep` (`versions`).
+- [x] README reescrito (arquitectura real, jobs, secretos, diagnóstico).
+- [x] **Rate-limit** por IP (`middleware/rateLimit.js`): general 240/min, IA 20/min, refrescos 6/min, `/api/health/ai` 6/min; cabeceras de seguridad; `CORS_ORIGINS` opcional. **En memoria y por instancia** (Cloud Functions no comparte estado entre instancias): frena ráfagas, no es una defensa completa.
+- [x] Reglas de Firestore (`firestore.rules`): validación de esquema en `portfolio_operations` (crear/leer/borrar; sin edición) y `user_profiles` (crear una vez; solo se puede cambiar `cryptos`; sin borrar). **No autentican.**
+- [ ] **Autenticación real** (Firebase Auth) y **App Check**: no implementados. La app usa PIN + Firestore desde el cliente; el hash de un PIN corto es débil y cualquiera con la configuración web puede leer/borrar operaciones. Requiere migrar el acceso a Firestore a Auth (p. ej. anónima + reclamos personalizados) y activar App Check en la consola: no se puede hacer/probar sin acceso a tu proyecto y rompería el acceso actual si sale mal.
+- [ ] Núcleo puro compartido front/back: descartado por ahora (la lógica de decisión vive solo en `functions/`; el frontend solo duplica `portfolioMath`, con tests propios).
 
 ## 6. Decisiones abiertas / supuestos
 
@@ -275,3 +280,8 @@ Sin contrastar (`verified: false`, "fecha por confirmar"): PCE sep (30-oct), NFP
 - Nuevo job `outcomeJob` (cada 24 h; sin secretos) y colección `outcomes` (regla de solo servidor en `firestore.rules`: **hay que desplegarla** con `firebase deploy --only firestore:rules`; sin regla el cliente ya queda denegado por defecto).
 - Las decisiones nuevas guardan `ts` (ms) y `shadow`; las anteriores sin `ts` se etiquetan con su timestamp de servidor. Los primeros resultados de 20/60 días aparecerán recién cuando pasen esos días.
 - No verificado en vivo: primera corrida de `outcomeJob` (log `[Outcomes] {…}`), el endpoint con datos reales y la alerta de push.
+
+### P5 — Ingeniería y seguridad (rama `claude/paxg-phase5-engineering`)
+- Tests: `security.test.js` (limitador, CORS, cabeceras), smoke (429 en el 7.º pedido a `/api/health/ai`, cabeceras), `versions`.
+- **Reglas de Firestore sin probar** (no hay emulador en la sesión): revisá con `firebase emulators:start --only firestore` y ejercitá agregar/borrar operación y crear perfil antes de `firebase deploy --only firestore:rules`. Si algo falla, restaurar la versión anterior desde el historial de git.
+- Comportamiento que cambia: 429 ante ráfagas; cabeceras nuevas; `x-powered-by` eliminado.
