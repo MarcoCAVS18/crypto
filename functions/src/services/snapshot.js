@@ -8,7 +8,7 @@
 
 import { hourBucket, nullify } from './decisionLog.js';
 
-export const SNAPSHOT_MODEL_VERSION = 'p1';
+export const SNAPSHOT_MODEL_VERSION = 'p2';
 
 /** `PAXG_2026092812`: una foto por símbolo y hora UTC (el orden del ID es cronológico). */
 export function snapshotDocId(symbol, ms) {
@@ -61,6 +61,7 @@ export function buildSnapshot({ symbol, marketData, indicators, volume, zones, m
     technicals: {
       rsi: r(indicators?.rsi, 1),
       atrPercent: indicators?.atr && price ? r((indicators.atr / price) * 100, 3) : null,
+      atrPercentile: r(indicators?.atrPercentile, 1),
       ema20: r(indicators?.ema?.ema20), ema50: r(indicators?.ema?.ema50),
       ema100: r(indicators?.ema?.ema100), ema200: r(indicators?.ema?.ema200),
       vwap24h: r(indicators?.vwap),
@@ -74,7 +75,8 @@ export function buildSnapshot({ symbol, marketData, indicators, volume, zones, m
     market: {
       mode: marketMode?.mode ?? null,
       score: r(marketMode?.score, 3),
-      components: marketMode?.components ?? null
+      components: marketMode?.components ?? null,
+      hysteresis: marketMode?.hysteresis ?? null
     },
 
     gold: gc ? {

@@ -34,6 +34,10 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Install deps
+        run: npm ci
+        working-directory: functions
+
       - name: Run backtest
         working-directory: functions
         run: node scripts/backtest.mjs --holdout-years "${{ inputs.holdout_years || '2' }}" --perm "${{ inputs.perm || '500' }}"

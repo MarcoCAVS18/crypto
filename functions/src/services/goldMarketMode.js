@@ -15,9 +15,9 @@
 // Los mapeos numéricos (DXY, 10Y, GVZ, oro/plata) son CONTINUOS: un cambio mínimo en el
 // dato no puede mover el score de golpe (antes DXY +0.149 % → +0.151 % movía −0.125).
 //
-// Umbral de modo final:
-//   score > +0.25  → risk_on  (entorno favorable para oro)
-//   score < -0.25  → risk_off (entorno desfavorable)
+// Umbral de modo final (con HISTÉRESIS para que el modo no parpadee alrededor del umbral):
+//   se ENTRA a risk_on con score > +0.25 y se SALE cuando cae por debajo de +0.15 (espejo para risk_off);
+//   sin modo previo conocido rige el umbral simple de entrada.
 //   entre          → neutral
 
 import { determineMarketMode } from './marketMode.js';
@@ -28,6 +28,16 @@ import { summarizeSources } from './dataHealth.js';
 // decida sola un cambio de régimen.
 export const AI_WEIGHT = 0.15;
 export const MODE_THRESHOLD = 0.25;
+export const MODE_EXIT_THRESHOLD = 0.15;
+
+/** Modo a partir del score y (opcional) el modo previo: la banda [exit, enter) conserva el modo anterior. */
+export function modeWithHysteresis(score, previousMode = null) {
+  if (score > MODE_THRESHOLD) return 'risk_on';
+  if (score < -MODE_THRESHOLD) return 'risk_off';
+  if (previousMode === 'risk_on' && score > MODE_EXIT_THRESHOLD) return 'risk_on';
+  if (previousMode === 'risk_off' && score < -MODE_EXIT_THRESHOLD) return 'risk_off';
+  return 'neutral';
+}
 
 const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 
@@ -60,9 +70,10 @@ export const ratioAdjustment = (r) => interpolate([[70, 0.07], [80, 0], [90, -0.
  * @param {object} indicators   - Indicadores técnicos (ema, rsi, atr…)
  * @param {object} volumeAnalysis
  * @param {object|null} goldContext - Resultado de getGoldContext()
+ * @param {{ previousMode?: string|null }} [opts] - modo del snapshot anterior (histéresis)
  * @returns {{ mode, score, reasons, goldContext }}
  */
-export function determineGoldMarketMode(currentPrice, indicators, volumeAnalysis, goldContext) {
+export function determineGoldMarketMode(currentPrice, indicators, volumeAnalysis, goldContext, { previousMode = null } = {}) {
   // Sin contexto macro: fallback a market mode estándar
   if (!goldContext) {
     const fallback = determineMarketMode(currentPrice, indicators, volumeAnalysis);
@@ -134,7 +145,8 @@ export function determineGoldMarketMode(currentPrice, indicators, volumeAnalysis
   }
 
   // ── 4. Técnicos (±0.15) ────────────────────────────────────────────────────
-  const techMode = determineMarketMode(currentPrice, indicators, volumeAnalysis);
+  // ATR relativo al propio historial del oro (los umbrales absolutos de cripto nunca se activan en oro)
+  const techMode = determineMarketMode(currentPrice, indicators, volumeAnalysis, null, { percentileAtr: true });
   const techScore = techMode.mode === 'risk_on' ? 1 : techMode.mode === 'risk_off' ? -1 : 0;
   add('technical', techScore * 0.15);
 
@@ -268,12 +280,15 @@ export function determineGoldMarketMode(currentPrice, indicators, volumeAnalysis
 
   // ── Modo final (score se clampea a [-1, 1]) ───────────────────────────────
   const finalScore = Math.round(Math.max(-1, Math.min(1, score)) * 1000) / 1000;
-  const mode = finalScore > MODE_THRESHOLD ? 'risk_on' : finalScore < -MODE_THRESHOLD ? 'risk_off' : 'neutral';
+  const mode = modeWithHysteresis(finalScore, previousMode);
+  const heldByHysteresis = mode !== 'neutral' && mode !== modeWithHysteresis(finalScore, null);
+  if (heldByHysteresis) reasons.push(`Modo ${mode === 'risk_on' ? 'risk_on' : 'risk_off'} sostenido por histéresis (score ${finalScore}; se sale por debajo de ±${MODE_EXIT_THRESHOLD})`);
 
   return {
     mode,
     score: finalScore,
     reasons,
+    hysteresis: { previousMode, held: heldByHysteresis },
     components,            // aporte de cada insumo al score (suma = score antes del recorte a ±1)
     goldContext: {
       macro:         macro ?? null,
