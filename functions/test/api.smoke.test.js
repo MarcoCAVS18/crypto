@@ -82,3 +82,15 @@ test('P1/B15: /candles?granularity=4h se arma desde 1h y responde velas de 4h', 
   assert.equal(j.candles.length, 180);
   assert.equal(j.candles[1].timestamp - j.candles[0].timestamp, 4 * 3600 * 1000);
 }));
+
+test('GET /api/health/ai está montado en esa ruta (sin clave responde con el diagnóstico, no 404)', async () => {
+  const saved = process.env.GROQ_API_KEY;
+  delete process.env.GROQ_API_KEY;
+  try {
+    const r = await fetch(`${base}/api/health/ai`);
+    assert.equal(r.status, 200);
+    const j = await r.json();
+    assert.equal(j.ok, false);
+    assert.match(j.hint, /No hay GROQ_API_KEY/);
+  } finally { if (saved !== undefined) process.env.GROQ_API_KEY = saved; }
+});
