@@ -5,6 +5,7 @@ import { calculateAllIndicators, analyzeVolume } from '../services/technicalAnal
 import { calculateZones } from '../services/zoneCalculator.js';
 import { determineMarketMode } from '../services/marketMode.js';
 import { determineGoldMarketMode } from '../services/goldMarketMode.js';
+import { getPreviousMode } from '../services/previousMode.js';
 import { getGoldContext } from '../services/goldContext.js';
 import { getCryptoNewsContext } from '../services/cryptoNewsContext.js';
 import { makeDecision } from '../services/decisionEngine.js';
@@ -104,7 +105,7 @@ router.get('/:symbol', async (req, res) => {
     if (symbol.toUpperCase() === 'PAXG') {
       try {
         const goldCtx = await getGoldContext();
-        marketMode = determineGoldMarketMode(marketData.price, indicators, volumeAnalysis, goldCtx);
+        marketMode = determineGoldMarketMode(marketData.price, indicators, volumeAnalysis, goldCtx, { previousMode: await getPreviousMode('PAXG') });
       } catch (goldErr) {
         console.warn('[crypto route] Gold context fallback:', goldErr.message);
         marketMode = determineMarketMode(marketData.price, indicators, volumeAnalysis);
@@ -191,7 +192,7 @@ router.post('/decision', async (req, res) => {
     if (symbol.toUpperCase() === 'PAXG') {
       try {
         const goldCtx = await getGoldContext();
-        marketMode = determineGoldMarketMode(marketData.price, indicators, volumeAnalysis, goldCtx);
+        marketMode = determineGoldMarketMode(marketData.price, indicators, volumeAnalysis, goldCtx, { previousMode: await getPreviousMode('PAXG') });
       } catch (goldErr) {
         console.warn('[decision] Gold context fallback:', goldErr.message);
         marketMode = determineMarketMode(marketData.price, indicators, volumeAnalysis);

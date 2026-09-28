@@ -10,6 +10,7 @@ import { calculateZones } from '../services/zoneCalculator.js';
 import { determineMarketMode } from '../services/marketMode.js';
 import { determineGoldMarketMode } from '../services/goldMarketMode.js';
 import { buildSnapshot } from '../services/snapshot.js';
+import { getPreviousMode } from '../services/previousMode.js';
 
 export const SNAPSHOT_SYMBOLS = ['PAXG', 'BTC'];
 
@@ -21,6 +22,7 @@ async function loadDefaultDeps() {
     determineMarketMode, determineGoldMarketMode,
     getGoldContext: gold.getGoldContext,
     saveSnapshot: db.saveSnapshot,
+    getPreviousMode,
     now: () => Date.now()
   };
 }
@@ -55,7 +57,8 @@ export async function run(d) {
       if (symbol === 'PAXG') {
         try {
           const goldCtx = await d.getGoldContext();
-          marketMode = d.determineGoldMarketMode(marketData.price, indicators, volume, goldCtx);
+          const previousMode = d.getPreviousMode ? await d.getPreviousMode(symbol) : null;
+          marketMode = d.determineGoldMarketMode(marketData.price, indicators, volume, goldCtx, { previousMode });
         } catch (e) {
           // Sin contexto macro el snapshot igual sirve (solo técnico) y queda marcado por la ausencia de `gold`
           console.warn(`[Snapshot] ${symbol}: contexto de oro no disponible (${e.message}), se guarda solo técnico`);

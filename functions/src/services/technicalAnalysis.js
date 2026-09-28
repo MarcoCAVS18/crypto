@@ -115,6 +115,23 @@ export function findSwingPoints(candles, lookback = 5) {
   return { swingHighs, swingLows };
 }
 
+/**
+ * Percentil (0–100) del ATR/precio actual frente a los últimos `lookback` valores del mismo activo.
+ * Reemplaza a los umbrales absolutos (ATR > 3 % / < 1.5 %), que en el oro nunca se activan:
+ * un 4h de oro casi nunca supera 1 % de rango. Null si no hay historia suficiente (< 60 valores).
+ */
+export function atrPercentile(candles, atrSeries, lookback = 250) {
+  const off = candles.length - atrSeries.length;
+  const ratios = [];
+  for (let k = Math.max(0, atrSeries.length - lookback); k < atrSeries.length; k++) {
+    const close = candles[k + off]?.close;
+    if (close > 0 && Number.isFinite(atrSeries[k])) ratios.push(atrSeries[k] / close);
+  }
+  if (ratios.length < 60) return null;
+  const last = ratios[ratios.length - 1];
+  return Math.round((ratios.filter(v => v <= last).length / ratios.length) * 1000) / 10;
+}
+
 // Calcula todos los indicadores para un set de velas
 export function calculateAllIndicators(candles) {
   const ema20 = calculateEMA(candles, 20);
@@ -139,6 +156,7 @@ export function calculateAllIndicators(candles) {
     },
     rsi: rsi[rsi.length - 1],
     atr: atr[atr.length - 1],
+    atrPercentile: atrPercentile(candles, atr),
     vwap: vwap[vwap.length - 1],
     swingPoints: swingPoints,
     currentPrice: currentPrice,

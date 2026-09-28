@@ -8,7 +8,7 @@
 
 import { hourBucket, nullify } from './decisionLog.js';
 
-export const SNAPSHOT_MODEL_VERSION = 'p1';
+export const SNAPSHOT_MODEL_VERSION = 'p2';
 
 /** `PAXG_2026092812`: una foto por símbolo y hora UTC (el orden del ID es cronológico). */
 export function snapshotDocId(symbol, ms) {
@@ -61,6 +61,7 @@ export function buildSnapshot({ symbol, marketData, indicators, volume, zones, m
     technicals: {
       rsi: r(indicators?.rsi, 1),
       atrPercent: indicators?.atr && price ? r((indicators.atr / price) * 100, 3) : null,
+      atrPercentile: r(indicators?.atrPercentile, 1),
       ema20: r(indicators?.ema?.ema20), ema50: r(indicators?.ema?.ema50),
       ema100: r(indicators?.ema?.ema100), ema200: r(indicators?.ema?.ema200),
       vwap24h: r(indicators?.vwap),
@@ -74,7 +75,8 @@ export function buildSnapshot({ symbol, marketData, indicators, volume, zones, m
     market: {
       mode: marketMode?.mode ?? null,
       score: r(marketMode?.score, 3),
-      components: marketMode?.components ?? null
+      components: marketMode?.components ?? null,
+      hysteresis: marketMode?.hysteresis ?? null
     },
 
     gold: gc ? {
@@ -85,7 +87,7 @@ export function buildSnapshot({ symbol, marketData, indicators, volume, zones, m
         value: r(macro.realYield.value, 3), sentiment: macro.realYield.sentiment ?? null,
         change20d: macro.realYield.change20d ?? null, zscore1y: macro.realYield.zscore1y ?? null
       } : null,
-      cot: macro?.cot ? { netSpec: macro.cot.netSpec, weekChange: macro.cot.weekChange, sentiment: macro.cot.sentiment, reportDate: macro.cot.reportDate ?? null } : null,
+      cot: macro?.cot ? { netSpec: macro.cot.netSpec, weekChange: macro.cot.weekChange, sentiment: macro.cot.sentiment, reportDate: macro.cot.reportDate ?? null, percentile: macro.cot.netSpecPercentile ?? null } : null,
       gvz: macro?.gvz ? { value: r(macro.gvz.value), source: macro.gvz.source ?? 'yahoo' } : null,
       silver: macro?.silver ? r(macro.silver.value) : null,
       goldSilverRatio: gc.goldSilverRatio ?? null,
@@ -94,6 +96,7 @@ export function buildSnapshot({ symbol, marketData, indicators, volume, zones, m
         longAlignment: macro.dailyBias.longAlignment ?? null, extension200Pct: macro.dailyBias.extension200Pct ?? null,
         rsi: r(macro.dailyBias.rsi, 1), atrPercent: macro.dailyBias.atrPercent ?? null
       } : null,
+      decoupling: macro?.decoupling ? { corr60: macro.decoupling.corr60, corr250: macro.decoupling.corr250, status: macro.decoupling.status } : null,
       premium: gc.premium ? { premiumPct: gc.premium.premiumPct, stale: gc.premium.stale } : null,
       spotPrice: macro?.spot ? r(macro.spot.price) : null,
       headlineCount: Array.isArray(gc.headlines) ? gc.headlines.length : 0,

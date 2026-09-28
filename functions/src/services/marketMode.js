@@ -1,7 +1,9 @@
 // Determina el contexto general del mercado (Risk ON/OFF/Neutral)
 
 // Determina el modo del mercado basado en indicadores
-export function determineMarketMode(price, indicators, volumeAnalysis, multiTimeframeData = null) {
+// `opts.percentileAtr`: usa el percentil histórico del ATR del propio activo (indicators.atrPercentile) en vez de
+// umbrales absolutos. Solo se activa para el oro; cripto conserva el comportamiento anterior.
+export function determineMarketMode(price, indicators, volumeAnalysis, multiTimeframeData = null, opts = {}) {
   const reasons = [];
   let score = 0; // Positivo = Risk ON, Negativo = Risk OFF
 
@@ -28,16 +30,31 @@ export function determineMarketMode(price, indicators, volumeAnalysis, multiTime
 
   // Verificar ATR (volatilidad)
   // ATR alto puede ser peligroso
-  const atrPercent = (indicators.atr / price) * 100;
-  if (atrPercent > 5) {
-    score -= 2;
-    reasons.push('Volatilidad muy alta');
-  } else if (atrPercent > 3) {
-    score -= 1;
-    reasons.push('Volatilidad elevada');
-  } else if (atrPercent < 1.5) {
-    score += 1;
-    reasons.push('Volatilidad controlada');
+  const pct = indicators.atrPercentile;
+  if (opts.percentileAtr && Number.isFinite(pct)) {
+    // relativo al propio historial: percentil ≥ 90 = volatilidad extrema, ≥ 75 elevada, ≤ 25 controlada
+    if (pct >= 90) {
+      score -= 2;
+      reasons.push('Volatilidad muy alta (percentil histórico)');
+    } else if (pct >= 75) {
+      score -= 1;
+      reasons.push('Volatilidad elevada (percentil histórico)');
+    } else if (pct <= 25) {
+      score += 1;
+      reasons.push('Volatilidad controlada (percentil histórico)');
+    }
+  } else {
+    const atrPercent = (indicators.atr / price) * 100;
+    if (atrPercent > 5) {
+      score -= 2;
+      reasons.push('Volatilidad muy alta');
+    } else if (atrPercent > 3) {
+      score -= 1;
+      reasons.push('Volatilidad elevada');
+    } else if (atrPercent < 1.5) {
+      score += 1;
+      reasons.push('Volatilidad controlada');
+    }
   }
 
   // Verificar volumen

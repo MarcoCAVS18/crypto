@@ -32,3 +32,5 @@ Thumbs.db
 # Cache
 .cache/
 *.cache
+functions/.backtest-cache/
+functions/backtest-out/

@@ -6,6 +6,10 @@ Dashboard personal de contexto de mercado y decisión (BTC, ETH, PAXG y futuros 
 
 **Leé `docs/PAXG_AUDIT.md` primero.** Tiene el mapa del sistema, los bugs verificados con `archivo:línea`, la hoja de ruta por fases y el estado de cada una. No hace falta releer todos los servicios. Al terminar una fase, actualizá su checklist y la tabla de hallazgos en ese documento.
 
+## Backtester (`functions/src/backtest/`)
+
+Lee `docs/BACKTEST.md` antes de tocarlo (protocolo, hallazgos sobre ruido/sobreajuste, cómo correrlo). Corre con historia real **solo en GitHub Actions** (`.github/workflows/backtest.yml`, manual o push a la rama de la fase): el sandbox de desarrollo no tiene red. Localmente sus tests usan datos sintéticos (`functions/test/helpers/synth.js`). Reglas: modelos pre-declarados en `candidates.js`, nunca mirar el hold-out, exigir p < 0.01 + hold-out coherente.
+
 ## Estructura
 
 - `functions/` — **API desplegada** (Firebase Functions v2, Express, Firestore). Fuente de verdad de la lógica de servidor.
@@ -21,6 +25,8 @@ cd functions && npm ci && npm test
 # Frontend
 cd frontend && npm ci && npm test && npm run build
 ```
+
+Backtest con datos reales: Actions → *Backtest* → Run workflow (reporte en el resumen del job y artefacto `backtest-report`).
 
 Los tests usan `node --test` (sin dependencias extra). CI: `.github/workflows/ci.yml` corre ambos en cada PR.
 
