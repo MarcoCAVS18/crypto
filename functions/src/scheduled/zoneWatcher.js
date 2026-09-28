@@ -1,56 +1,72 @@
-// Scheduled function — checks BTC/PAXG zones every hour, pushes when zone changes TO buy.
-// To deploy: add to functions/index.js exports after granting roles/cloudscheduler.admin
-// to the deploy service account in GCP IAM.
+// Scheduled function — revisa las zonas de BTC/PAXG cada hora y avisa (push) cuando el precio
+// entra en zona de compra y la zona se CONFIRMA (ver services/zoneAlert.js: 2 lecturas seguidas
+// y enfriamiento de 12 h). Exportada como scheduler en functions/index.js.
 //
-// import { onSchedule } from 'firebase-functions/v2/scheduler';
-// import { groqApiKey, vapidPublic, vapidPrivate } from '../config/secrets.js';
-//
-// export const zoneWatcher = onSchedule(
-//   { schedule: 'every 60 minutes', region: 'us-central1', timeoutSeconds: 60,
-//     secrets: [groqApiKey, vapidPublic, vapidPrivate] },
-//   handler
-// );
+// Antes importaba `fetchMarketData` (inexistente) y llamaba a calculateZones con el símbolo en
+// lugar de los indicadores, así que fallaba en cada ejecución y nunca envió un push.
 
-export async function handler() {
-  const { getZoneState, setZoneState, getPushSubscriptions, deletePushSubscription } =
-    await import('../config/database.js');
-  const { fetchMarketData } = await import('../services/marketData.js');
-  const { calculateZones }  = await import('../services/zoneCalculator.js');
-  const { sendPush }        = await import('../services/pushService.js');
+import { getCryptoData } from '../services/marketData.js';
+import { calculateAllIndicators } from '../services/technicalAnalysis.js';
+import { calculateZones } from '../services/zoneCalculator.js';
+import { nextZoneState } from '../services/zoneAlert.js';
 
-  const SYMBOLS = ['BTC', 'PAXG'];
+const SYMBOLS = ['BTC', 'PAXG'];
+
+// Imports dinámicos: database.js y pushService.js cargan firebase-admin / web-push
+async function loadDefaultDeps() {
+  const db   = await import('../config/database.js');
+  const push = await import('../services/pushService.js');
+  return {
+    getCryptoData, calculateAllIndicators, calculateZones,
+    getZoneState: db.getZoneState,
+    setZoneState: db.setZoneState,
+    getPushSubscriptions: db.getPushSubscriptions,
+    deletePushSubscription: db.deletePushSubscription,
+    sendPush: push.sendPush,
+    now: () => Date.now()
+  };
+}
+
+/** @param {object} [deps] - inyectable para tests */
+export async function handler(deps) {
+  const d = deps ?? await loadDefaultDeps();
 
   for (const symbol of SYMBOLS) {
     try {
-      const market = await fetchMarketData(symbol);
+      const market = await d.getCryptoData(symbol);
       const price  = market?.price;
       if (!price) continue;
+      // Con velas sintéticas las zonas no significan nada: no actualizar estado ni avisar
+      if (market.candlesSource === 'synthetic') {
+        console.warn(`[ZoneWatcher] ${symbol}: velas sintéticas, se omite`);
+        continue;
+      }
 
-      const candles  = market?.candles ?? [];
-      const zones    = calculateZones(price, candles, symbol);
-      const newZone  = zones?.currentZone ?? 'neutral';
+      const indicators = d.calculateAllIndicators(market.candles);
+      const zones      = d.calculateZones(price, market.candles, indicators);
+      const newZone    = zones?.currentZone ?? 'neutral';
 
-      const prev = await getZoneState(symbol);
-      await setZoneState(symbol, newZone, price);
+      const prev = await d.getZoneState(symbol);
+      const { state, push } = nextZoneState(prev, newZone, price, d.now());
+      await d.setZoneState(symbol, state);
 
-      if (newZone !== 'buy') continue;
-      if (prev?.zone === 'buy') continue;
+      if (!push) continue;
 
-      const subs = await getPushSubscriptions();
+      const subs = await d.getPushSubscriptions();
       if (!subs.length) continue;
 
       const title = `${symbol} — Zona de compra`;
       const body  = `Precio: $${price.toLocaleString('en-US', { maximumFractionDigits: 2 })} · Oportunidad de acumulación`;
 
       const validSubs = subs.map(s => s.subscription);
-      const kept      = await sendPush(validSubs, title, body, { symbol, zone: newZone });
+      const kept      = await d.sendPush(validSubs, title, body, { symbol, zone: newZone });
 
       const expiredEndpoints = validSubs
         .filter(s => !kept.some(k => k.endpoint === s.endpoint))
         .map(s => s.endpoint);
-      await Promise.all(expiredEndpoints.map(deletePushSubscription));
+      await Promise.all(expiredEndpoints.map(d.deletePushSubscription));
 
-      console.log(`[ZoneWatcher] ${symbol} → buy, pushed to ${kept.length} devices`);
+      console.log(`[ZoneWatcher] ${symbol} → buy confirmado, push a ${kept.length} dispositivos`);
     } catch (err) {
       console.error(`[ZoneWatcher] ${symbol} error:`, err.message);
     }

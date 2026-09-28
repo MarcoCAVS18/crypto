@@ -128,8 +128,9 @@ export async function getZoneState(symbol) {
   return doc.exists ? doc.data() : null;
 }
 
-export async function setZoneState(symbol, zone, price) {
+// `state` = { zone, price, streak, lastPushAt, checkedAt } (ver services/zoneAlert.js)
+export async function setZoneState(symbol, state) {
   await db().collection('_zone_state').doc(symbol.toUpperCase()).set({
-    zone, price, updatedAt: FieldValue.serverTimestamp()
+    ...state, updatedAt: FieldValue.serverTimestamp()
   });
 }
