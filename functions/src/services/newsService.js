@@ -9,14 +9,15 @@ const MAX_PER_FEED = 10;
 const TIMEOUT_MS   = 10000;
 
 export const RSS_FEEDS_GOLD = [
-  // Google News — ángulo financiero/macro
-  'https://news.google.com/rss/search?q=gold+price+dollar+federal+reserve+treasury&hl=en-US&gl=US&ceid=US:en',
+  // Google News — ángulo financiero/macro (`when:2d`: sin filtro de fecha devolvía notas viejas y 0 frescas)
+  'https://news.google.com/rss/search?q=gold+price+dollar+federal+reserve+treasury+when:2d&hl=en-US&gl=US&ceid=US:en',
   // Google News — ángulo geopolítico
-  'https://news.google.com/rss/search?q=gold+war+geopolitics+sanctions+central+bank+inflation&hl=en-US&gl=US&ceid=US:en',
-  // Kitco — noticias específicas de oro (las más frescas del sector)
-  'https://www.kitco.com/rss/news.rss',
-  // Yahoo Finance — ETF GLD y mercados de oro
-  'https://finance.yahoo.com/rss/headline?s=GLD&region=US&lang=en-US'
+  'https://news.google.com/rss/search?q=gold+war+geopolitics+sanctions+central+bank+inflation+when:2d&hl=en-US&gl=US&ceid=US:en',
+  // Google News — precio del oro / XAU
+  'https://news.google.com/rss/search?q=gold+XAUUSD+bullion+when:2d&hl=en-US&gl=US&ceid=US:en',
+  // Yahoo Finance — ETF GLD y futuro de oro (kitco.com/rss/news.rss dejó de existir: 404)
+  'https://finance.yahoo.com/rss/headline?s=GLD&region=US&lang=en-US',
+  'https://finance.yahoo.com/rss/headline?s=GC=F&region=US&lang=en-US'
 ];
 
 export const RSS_FEEDS_BTC = [
