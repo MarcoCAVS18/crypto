@@ -9,6 +9,7 @@ import { getCryptoNewsContext } from '../services/cryptoNewsContext.js';
 import { makeDecision } from '../services/decisionEngine.js';
 import { analyzeCalendarRisk, generatePortfolioInsight } from '../services/groqAnalyzer.js';
 import { getUpcomingEvents } from '../data/macroCalendar.js';
+import { buildDecisionRecord } from '../services/decisionLog.js';
 import { saveDecision, getPortfolioSummaryBySymbol, getAiCache, setAiCache, getDecisionsBySymbol } from '../config/database.js';
 
 const router = express.Router();
@@ -289,18 +290,17 @@ router.post('/decision', async (req, res) => {
       }
     }
 
-    // Guardar en historial (fire-and-forget — Firestore es async)
+    // Guardar en historial: una señal por símbolo y hora, con las features que la produjeron.
+    // Se espera el resultado antes de responder: en Cloud Functions el trabajo posterior a la
+    // respuesta no está garantizado, y `savedToHistory` antes era siempre false.
     let savedToHistory = false;
-    saveDecision({
-      symbol:     symbol.toUpperCase(),
-      price:      marketData.price,
-      marketMode: marketMode.mode,
-      decision:   decision.action,
-      cashPercent: userState.cashPercent,
-      userMode:   userState.mode,
-      reason:     decision.reason
-    }).then(() => { savedToHistory = true; })
-      .catch(e => console.error('Error guardando decisión:', e.message));
+    try {
+      savedToHistory = await saveDecision(buildDecisionRecord({
+        symbol: symbol.toUpperCase(), marketData, marketMode, zones, indicators, userState, decision
+      }));
+    } catch (e) {
+      console.error('Error guardando decisión:', e.message);
+    }
 
     res.json({
       symbol: symbol.toUpperCase(),
