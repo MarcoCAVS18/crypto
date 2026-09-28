@@ -25,28 +25,6 @@ export function makeDecision(marketMode, zones, currentPrice, userState, indicat
     };
   }
 
-  // Sin cash suficiente = esperar siempre
-  if (cashPercent < 10) {
-    return {
-      action: 'WAIT',
-      strength: 'fuerte',
-      reason: 'Sin cash suficiente para operar',
-      recommendation: 'Espera a tener al menos 10% de cash disponible antes de considerar nuevas posiciones',
-      operations: []
-    };
-  }
-
-  // Risk OFF = esperar siempre
-  if (marketMode.mode === 'risk_off') {
-    return {
-      action: 'WAIT',
-      strength: 'fuerte',
-      reason: `Mercado en Risk OFF: ${marketMode.reasons.join(', ')}`,
-      recommendation: 'No operar hasta que el contexto mejore. Proteger capital existente.',
-      operations: []
-    };
-  }
-
   // Modo observación = siempre WAIT
   if (userMode === 'observacion') {
     return {
@@ -58,19 +36,42 @@ export function makeDecision(marketMode, zones, currentPrice, userState, indicat
     };
   }
 
-  let action, strength, reason, recommendation, operations = [];
-
-  if (userMode === 'trading') {
-    // --- MODO TRADING: más agresivo, usa RSI como confirmación adicional ---
-    const result = decideTradingMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, portfolioContext, symbol);
-    ({ action, strength, reason, recommendation, operations } = result);
-  } else {
-    // --- MODO INVERSIÓN: conservador, largo plazo, usa P&L real del portfolio ---
-    const result = decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, portfolioContext, indicators, symbol);
-    ({ action, strength, reason, recommendation, operations } = result);
+  // Risk OFF en modo trading = esperar. En inversión lo resuelve decideInversionMode,
+  // que puede recomendar un recorte si hay ganancia y zona de distribución.
+  if (marketMode.mode === 'risk_off' && userMode === 'trading') {
+    return riskOffWait(marketMode);
   }
 
+  const result = userMode === 'trading'
+    // --- MODO TRADING: más agresivo, usa RSI como confirmación adicional ---
+    ? decideTradingMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, portfolioContext, symbol)
+    // --- MODO INVERSIÓN: conservador, largo plazo, usa P&L real del portfolio ---
+    : decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, portfolioContext, indicators, symbol);
+
+  // Sin cash suficiente no se COMPRA (y el motivo relevante es ese). Las ventas siempre se
+  // permiten (liberan cash): antes este gate bloqueaba también las salidas.
+  if (result.action !== 'SELL' && cashPercent < 10) {
+    return {
+      action: 'WAIT',
+      strength: 'fuerte',
+      reason: 'Sin cash suficiente para operar',
+      recommendation: 'Espera a tener al menos 10% de cash disponible antes de considerar nuevas posiciones',
+      operations: []
+    };
+  }
+
+  const { action, strength, reason, recommendation, operations } = result;
   return { action, strength, reason, recommendation, operations };
+}
+
+function riskOffWait(marketMode) {
+  return {
+    action: 'WAIT',
+    strength: 'fuerte',
+    reason: `Mercado en Risk OFF: ${(marketMode.reasons ?? []).join(', ')}`,
+    recommendation: 'No operar hasta que el contexto mejore. Proteger capital existente.',
+    operations: []
+  };
 }
 
 // ── Lógica modo INVERSIÓN ──────────────────────────────────────────────────────
@@ -124,7 +125,10 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
   const rrStop   = zones?.buy?.min ?? null;
   let rrRatio = null;
   let rrLine  = '';
-  if (rrTarget && rrStop && currentPrice && rrTarget > currentPrice && rrStop < currentPrice) {
+  // Solo con niveles de estructura real (swings). Cuando las zonas salen solo del ATR el
+  // cociente es un artefacto de los multiplicadores 0.5/1.5 (siempre ≈0.33), no información.
+  const structuralLevels = /Swing low|EMA/.test(zones?.buy?.reason ?? '') && /Swing high/.test(zones?.sell?.reason ?? '');
+  if (structuralLevels && rrTarget && rrStop && currentPrice && rrTarget > currentPrice && rrStop < currentPrice) {
     const upside   = ((rrTarget - currentPrice) / currentPrice) * 100;
     const downside = ((currentPrice - rrStop)   / currentPrice) * 100;
     rrRatio = downside > 0 ? upside / downside : null;
@@ -194,8 +198,24 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
     ? ' Registra tus operaciones en el Portfolio para que la decisión use tu promedio de compra real.'
     : '';
 
-  // ── Risk OFF: nunca operar ──────────────────────────────────────────────────
-  // (ya filtrado en makeDecision, pero como fallback)
+
+  // ── Risk OFF (inversión): no se compra; se recorta solo si hay ganancia y zona de venta ──
+  if (marketMode.mode === 'risk_off') {
+    if (currentZone === 'sell' && sellMakesSense) {
+      const pctSell = isStrongProfit ? 50 : 30;
+      const paxgSellNote = isPaxg
+        ? ` El oro es reserva de valor — mantener al menos el ${100 - pctSell}% de la posición como núcleo.`
+        : '';
+      return {
+        action: 'SELL',
+        strength: isStrongProfit ? 'fuerte' : 'moderado',
+        reason: `Macro adverso (Risk OFF) + zona de distribución con ganancia significativa${pnlTag}${allocationLine}`,
+        recommendation: `Recorte parcial recomendado: ${pctSell}% de la posición. Con el entorno en contra conviene asegurar ganancias.${paxgSellNote} No salir completamente.${macroLine}${rrLine}`,
+        operations: generateSellOperations(currentPrice, zones, totalCapital, 'inversion', { pct: pctSell, keepCore: isPaxg })
+      };
+    }
+    return riskOffWait(marketMode);
+  }
 
   // ── PAXG en neutral: permitir DCA si el macro es muy favorable ────────────
   // El oro actúa como reserva de valor; un contexto macro alcista justifica
@@ -295,7 +315,7 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
     if (currentZone === 'sell') {
       if (sellMakesSense) {
         const pctSell = isStrongProfit ? 50 : 30;
-        const ops = generateSellOperations(currentPrice, zones, totalCapital, 'inversion');
+        const ops = generateSellOperations(currentPrice, zones, totalCapital, 'inversion', { pct: pctSell, keepCore: isPaxg });
         const paxgSellNote = isPaxg
           ? ` El oro es reserva de valor — mantener al menos el ${100 - pctSell}% de la posición como núcleo.`
           : '';
@@ -309,15 +329,15 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
       }
 
       // Zona de venta pero la ganancia no justifica vender todavía
-      const gapTo25 = pnlPercent !== null ? (25 - pnlPercent).toFixed(1) : null;
+      const gapToSell = pnlPercent !== null ? Math.max(0, sellMinPct - pnlPercent).toFixed(1) : null;
       return {
         action: 'WAIT',
         strength: 'moderado',
         reason: pnlPercent !== null
           ? `Zona de distribución — ganancia aún insuficiente para vender${pnlTag}${allocationLine}`
           : `Zona de distribución — sin datos de portfolio para evaluar${noPortfolioMsg}`,
-        recommendation: gapTo25
-          ? `Mantener posición. El precio debería subir un ${gapTo25}% adicional desde tu promedio para considerar toma de ganancias.${rrLine}`
+        recommendation: gapToSell
+          ? `Mantener posición. El precio debería subir un ${gapToSell}% adicional desde tu promedio para considerar toma de ganancias.${rrLine}`
           : 'Mantener posición. Registra tus operaciones para ver cuándo tiene sentido vender.',
         operations: []
       };
@@ -354,7 +374,7 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
     }
 
     if (currentZone === 'sell' && sellMakesSense) {
-      const ops = generateSellOperations(currentPrice, zones, totalCapital, 'inversion');
+      const ops = generateSellOperations(currentPrice, zones, totalCapital, 'inversion', { pct: 30, keepCore: isPaxg });
       return {
         action: 'SELL',
         strength: 'moderado',
@@ -474,7 +494,9 @@ function generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, m
   const isPaxg = symbol === 'PAXG';
   const level1Price = currentPrice;
   const level2Price = currentPrice * (isPaxg ? 0.985 : 0.98);
-  const level3Price = zones.buy.min;
+  // El último tramo nunca puede quedar por encima del segundo: en zonas derivadas del ATR
+  // buy.min queda a ~−0.3 % y el "mínimo de zona" resultaba más alto que el tramo −1.5 %.
+  const level3Price = Math.min(zones.buy.min, level2Price * (isPaxg ? 0.99 : 0.985));
 
   // Devuelve true si ya existe una compra registrada a ±1.5% del precio del tramo
   const alreadyDone = (tramoPx) =>
@@ -496,7 +518,7 @@ function generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, m
     ? [
         buildBuyOp(0, 'tramo — ahora', level1Price, capitalAUsar * 0.30, hasCapital, 30),
         buildBuyOp(0, `tramo — si baja a ${formatPrice(level2Price)}`, level2Price, capitalAUsar * 0.30, hasCapital, 30),
-        buildBuyOp(0, `tramo — mínimo de zona (${formatPrice(level3Price)})`, level3Price, capitalAUsar * 0.40, hasCapital, 40)
+        buildBuyOp(0, `tramo — nivel profundo (${formatPrice(level3Price)})`, level3Price, capitalAUsar * 0.40, hasCapital, 40)
       ]
     : [
         buildBuyOp(0, 'tramo — ahora', level1Price, capitalAUsar * 0.40, hasCapital, 40),
@@ -524,11 +546,16 @@ function buildBuyOp(level, label, price, usdAmount, hasCapital, pct) {
   };
 }
 
-function generateSellOperations(currentPrice, zones, totalCapital, mode) {
+/**
+ * @param {object} opts
+ * @param {number} [opts.pct]       - % de la posición a vender ahora (default: 35 inversión / 70 trading)
+ * @param {boolean} [opts.keepCore] - true: no ofrecer segunda venta (PAXG protege su núcleo)
+ */
+function generateSellOperations(currentPrice, zones, totalCapital, mode, opts = {}) {
   // Las operaciones de venta dependen de la posición real del usuario (portfolio)
   // Sin datos de posición, mostramos porcentajes de la posición actual
-  const pct = mode === 'trading' ? 70 : 35;
-  return [
+  const pct = opts.pct ?? (mode === 'trading' ? 70 : 35);
+  const ops = [
     {
       level: 1,
       type: 'SELL',
@@ -538,18 +565,27 @@ function generateSellOperations(currentPrice, zones, totalCapital, mode) {
       usdAmount: null,
       units: null,
       note: 'Registra tu posición en el Portfolio para ver el monto exacto'
-    },
-    {
-      level: 2,
-      type: 'SELL',
-      label: `Venta adicional si sube a ${formatPrice(zones.sell.max)}`,
-      price: zones.sell.max,
-      percentage: 100 - pct,
-      usdAmount: null,
-      units: null,
-      note: 'Segundo objetivo'
     }
   ];
+
+  // Segunda toma: antes ofrecía vender "100 − pct" (¡el resto entero!) contradiciendo el
+  // "no salir completamente". Ahora es la mitad de la primera, y ninguna en el núcleo protegido.
+  if (!opts.keepCore) {
+    const second = mode === 'trading' ? 100 - pct : Math.round(pct / 2);
+    if (second > 0) {
+      ops.push({
+        level: 2,
+        type: 'SELL',
+        label: `Venta adicional si sube a ${formatPrice(zones.sell.max)} (${second}% de posición)`,
+        price: zones.sell.max,
+        percentage: second,
+        usdAmount: null,
+        units: null,
+        note: 'Segundo objetivo'
+      });
+    }
+  }
+  return ops;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
