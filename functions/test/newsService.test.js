@@ -34,3 +34,23 @@ test('fetchHeadlines: si todos los feeds fallan devuelve lista vacía (el llamad
     assert.deepEqual(await fetchHeadlines(['a'], 'TEST', { fetcher: async () => { throw new Error('HTTP 403'); }, now: NOW }), []);
   } finally { console.warn = warn; }
 });
+
+import { goldRelevance } from '../src/services/newsService.js';
+
+test('goldRelevance: macro y precio del oro sí; mineras junior y bolsa general no', () => {
+  assert.ok(goldRelevance('Gold tumbles over 3.5% as Fed rate-hike bets, surging US Treasury yields weigh') > 0);
+  assert.ok(goldRelevance('Schiff on Metals and Miners: The Fed Can’t Fix the Yield Problem') > 0);
+  assert.ok(goldRelevance('Gold and Silver Crash Together as Iran Tensions and Treasury Yields Spike') > 0);
+  assert.ok(goldRelevance('Stockworks Gold Commences Follow up of High-Grade Gold Stream Sediment Anomalies at the Pirenopolis Project') <= 0);
+  assert.ok(goldRelevance('Toogood Gold Narrows Table Mountain Targets as Two Major Gold Corridors Take Shape') <= 0);
+  assert.ok(goldRelevance("Nvidia's Record Buyback Couldn't Keep the Nasdaq Out of the Red on Monday Morning") <= 0);
+});
+
+test('fetchHeadlines con filtro: descarta lo irrelevante antes de recortar a 14', async () => {
+  const feed = rss([
+    { title: 'Gold slips as Treasury yields climb', pubDate: 'Mon, 28 Sep 2026 11:00:00 GMT' },
+    { title: 'Junior Gold drills anomalies at project', pubDate: 'Mon, 28 Sep 2026 11:30:00 GMT' }
+  ]);
+  const out = await fetchHeadlines(['a'], 'T', { fetcher: async () => feed, now: NOW, filter: (t) => goldRelevance(t) > 0 });
+  assert.deepEqual(out.map(h => h.title), ['Gold slips as Treasury yields climb']);
+});

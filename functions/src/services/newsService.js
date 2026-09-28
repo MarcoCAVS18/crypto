@@ -8,18 +8,19 @@ const MAX_AGE_MS   = 72 * 60 * 60 * 1000; // descartar noticias > 72h
 const MAX_PER_FEED = 10;
 const TIMEOUT_MS   = 10000;
 
-const RSS_FEEDS_GOLD = [
-  // Google News — ángulo financiero/macro
-  'https://news.google.com/rss/search?q=gold+price+dollar+federal+reserve+treasury&hl=en-US&gl=US&ceid=US:en',
+export const RSS_FEEDS_GOLD = [
+  // Google News — ángulo financiero/macro (`when:2d`: sin filtro de fecha devolvía notas viejas y 0 frescas)
+  'https://news.google.com/rss/search?q=gold+price+dollar+federal+reserve+treasury+when:2d&hl=en-US&gl=US&ceid=US:en',
   // Google News — ángulo geopolítico
-  'https://news.google.com/rss/search?q=gold+war+geopolitics+sanctions+central+bank+inflation&hl=en-US&gl=US&ceid=US:en',
-  // Kitco — noticias específicas de oro (las más frescas del sector)
-  'https://www.kitco.com/rss/news.rss',
-  // Yahoo Finance — ETF GLD y mercados de oro
-  'https://finance.yahoo.com/rss/headline?s=GLD&region=US&lang=en-US'
+  'https://news.google.com/rss/search?q=gold+war+geopolitics+sanctions+central+bank+inflation+when:2d&hl=en-US&gl=US&ceid=US:en',
+  // Google News — precio del oro / XAU
+  'https://news.google.com/rss/search?q=gold+XAUUSD+bullion+when:2d&hl=en-US&gl=US&ceid=US:en',
+  // Yahoo Finance — ETF GLD y futuro de oro (kitco.com/rss/news.rss dejó de existir: 404)
+  'https://finance.yahoo.com/rss/headline?s=GLD&region=US&lang=en-US',
+  'https://finance.yahoo.com/rss/headline?s=GC=F&region=US&lang=en-US'
 ];
 
-const RSS_FEEDS_BTC = [
+export const RSS_FEEDS_BTC = [
   // Google News — precio y mercado Bitcoin
   'https://news.google.com/rss/search?q=bitcoin+price+BTC+when:2d&hl=en-US&gl=US&ceid=US:en',
   // Google News — macro y regulación cripto
@@ -39,7 +40,7 @@ const RSS_FEEDS_ETH = [
   'https://cointelegraph.com/rss/tag/ethereum',
 ];
 
-function fetchUrl(url, redirectCount = 0) {
+export function fetchUrl(url, redirectCount = 0) {
   return new Promise((resolve, reject) => {
     if (redirectCount > 3) return reject(new Error('Too many redirects'));
     const lib = url.startsWith('https') ? https : http;
@@ -116,7 +117,21 @@ export function parseRssItems(xml, now = Date.now()) {
   return items;
 }
 
-export async function fetchHeadlines(feeds, label, { fetcher = fetchUrl, now = Date.now() } = {}) {
+/**
+ * Relevancia de un titular para el ORO como activo (no para empresas mineras ni bolsa en general).
+ * Los feeds de Yahoo/Google traen notas de mineras junior y de acciones que no mueven al oro; con 14 cupos
+ * desplazaban a las macro. > 0 = relevante.
+ */
+export function goldRelevance(title) {
+  const t = String(title ?? '').toLowerCase();
+  let score = 0;
+  if (/(gold|bullion|xau|xauusd|precious metals?|safe[- ]haven)\b/.test(t)) score += 1;
+  if (/\b(fed|federal reserve|fomc|treasur(y|ies)|yields?|dollar|dxy|inflation|cpi|pce|payrolls?|rate[- ](hike|cut)s?|rates|central banks?|tariffs?|geopolit\w*|sanctions?|war|iran|ukraine|russia|china|etf|silver)\b/.test(t)) score += 2;
+  if (/\b(drill(ing|s)?|private placement|anomal\w*|exploration|resource estimate|corridors?|targets?|mineralization|acquires?|project)\b/.test(t) && !/\b(fed|yields?|dollar|inflation)\b/.test(t)) score -= 3;
+  return score;
+}
+
+export async function fetchHeadlines(feeds, label, { fetcher = fetchUrl, now = Date.now(), filter = null } = {}) {
   const results = await Promise.allSettled(feeds.map(u => fetcher(u)));
 
   const seen     = new Set();
@@ -135,15 +150,17 @@ export async function fetchHeadlines(feeds, label, { fetcher = fetchUrl, now = D
     }
   }
 
-  allItems.sort((a, b) => {
+  const items = filter ? allItems.filter(i => filter(i.title)) : allItems;
+
+  items.sort((a, b) => {
     const da = a.pubDate ? new Date(a.pubDate).getTime() : 0;
     const db = b.pubDate ? new Date(b.pubDate).getTime() : 0;
     return db - da;
   });
 
   const failed = results.filter(r => r.status !== 'fulfilled').length;
-  console.log(`[NewsService:${label}] ${allItems.length} headlines frescos (≤72h, ${feeds.length - failed}/${feeds.length} feeds ok)`);
-  return allItems.slice(0, 14);
+  console.log(`[NewsService:${label}] ${items.length} headlines relevantes de ${allItems.length} frescos (≤72h, ${feeds.length - failed}/${feeds.length} feeds ok)`);
+  return items.slice(0, 14);
 }
 
 /**
@@ -151,7 +168,7 @@ export async function fetchHeadlines(feeds, label, { fetcher = fetchUrl, now = D
  * @returns {Promise<Array<{title,url,source,pubDate}>>}
  */
 export async function getGoldHeadlines() {
-  return fetchHeadlines(RSS_FEEDS_GOLD, 'PAXG');
+  return fetchHeadlines(RSS_FEEDS_GOLD, 'PAXG', { filter: (t) => goldRelevance(t) > 0 });
 }
 
 /**

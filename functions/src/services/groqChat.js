@@ -17,14 +17,56 @@ export const GROQ_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
 export const REASONING_HEADROOM = 1024;
 
 let groqClient = null;
+let groqClientKey = null;
 
+/**
+ * Limpia la clave tal como suele llegar de un secreto pegado a mano: espacios, saltos de línea, comillas,
+ * prefijo "Bearer " o "GROQ_API_KEY=". Una clave válida con un "\n" al final produce exactamente
+ * "401 Invalid API Key".
+ */
+export function normalizeApiKey(raw) {
+  if (typeof raw !== 'string') return '';
+  let k = raw.trim().replace(/^GROQ_API_KEY\s*=\s*/i, '').replace(/^bearer\s+/i, '').trim();
+  k = k.replace(/^["'`]+|["'`]+$/g, '').trim();
+  return k.replace(/\s+/g, '');
+}
+
+/** Huella no reversible para diagnosticar SIN exponer la clave: formato, largo y últimos 4 caracteres. */
+export function describeApiKey(raw) {
+  const k = normalizeApiKey(raw);
+  if (!k) return { present: false };
+  return {
+    present: true,
+    format: k.startsWith('gsk_') ? 'gsk_…' : 'inesperado (las claves de Groq empiezan con gsk_)',
+    length: k.length,
+    last4: k.slice(-4),
+    hadExtraWhitespaceOrQuotes: k !== raw
+  };
+}
+
+/** El cliente se recrea si el secreto cambió: una instancia caliente no debe quedarse con una clave vieja. */
 export function getGroqClient() {
-  if (!groqClient) {
-    const apiKey = process.env.GROQ_API_KEY;
-    if (!apiKey) throw new Error('GROQ_API_KEY no configurada en las variables de entorno');
+  const apiKey = normalizeApiKey(process.env.GROQ_API_KEY);
+  if (!apiKey) throw new Error('GROQ_API_KEY no configurada en las variables de entorno');
+  if (!groqClient || groqClientKey !== apiKey) {
     groqClient = new Groq({ apiKey });
+    groqClientKey = apiKey;
   }
   return groqClient;
+}
+
+/** Traduce el 401 de Groq a una causa accionable. */
+export function explainGroqError(err) {
+  const status = err?.status ?? err?.response?.status;
+  if (status === 401 || /invalid_api_key|Invalid API Key/i.test(err?.message ?? '')) {
+    const d = describeApiKey(process.env.GROQ_API_KEY);
+    return new Error(
+      `Groq rechazó la API key (401). La función tiene ${d.present ? `una clave ${d.format} de ${d.length} caracteres terminada en …${d.last4}` : 'NINGUNA clave'}. ` +
+      'Verificá que sea la vigente en console.groq.com/keys y que el secreto GROQ_API_KEY se haya cargado sin espacios ni comillas; ' +
+      'después hay que volver a desplegar las funciones (los secretos se leen al iniciar la instancia).'
+    );
+  }
+  return err;
 }
 
 export const isReasoningModel = (model) => /gpt-oss/i.test(model);
@@ -54,7 +96,12 @@ export function extractJson(raw, expect = 'object') {
 }
 
 async function callOnce(client, params) {
-  const completion = await client.chat.completions.create(params);
+  let completion;
+  try {
+    completion = await client.chat.completions.create(params);
+  } catch (err) {
+    throw explainGroqError(err);
+  }
   const choice = completion.choices?.[0];
   return {
     content: choice?.message?.content ?? '',
