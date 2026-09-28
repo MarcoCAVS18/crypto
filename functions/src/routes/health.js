@@ -6,7 +6,7 @@ import express from 'express';
 import { getGoldContextCache, getLatestSnapshots } from '../config/database.js';
 import { getCalendarCoverage } from '../data/macroCalendar.js';
 import { summarizeSources } from '../services/dataHealth.js';
-import { GROQ_MODEL } from '../services/groqChat.js';
+import { GROQ_MODEL, describeApiKey } from '../services/groqChat.js';
 
 const router = express.Router();
 
@@ -19,6 +19,8 @@ const SNAPSHOT_STALE_MINUTES = 3 * 60;
 export function buildHealthReport({ config, cachedContext, calendar, lastSnapshot = undefined, now = Date.now() }) {
   const warnings = [];
   if (!config.groqKey) warnings.push('GROQ_API_KEY no configurada: sin análisis de IA ni chat.');
+  if (config.groqKeyInfo?.present && /inesperado/.test(config.groqKeyInfo.format)) warnings.push('GROQ_API_KEY no tiene el formato gsk_…: probablemente esté mal cargada (¿otra clave o texto extra?).');
+  if (config.groqKeyInfo?.hadExtraWhitespaceOrQuotes) warnings.push('GROQ_API_KEY tenía espacios, saltos de línea o comillas; se limpian al usarla, pero conviene volver a cargar el secreto sin ellos.');
   if (!config.fredKey) warnings.push('FRED_API_KEY no configurada: sin series de FRED (se usan fallbacks sin clave).');
 
   let goldContext = { cached: false };
@@ -71,6 +73,7 @@ export function buildHealthReport({ config, cachedContext, calendar, lastSnapsho
 router.get('/', async (_req, res) => {
   const config = {
     groqKey: !!process.env.GROQ_API_KEY,
+    groqKeyInfo: describeApiKey(process.env.GROQ_API_KEY),   // formato/largo/últimos 4: para verificar QUÉ clave tiene la función
     fredKey: !!process.env.FRED_API_KEY,
     vapidKeys: !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY),
     groqModel: GROQ_MODEL

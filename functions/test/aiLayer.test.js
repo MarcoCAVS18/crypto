@@ -186,3 +186,47 @@ test('B11: el historial del cliente se sanea (sin roles system, sin no-strings, 
   assert.equal(sanitizeHistory(many).length, 12);
   assert.equal(sanitizeHistory('x').length, 0);
 });
+
+// ── clave de Groq: limpieza, huella y mensaje del 401 ────────────────────────
+
+import { normalizeApiKey, describeApiKey, explainGroqError, getGroqClient } from '../src/services/groqChat.js';
+
+test('normalizeApiKey: quita espacios, saltos de línea, comillas, "Bearer " y "GROQ_API_KEY="', () => {
+  const k = 'gsk_abc123XYZ';
+  for (const raw of [`${k}\n`, `  ${k}  `, `"${k}"`, `'${k}'`, `Bearer ${k}`, `GROQ_API_KEY=${k}`, `${k}\r\n`, `gsk_abc 123XYZ`.replace(' ', '')]) {
+    assert.equal(normalizeApiKey(raw), k, JSON.stringify(raw));
+  }
+  assert.equal(normalizeApiKey(undefined), '');
+  assert.equal(normalizeApiKey('   '), '');
+});
+
+test('describeApiKey: no expone la clave, solo formato, largo y últimos 4; avisa de basura alrededor', () => {
+  const d = describeApiKey('gsk_secretsecretsecret1234\n');
+  assert.deepEqual(Object.keys(d).sort(), ['format', 'hadExtraWhitespaceOrQuotes', 'last4', 'length', 'present']);
+  assert.equal(d.last4, '1234');
+  assert.equal(d.hadExtraWhitespaceOrQuotes, true);
+  assert.ok(!JSON.stringify(d).includes('secretsecret'));
+  assert.match(describeApiKey('sk-otra').format, /inesperado/);
+  assert.deepEqual(describeApiKey(''), { present: false });
+});
+
+test('explainGroqError: el 401 se traduce a una causa accionable con la huella (sin la clave)', () => {
+  process.env.GROQ_API_KEY = 'gsk_topsecretvalue9999';
+  const e = explainGroqError(Object.assign(new Error('401 {"error":{"message":"Invalid API Key"}}'), { status: 401 }));
+  assert.match(e.message, /Groq rechazó la API key/);
+  assert.match(e.message, /…9999/);
+  assert.match(e.message, /volver a desplegar/);
+  assert.ok(!e.message.includes('topsecretvalue'));
+  const other = new Error('timeout');
+  assert.equal(explainGroqError(other), other);        // otros errores pasan intactos
+});
+
+test('getGroqClient: se recrea si el secreto cambió y tolera espacios', () => {
+  process.env.GROQ_API_KEY = 'gsk_first\n';
+  const a = getGroqClient();
+  assert.equal(getGroqClient(), a);                     // misma clave → mismo cliente
+  process.env.GROQ_API_KEY = 'gsk_second';
+  assert.notEqual(getGroqClient(), a);
+  delete process.env.GROQ_API_KEY;
+  assert.throws(() => getGroqClient(), /no configurada/);
+});

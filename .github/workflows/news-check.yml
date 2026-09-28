@@ -1,0 +1,26 @@
+name: News check
+
+# Diagnóstico temporal: prueba los feeds RSS de noticias con red real. Se elimina al cerrar el arreglo.
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/fix-groq-news-phase3]
+    paths:
+      - 'functions/scripts/news-check.mjs'
+      - 'functions/src/services/newsService.js'
+      - '.github/workflows/news-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  news:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node scripts/news-check.mjs
+        working-directory: functions

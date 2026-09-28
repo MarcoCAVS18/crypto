@@ -230,3 +230,14 @@ test('health HTTP: si falla la lectura del caché responde 200 degradado con el 
     assert.match(j.warnings.join(' '), /firestore caído/);
   } finally { await new Promise(r => server.close(r)); }
 });
+
+test('health: avisa si la clave de Groq tiene formato raro o texto extra', async () => {
+  const { buildHealthReport } = await import('../src/routes/health.js');
+  const base = { fredKey: true, vapidKeys: true, groqKey: true, groqModel: 'm' };
+  const bad = buildHealthReport({ config: { ...base, groqKeyInfo: { present: true, format: 'inesperado (las claves de Groq empiezan con gsk_)', length: 10, last4: 'abcd', hadExtraWhitespaceOrQuotes: false } }, cachedContext: null, calendar: { verified: 1, total: 1 } });
+  assert.ok(bad.warnings.some(w => /formato gsk_/.test(w)));
+  const dirty = buildHealthReport({ config: { ...base, groqKeyInfo: { present: true, format: 'gsk_…', length: 56, last4: 'abcd', hadExtraWhitespaceOrQuotes: true } }, cachedContext: null, calendar: { verified: 1, total: 1 } });
+  assert.ok(dirty.warnings.some(w => /espacios/.test(w)));
+  const ok = buildHealthReport({ config: { ...base, groqKeyInfo: { present: true, format: 'gsk_…', length: 56, last4: 'abcd', hadExtraWhitespaceOrQuotes: false } }, cachedContext: null, calendar: { verified: 1, total: 1 } });
+  assert.ok(!ok.warnings.some(w => /GROQ/.test(w)));
+});
