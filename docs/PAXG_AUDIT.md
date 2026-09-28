@@ -159,10 +159,10 @@ Cada fase = un PR. Marcar `[x]` al mergear.
 - [x] **Gate de acumulación:** PAXG en `risk_off` ya no queda siempre en WAIT: sigue acumulando en zona de compra o bajo el promedio (tamaño por la política), salvo posición concentrada (>70 %), efectivo < 30 % o tramos ya ejecutados. Las ventas por macro adverso no cambian. BTC/ETH no cambian.
 - [x] Volatilidad realizada como señal de tamaño: probada, sin efecto (±0.01 %) → **no se usa**. Caída desde el máximo de 1 año: no confirmada en el hold-out (p 0.35) → no se usa.
 - [x] Registro: cada decisión guarda `dcaPolicy` (versión, multiplicador, fracción); `modelVersion` de decisiones pasa a `p3`.
-- [ ] Peso objetivo del sleeve de oro + bandas; escalones por cuantiles de retrocesos; tamaño por volatilidad *de la posición* (Kelly fraccional acotado — sin evidencia aún)
-- [ ] Salidas por rotura de tendencia + macro adverso; recorte por sobre-extensión; costos (comisión + spread; el efecto medido del tilt, ~0.3 %, es menor que una comisión: hay que modelarlos antes de más sofisticación)
+- [x] Peso objetivo del oro con bandas (`portfolioPolicy.js`; opcional, campo en "Tu posición"): por debajo de la banda DCA ×1.25; por encima no se compra y, con ganancia, recorte de rebalanceo (≤ 30 %). Peso = costo de la posición / capital total (mismo criterio del motor). Escalones por cuantiles de retrocesos (`pullbacks.js`: mediana y P80 de la profundidad histórica del propio activo, acotados 0.4–8 %). Kelly fraccional: **no implementado** (sin evidencia ni estimación fiable de ventaja: el backtest no encontró señal predictiva).
+- [x] Salidas por régimen (`exitPolicy.js`, solo PAXG con ganancia): tendencia larga bajista + macro adverso + ganancia ≥ 15 % ⇒ recorte 20 %; > 25 % sobre la EMA200 + RSI diario ≥ 70 + ganancia ≥ 25 % ⇒ recorte 15 %. **Sin backtest** (declarado). Costos (`costModel.js`): supuestos 0.5 % de comisión + 0.1 % de spread, editables en el perfil; se estima el costo por orden y se descartan tramos < $10 (si todos quedan bajo el mínimo ⇒ WAIT).
 - [x] Eventos (`services/eventRisk.js`): riesgo de calendario **determinístico** (antes lo decidía Groq y cambiaba entre llamadas; guía del prompt pausaba compras con el FOMC "mañana o hoy"): pausa solo en ventana corta (crítico ≤ 3 h antes o ≤ 1 h después; alto: 50 % a ≤ 2 h), 75 %/90 % hasta 24 h antes, solo COMPRAS. **No respaldado por backtest** (no hay historia de calendario con horas): higiene de riesgo declarada. `analyzeCalendarRisk` eliminado.
-- [ ] LLM como etiquetador estructurado (peso ±0.05–0.10, logueado) + explicador con paquete de decisión
+- [x] LLM como etiquetador estructurado: devuelve 4 etiquetas discretas (política monetaria, geopolítica, inflación, demanda de oro ∈ {−1,0,1}); el score sale de la media (regla fija), peso **±0.10** (antes 0.15), etiquetas guardadas en el snapshot. Explicador con paquete de decisión: pendiente (el insight actual ya recibe la decisión y el historial).
 
 ### P4 — Aprendizaje continuo
 - [ ] Jobs que etiquetan resultados a 1/5/20/60 días (retorno, MAE/MFE), hit rate, calibración/Brier, vs baselines
@@ -261,3 +261,8 @@ Sin contrastar (`verified: false`, "fecha por confirmar"): PCE sep (30-oct), NFP
 - `eventRisk.js` + 9 tests (incluye el FOMC real del 2026-09-16 a distintas horas). El decision route ya no llama a Groq para el calendario: menos latencia/tokens y resultado reproducible; una falla de IA (p. ej. 401) ya no afecta a la decisión.
 - Comportamiento que cambia: la pausa por calendario ahora es corta (antes el LLM podía pausar/reducir hasta 7 días antes del evento).
 - Pendiente de P3: costos (necesito la tarifa real del exchange del usuario), peso objetivo del sleeve/bandas, salidas por régimen, LLM como etiquetador.
+
+### P3 (parte 3) — Resto de la política (rama `claude/paxg-phase3c-policy-rest`)
+- Tests: 309+ en `functions` (nuevos: `policyRest.test.js`, casos P3c del motor, etiquetador) y 17 en `frontend` (`utils/settings.test.js`).
+- Comportamiento que cambia: tramos de PAXG a profundidades históricas (si hay ≥ 60 velas de retrocesos); costo estimado en cada orden y descarte de tramos < $10; nuevas salidas/rebalanceo (solo con los campos opcionales o con ganancia y régimen adverso); peso de la IA en el score 0.15 → 0.10; snapshot `p3` con etiquetas.
+- No verificado en vivo: el prompt de etiquetas contra Groq (con el 401 actual no se pudo probar), y cómo se ven los nuevos textos en la UI real.

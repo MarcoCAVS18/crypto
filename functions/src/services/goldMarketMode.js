@@ -2,7 +2,7 @@
 //
 // Componentes del score (rango final recortado a [-1, 1]). Los pesos NO están calibrados
 // contra historia (ver docs/PAXG_AUDIT.md, fase P2); son criterio experto provisional:
-//   - Sentimiento IA de titulares (±0.15): solo NOTICIAS. Antes pesaba 40 % y recibía además
+//   - Sentimiento IA de titulares (±0.10, etiquetas discretas → score fijo): solo NOTICIAS. Antes pesaba 40 % y recibía además
 //     DXY/10Y/COT/tasa real como input, con lo que esas señales se contaban dos veces y la IA
 //     sola podía cambiar el modo. Ahora no puede cruzar el umbral por sí sola.
 //   - DXY (±0.25):     dólar sube → oro baja | dólar baja → oro sube
@@ -26,7 +26,7 @@ import { summarizeSources } from './dataHealth.js';
 
 // Peso máximo de la IA en el score. Debe ser < umbral de modo (0.25) para que la IA nunca
 // decida sola un cambio de régimen.
-export const AI_WEIGHT = 0.15;
+export const AI_WEIGHT = 0.10;   // etiquetador: peso ±0.10 (P3c; antes 0.15)
 export const MODE_THRESHOLD = 0.25;
 export const MODE_EXIT_THRESHOLD = 0.15;
 
@@ -296,6 +296,7 @@ export function determineGoldMarketMode(currentPrice, indicators, volumeAnalysis
       macro:         macro ?? null,
       sentiment:     analysis?.sentiment ?? 'neutral',
       sentimentScore: analysis?.score ?? 0,
+      aiLabels:      analysis?.labels ?? null,
       reasoning:     analysis?.reasoning ?? '',
       keyFactors:    analysis?.keyFactors ?? [],
       headlines:     goldContext.headlines ?? [],

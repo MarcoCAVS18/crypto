@@ -113,8 +113,8 @@ function AuthenticatedApp() {
     setActiveTab(id);
   };
 
-  const handleUserStateSubmit = ({ cashPercent, mode, totalCapital }) => {
-    updateUserState({ cashPercent, mode, totalCapital });
+  const handleUserStateSubmit = ({ cashPercent, mode, totalCapital, targetPercent = null, feePercent = null }) => {
+    updateUserState({ cashPercent, mode, totalCapital, targetPercent, feePercent });
     getDecision();
   };
 

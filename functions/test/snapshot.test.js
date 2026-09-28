@@ -77,7 +77,7 @@ test('buildSnapshot (oro): guarda técnicos, zona, score con componentes y todo 
   }
 
   // contexto macro
-  assert.deepEqual(s.gold.ai, { sentiment: 'bullish', score: 0.5, error: null });
+  assert.deepEqual(s.gold.ai, { sentiment: 'bullish', score: 0.5, labels: null, error: null });
   assert.equal(s.gold.realYield.zscore1y, 0.4);
   assert.equal(s.gold.cot.netSpec, 150000);
   assert.equal(s.gold.dailyRegime.longAlignment, 'bull');

@@ -24,12 +24,14 @@ const MODE_CONFIG = {
   }
 };
 
-export function UserStateInput({ onSubmit, initialCash = 50, initialMode = 'inversion', initialCapital = 0 }) {
+export function UserStateInput({ onSubmit, initialCash = 50, initialMode = 'inversion', initialCapital = 0, initialTarget = '', initialFee = '' }) {
   const [cashPercent, setCashPercent] = useState(initialCash);
   const [mode, setMode] = useState(initialMode);
   const [totalCapital, setTotalCapital] = useState(initialCapital);
   const [capitalInput, setCapitalInput] = useState(initialCapital > 0 ? String(initialCapital) : '');
   const [showModeInfo, setShowModeInfo] = useState(false);
+  const [targetInput, setTargetInput] = useState(initialTarget === null || initialTarget === undefined ? '' : String(initialTarget));
+  const [feeInput, setFeeInput] = useState(initialFee === null || initialFee === undefined ? '' : String(initialFee));
 
   const cashAmount = totalCapital > 0 ? (totalCapital * cashPercent / 100) : null;
   const activeMode = MODE_CONFIG[mode];
@@ -153,7 +155,34 @@ export function UserStateInput({ onSubmit, initialCash = 50, initialMode = 'inve
         </AnimatePresence>
       </div>
 
-      <Button onClick={() => onSubmit({ cashPercent, mode, totalCapital })} className="w-full py-3">
+      {/* Ajustes opcionales: peso objetivo del oro y costo de operar */}
+      <div className="grid grid-cols-2 gap-3">
+        <label className="space-y-1.5">
+          <span className="block text-[11px] text-slate-500 uppercase tracking-widest">Peso objetivo del oro (%)</span>
+          <input
+            type="text" inputMode="decimal" value={targetInput} placeholder="Sin objetivo"
+            onChange={e => setTargetInput(e.target.value.replace(/[^0-9.]/g, ''))}
+            className="w-full bg-slate-800/60 border border-white/[0.08] rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500/60"
+          />
+        </label>
+        <label className="space-y-1.5">
+          <span className="block text-[11px] text-slate-500 uppercase tracking-widest">Comisión por orden (%)</span>
+          <input
+            type="text" inputMode="decimal" value={feeInput} placeholder="0.5 (supuesto)"
+            onChange={e => setFeeInput(e.target.value.replace(/[^0-9.]/g, ''))}
+            className="w-full bg-slate-800/60 border border-white/[0.08] rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500/60"
+          />
+        </label>
+      </div>
+      <p className="text-[11px] text-slate-600 -mt-3">
+        Con objetivo, el motor frena las compras si el oro pasa la banda (±5 pts) y acelera el DCA si está por debajo. La comisión se usa para estimar costos y descartar tramos ínfimos.
+      </p>
+
+      <Button onClick={() => onSubmit({
+        cashPercent, mode, totalCapital,
+        targetPercent: targetInput === '' ? null : parseFloat(targetInput),
+        feePercent:    feeInput === ''    ? null : parseFloat(feeInput)
+      })} className="w-full py-3">
         Actualizar señal
       </Button>
     </div>

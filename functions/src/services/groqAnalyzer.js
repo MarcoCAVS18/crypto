@@ -37,10 +37,15 @@ Reglas:
 - Noticias recientes (< 6h) pesan más que las antiguas (> 48h).
 - Si los titulares no son concluyentes, devolvé "neutral" con score cercano a 0.
 
-Respondé SOLO con un objeto JSON válido (sin markdown, sin texto extra):
+Respondé SOLO con un objeto JSON válido (sin markdown, sin texto extra). Etiquetá cada dimensión con -1, 0 o 1
+(0 si los titulares no dicen nada al respecto; NO inventes):
 {
-  "sentiment": "bullish" | "neutral" | "bearish",
-  "score": <número entre -1.0 (muy bajista) y 1.0 (muy alcista)>,
+  "labels": {
+    "monetaryPolicy": <-1 Fed/bancos centrales restrictivos (suba de tasas, "higher for longer") | 0 | 1 giro expansivo (recortes, pausa)>,
+    "geopolitics": <-1 distensión / baja aversión al riesgo | 0 | 1 escalada, sanciones, guerra, aversión al riesgo>,
+    "inflation": <-1 inflación cediendo | 0 | 1 inflación sorprendiendo al alza>,
+    "goldDemand": <-1 ventas de ETFs/bancos centrales, demanda débil | 0 | 1 compras de bancos centrales, flujos a ETFs de oro>
+  },
   "reasoning": "<1-2 oraciones en español explicando el análisis>",
   "keyFactors": ["<factor 1 en español>", "<factor 2 en español>", "<factor 3 en español>"]
 }`;
@@ -63,12 +68,35 @@ export async function analyzeGoldSentiment(headlines, _macroData) {
   const prompt = buildGoldSentimentPrompt(headlines);
 
   const parsed = await chatJson({ prompt, temperature: 0.2, maxTokens: 600, expect: 'object', label: 'goldSentiment' });
+  return parseGoldSentiment(parsed);
+}
+
+export const LABEL_KEYS = ['monetaryPolicy', 'geopolitics', 'inflation', 'goldDemand'];
+
+/** Etiquetas del LLM → { labels, score } DETERMINÍSTICO (media de las etiquetas válidas; el LLM no pone el número). */
+export function labelsToScore(labels) {
+  const vals = LABEL_KEYS.map(k => labels?.[k]).filter(v => v === -1 || v === 0 || v === 1);
+  if (vals.length === 0) return null;
+  return Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 1000) / 1000;
+}
+
+/**
+ * El LLM actúa como ETIQUETADOR estructurado: devuelve etiquetas discretas y el score sale de una regla fija
+ * (reproducible y auditable). Si el modelo no devuelve etiquetas válidas se cae a su `score` numérico (recortado).
+ */
+export function parseGoldSentiment(parsed) {
   const validSentiments = ['bullish', 'neutral', 'bearish'];
+  const labels = Object.fromEntries(LABEL_KEYS.map(k => [k, [-1, 0, 1].includes(parsed?.labels?.[k]) ? parsed.labels[k] : null]));
+  const fromLabels = labelsToScore(labels);
+  const legacy = typeof parsed?.score === 'number' ? Math.max(-1, Math.min(1, parsed.score)) : 0;
+  const score = fromLabels ?? legacy;
+  const sentiment = fromLabels !== null
+    ? (score > 0.15 ? 'bullish' : score < -0.15 ? 'bearish' : 'neutral')
+    : (validSentiments.includes(parsed?.sentiment) ? parsed.sentiment : 'neutral');
   return {
-    sentiment: validSentiments.includes(parsed.sentiment) ? parsed.sentiment : 'neutral',
-    score: typeof parsed.score === 'number' ? Math.max(-1, Math.min(1, parsed.score)) : 0,
-    reasoning: typeof parsed.reasoning === 'string' ? parsed.reasoning : '',
-    keyFactors: Array.isArray(parsed.keyFactors) ? parsed.keyFactors.slice(0, 3) : []
+    sentiment, score, labels: fromLabels !== null ? labels : null,
+    reasoning: typeof parsed?.reasoning === 'string' ? parsed.reasoning : '',
+    keyFactors: Array.isArray(parsed?.keyFactors) ? parsed.keyFactors.slice(0, 3) : []
   };
 }
 
