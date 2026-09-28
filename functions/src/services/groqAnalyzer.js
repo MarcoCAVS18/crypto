@@ -21,40 +21,19 @@ function cleanContent(raw) {
   return (raw ?? '').replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
 }
 
-export async function analyzeGoldSentiment(headlines, macroData) {
+/**
+ * Sentimiento de NOTICIAS para el oro (24-72 h). Recibe SOLO titulares.
+ *
+ * `macroData` se conserva en la firma por compatibilidad pero ya NO se envía al modelo:
+ * DXY, 10Y, tasa real y COT los puntúa goldMarketMode de forma determinística. Pasárselos
+ * al LLM hacía que esas señales entraran dos veces al score (una vía IA y otra directa).
+ */
+export async function analyzeGoldSentiment(headlines, _macroData) {
+  // Sin noticias no hay nada que analizar: evitar una llamada y una opinión inventada
+  if (!headlines || headlines.length === 0) {
+    return { sentiment: 'neutral', score: 0, reasoning: 'Sin titulares recientes para analizar.', keyFactors: [] };
+  }
   const client = getClient();
-
-  const macroLines = [];
-  if (macroData?.dxy) {
-    const sign = macroData.dxy.changePercent >= 0 ? '+' : '';
-    macroLines.push(`- DXY (US Dollar Index): ${macroData.dxy.value.toFixed(2)} (${sign}${macroData.dxy.changePercent.toFixed(2)}% hoy)`);
-  }
-  if (macroData?.tenYearYield) {
-    const sign = macroData.tenYearYield.changePercent >= 0 ? '+' : '';
-    macroLines.push(`- Bono EE.UU. 10 años (nominal): ${macroData.tenYearYield.value.toFixed(2)}% (${sign}${macroData.tenYearYield.changePercent.toFixed(2)}% hoy)`);
-  }
-  if (macroData?.realYield) {
-    const { value: ry, sentiment: rySent } = macroData.realYield;
-    const ryLabel = {
-      very_bullish: 'tasa real negativa → muy favorable para el oro',
-      bullish:      'baja → soporte para el oro',
-      neutral:      'moderada → neutral',
-      bearish:      'elevada → presión sobre el oro'
-    }[rySent] ?? rySent;
-    macroLines.push(`- Rendimiento real 10Y (TIPS): ${ry.toFixed(2)}% → ${ryLabel}`);
-  }
-  if (macroData?.cot) {
-    const { netSpec, weekChange, sentiment: cotSent } = macroData.cot;
-    const cotLabel = {
-      contrarian_bull: 'extremo corto especulativo → señal contraria alcista para el oro',
-      bullish:         'net long moderado → momentum alcista',
-      neutral:         'equilibrado → sin señal direccional',
-      crowded_long:    'extremo largo especulativo → riesgo de corrección (posición abarrotada)'
-    }[cotSent] ?? cotSent;
-    const wkSign = weekChange >= 0 ? '+' : '';
-    macroLines.push(`- COT CFTC (posición especulativa neta en futuros de oro): ${(netSpec / 1000).toFixed(0)}k contratos (${cotLabel}), cambio semanal: ${wkSign}${(weekChange / 1000).toFixed(0)}k`);
-  }
-  const macroText = macroLines.length > 0 ? macroLines.join('\n') : 'Sin datos macroeconómicos disponibles';
 
   function headlineAge(h) {
     if (!h.pubDate) return '';
@@ -74,18 +53,15 @@ export async function analyzeGoldSentiment(headlines, macroData) {
 
   const prompt = `Sos un analista especializado en oro físico y PAXG (oro tokenizado).
 
-DATOS MACRO ACTUALES:
-${macroText}
-
 TITULARES RECIENTES (los más nuevos primero; la antigüedad aparece entre corchetes):
 ${headlinesText}
 
-Analizá estos datos y determiná el sentimiento para el precio del oro/PAXG en el corto plazo (24-72h).
-Guía de ponderación:
-- Noticias recientes (< 6h) pesan más que las antiguas (> 48h)
-- El rendimiento real TIPS < 0% es el entorno más favorable posible para el oro
-- COT extremo corto (contrarian_bull) suele preceder rally; COT extremo largo (crowded_long) suele preceder corrección
-- DXY y bono nominal son señales complementarias, no primarias
+Determiná el sentimiento de ESTAS NOTICIAS para el precio del oro/PAXG en el corto plazo (24-72h).
+Reglas:
+- Basate solo en lo que dicen los titulares (Fed, bancos centrales, geopolítica, inflación, demanda de oro).
+- NO evalúes dólar, rendimientos de bonos, posicionamiento COT ni volatilidad: el sistema los puntúa por separado.
+- Noticias recientes (< 6h) pesan más que las antiguas (> 48h).
+- Si los titulares no son concluyentes, devolvé "neutral" con score cercano a 0.
 
 Respondé SOLO con un objeto JSON válido (sin markdown, sin texto extra):
 {

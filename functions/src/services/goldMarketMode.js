@@ -1,14 +1,19 @@
 // Market mode específico para PAXG / oro tokenizado
 //
-// Factores base (suman al 100%):
-//   - Sentimiento IA noticias (40%): Groq analiza macro y titulares
-//   - DXY (25%):     dólar sube → oro baja | dólar baja → oro sube
-//   - Bono 10Y (20%): yields altos = mayor costo de oportunidad vs oro
-//   - Técnicos (15%): contexto de mercado cripto
+// Componentes del score (rango final recortado a [-1, 1]). Los pesos NO están calibrados
+// contra historia (ver docs/PAXG_AUDIT.md, fase P2); son criterio experto provisional:
+//   - Sentimiento IA de titulares (±0.15): solo NOTICIAS. Antes pesaba 40 % y recibía además
+//     DXY/10Y/COT/tasa real como input, con lo que esas señales se contaban dos veces y la IA
+//     sola podía cambiar el modo. Ahora no puede cruzar el umbral por sí sola.
+//   - DXY (±0.25):     dólar sube → oro baja | dólar baja → oro sube
+//   - Bono 10Y (±0.20): yields altos = mayor costo de oportunidad vs oro
+//   - Técnicos (±0.15): contexto de mercado técnico
+//   - COT CFTC (±0.10), tasa real 10Y TIPS (±0.10), GVZ (±0.08), oro/plata (±0.07),
+//     tendencia diaria (±0.10, hasta ±0.15 con RSI diario)
+// Suma de máximos = 1.25 (se recorta a ±1).
 //
-// Señales aditivas (no reemplazan los anteriores; clampean al rango [-1, 1]):
-//   - COT CFTC (±0.10): posición neta especulativa en futuros de oro
-//   - Rendimiento real 10Y TIPS (±0.10): tasa real negativa → muy favorable para oro
+// Los mapeos numéricos (DXY, 10Y, GVZ, oro/plata) son CONTINUOS: un cambio mínimo en el
+// dato no puede mover el score de golpe (antes DXY +0.149 % → +0.151 % movía −0.125).
 //
 // Umbral de modo final:
 //   score > +0.25  → risk_on  (entorno favorable para oro)
@@ -16,6 +21,35 @@
 //   entre          → neutral
 
 import { determineMarketMode } from './marketMode.js';
+
+// Peso máximo de la IA en el score. Debe ser < umbral de modo (0.25) para que la IA nunca
+// decida sola un cambio de régimen.
+export const AI_WEIGHT = 0.15;
+export const MODE_THRESHOLD = 0.25;
+
+const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
+
+/** Interpolación lineal por tramos. `knots` = [[x0,y0],[x1,y1],...] con x crecientes; fuera de rango se satura. */
+export function interpolate(knots, x) {
+  if (x <= knots[0][0]) return knots[0][1];
+  for (let i = 1; i < knots.length; i++) {
+    const [x1, y1] = knots[i];
+    if (x <= x1) {
+      const [x0, y0] = knots[i - 1];
+      return y0 + ((y1 - y0) * (x - x0)) / (x1 - x0);
+    }
+  }
+  return knots[knots.length - 1][1];
+}
+
+// Puntaje −1..1 según cambio % diario del DXY (lineal: ±0.6 % satura)
+export const dxyScore = (changePercent) => clamp(-changePercent / 0.6, -1, 1);
+// Puntaje −1..1 según el nivel del bono 10Y
+export const yieldScore = (v) => interpolate([[3.5, 1], [4.0, 0.3], [4.25, 0], [4.75, -1]], v);
+// Ajuste aditivo según GVZ (volatilidad del oro)
+export const gvzAdjustment = (v) => interpolate([[15, 0.05], [18, 0], [22, -0.04], [26, -0.08]], v);
+// Ajuste aditivo según ratio oro/plata
+export const ratioAdjustment = (r) => interpolate([[70, 0.07], [80, 0], [90, -0.07]], r);
 
 /**
  * Determina el market mode para PAXG usando inteligencia macro + técnicos.
@@ -40,67 +74,61 @@ export function determineGoldMarketMode(currentPrice, indicators, volumeAnalysis
   const reasons = [];
   let score = 0;
 
-  // ── 1. Sentimiento IA (40%) ───────────────────────────────────────────────
-  const sentimentScore = typeof analysis?.score === 'number' ? analysis.score : 0;
-  score += sentimentScore * 0.40;
-
+  // ── 1. Sentimiento IA de titulares (±AI_WEIGHT) ───────────────────────────
   const sentimentLabels = { bullish: 'alcista', neutral: 'neutral', bearish: 'bajista' };
   const sentLabel = sentimentLabels[analysis?.sentiment] ?? 'neutral';
-  if (analysis?.reasoning) {
-    reasons.push(`IA: Sentimiento ${sentLabel} — ${analysis.reasoning}`);
+  if (goldContext.analysisError) {
+    // Si la IA falló, el análisis por defecto es "neutral 0": no debe presentarse como opinión
+    reasons.push('IA no disponible — sin aporte al score (el resto de las señales sigue activo)');
   } else {
-    reasons.push(`IA: Sentimiento ${sentLabel} para el oro`);
+    const sentimentScore = typeof analysis?.score === 'number' ? clamp(analysis.score, -1, 1) : 0;
+    score += sentimentScore * AI_WEIGHT;
+    if (analysis?.reasoning) {
+      reasons.push(`IA: Sentimiento ${sentLabel} — ${analysis.reasoning}`);
+    } else {
+      reasons.push(`IA: Sentimiento ${sentLabel} para el oro`);
+    }
   }
 
-  // ── 2. DXY (25%) ─────────────────────────────────────────────────────────
+  // ── 2. DXY (±0.25, continuo) ─────────────────────────────────────────────
   if (macro?.dxy) {
     const { value: dxyVal, changePercent: dxyChg } = macro.dxy;
-    let dxyScore = 0;
 
     if (dxyChg > 0.6) {
-      dxyScore = -1;
       reasons.push(`Dólar fuerte (DXY ${dxyVal.toFixed(1)}, +${dxyChg.toFixed(2)}%) → presión bajista en oro`);
     } else if (dxyChg > 0.15) {
-      dxyScore = -0.5;
       reasons.push(`Dólar al alza (DXY ${dxyVal.toFixed(1)}, +${dxyChg.toFixed(2)}%)`);
     } else if (dxyChg < -0.6) {
-      dxyScore = 1;
       reasons.push(`Dólar débil (DXY ${dxyVal.toFixed(1)}, ${dxyChg.toFixed(2)}%) → soporte para el oro`);
     } else if (dxyChg < -0.15) {
-      dxyScore = 0.5;
       reasons.push(`Dólar levemente a la baja (DXY ${dxyVal.toFixed(1)}, ${dxyChg.toFixed(2)}%)`);
     } else {
       reasons.push(`Dólar estable (DXY ${dxyVal.toFixed(1)})`);
     }
 
-    score += dxyScore * 0.25;
+    score += dxyScore(dxyChg) * 0.25;
   }
 
-  // ── 3. Bono 10Y (20%) ────────────────────────────────────────────────────
+  // ── 3. Bono 10Y (±0.20, continuo) ────────────────────────────────────────
   if (macro?.tenYearYield) {
     const { value: yldVal } = macro.tenYearYield;
-    let yldScore = 0;
 
     if (yldVal >= 4.75) {
-      yldScore = -1;
       reasons.push(`Yields muy elevados (${yldVal.toFixed(2)}%) → costo de oportunidad alto vs oro`);
     } else if (yldVal >= 4.25) {
-      yldScore = -0.5;
       reasons.push(`Yields altos (${yldVal.toFixed(2)}%) → presión moderada sobre el oro`);
     } else if (yldVal < 3.5) {
-      yldScore = 1;
       reasons.push(`Yields bajos (${yldVal.toFixed(2)}%) → entorno favorable para el oro`);
     } else if (yldVal < 4.0) {
-      yldScore = 0.3;
       reasons.push(`Yields moderados (${yldVal.toFixed(2)}%)`);
     } else {
       reasons.push(`Yields neutrales (${yldVal.toFixed(2)}%)`);
     }
 
-    score += yldScore * 0.20;
+    score += yieldScore(yldVal) * 0.20;
   }
 
-  // ── 4. Técnicos (15%) ────────────────────────────────────────────────────
+  // ── 4. Técnicos (±0.15) ────────────────────────────────────────────────────
   const techMode = determineMarketMode(currentPrice, indicators, volumeAnalysis);
   const techScore = techMode.mode === 'risk_on' ? 1 : techMode.mode === 'risk_off' ? -1 : 0;
   score += techScore * 0.15;
@@ -160,48 +188,39 @@ export function determineGoldMarketMode(currentPrice, indicators, volumeAnalysis
     score += ryAdj;
   }
 
-  // ── 7. GVZ — Índice de volatilidad del oro (aditivo ±0.08) ──────────────────
+  // ── 7. GVZ — Índice de volatilidad del oro (aditivo ±0.08, continuo) ─────────
   if (macro?.gvz) {
     const gvzVal = macro.gvz.value;
-    let gvzAdj = 0;
 
     if (gvzVal > 25) {
-      gvzAdj = -0.08;
       reasons.push(`GVZ: volatilidad muy alta (${gvzVal.toFixed(1)}) → entradas de alto riesgo, reducir exposición`);
     } else if (gvzVal > 20) {
-      gvzAdj = -0.04;
       reasons.push(`GVZ: volatilidad elevada (${gvzVal.toFixed(1)}) → precaución en entradas`);
     } else if (gvzVal < 15) {
-      gvzAdj = 0.05;
       reasons.push(`GVZ: volatilidad baja (${gvzVal.toFixed(1)}) → tendencia estable, entorno favorable`);
     } else {
       reasons.push(`GVZ: volatilidad normal (${gvzVal.toFixed(1)})`);
     }
-    score += gvzAdj;
+    score += gvzAdjustment(gvzVal);
   }
 
-  // ── 8. Ratio Oro/Plata (aditivo ±0.07) ──────────────────────────────────────
+  // ── 8. Ratio Oro/Plata (aditivo ±0.07, continuo) ──────────────────────────
   if (macro?.silver?.value) {
     const goldSilverRatio = currentPrice / macro.silver.value;
     const ratio = Math.round(goldSilverRatio * 10) / 10;
-    let ratioAdj = 0;
 
     if (goldSilverRatio > 90) {
-      ratioAdj = -0.07;
       reasons.push(`Ratio Oro/Plata: ${ratio} (elevado → oro caro vs plata, riesgo de corrección)`);
     } else if (goldSilverRatio > 80) {
-      ratioAdj = -0.03;
       reasons.push(`Ratio Oro/Plata: ${ratio} (alto → cautela en nuevas entradas)`);
     } else if (goldSilverRatio < 70) {
-      ratioAdj = 0.07;
       reasons.push(`Ratio Oro/Plata: ${ratio} (bajo → rally en ambos metales, señal muy alcista)`);
     } else if (goldSilverRatio < 80) {
-      ratioAdj = 0.03;
       reasons.push(`Ratio Oro/Plata: ${ratio} (moderado → contexto positivo para el oro)`);
     } else {
       reasons.push(`Ratio Oro/Plata: ${ratio} (neutral)`);
     }
-    score += ratioAdj;
+    score += ratioAdjustment(goldSilverRatio);
   }
 
   // ── 9. Tendencia diaria PAXG (aditivo ±0.10) ────────────────────────────────
@@ -233,7 +252,7 @@ export function determineGoldMarketMode(currentPrice, indicators, volumeAnalysis
 
   // ── Modo final (score se clampea a [-1, 1]) ───────────────────────────────
   const finalScore = Math.round(Math.max(-1, Math.min(1, score)) * 1000) / 1000;
-  const mode = finalScore > 0.25 ? 'risk_on' : finalScore < -0.25 ? 'risk_off' : 'neutral';
+  const mode = finalScore > MODE_THRESHOLD ? 'risk_on' : finalScore < -MODE_THRESHOLD ? 'risk_off' : 'neutral';
 
   return {
     mode,
