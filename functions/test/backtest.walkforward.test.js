@@ -160,6 +160,7 @@ test('HOLD-OUT sin fuga: alterar los datos posteriores a holdoutStart NO cambia 
   for (const o of t.cot) if (o.date >= holdoutStart) o.netSpec += 80000 * gaussian(rng);
   const b = walkForward(buildDataset(t), { names: PARSIMONIOUS, horizon: 20, lambda: 5, holdoutStart, permB: 50 });
 
+  assert.deepEqual(b.oos, a.oos);         // incluye los retornos "actuales": ninguna etiqueta puede mirar dentro del hold-out
   assert.equal(b.predictions.length, a.predictions.length);
   for (let i = 0; i < a.predictions.length; i++) {
     assert.equal(b.predictions[i].date, a.predictions[i].date);

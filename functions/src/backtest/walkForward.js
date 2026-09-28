@@ -127,7 +127,9 @@ export function walkForward(rows, options = {}) {
   const { names, horizon: h, kind, lambda, minTrain, retrainEvery, winsorQ, holdoutStart, signs } = cfg;
 
   const data = usableRows(rows, names, h);
-  const inWF = holdoutStart ? data.filter(d => d.date < holdoutStart) : data;
+  // Una fila entra al walk-forward solo si su etiqueta TERMINÓ antes del hold-out: si no, el retorno "actual"
+  // (que mira h días adelante) incluiría precios del hold-out y lo contaminaría.
+  const inWF = holdoutStart ? data.filter(d => d.date < holdoutStart && d.labelDate < holdoutStart) : data;
   const inHold = holdoutStart ? data.filter(d => d.date >= holdoutStart) : [];
 
   const preds = [], folds = [];
@@ -188,7 +190,7 @@ export function evaluateScore(rows, scoreFn, { horizon = 20, from = null, to = n
   const preds = [];
   for (const r of rows) {
     if (r.fwd[horizon] === null || r.fwd[horizon] === undefined) continue;
-    if ((from && r.date < from) || (to && r.date >= to)) continue;
+    if ((from && r.date < from) || (to && (r.date >= to || r.labelDate[horizon] >= to))) continue;   // la etiqueta también debe terminar antes de `to`
     const s = scoreFn(r);
     if (Number.isFinite(s)) preds.push({ score: s, actual: r.fwd[horizon] });
   }

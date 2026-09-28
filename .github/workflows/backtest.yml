@@ -1,0 +1,50 @@
+name: Backtest
+
+# Corre el backtest del score de oro con historia real (Yahoo, FRED, CFTC).
+# Manual (Actions → Backtest → Run workflow) o al tocar el código del backtester en la rama de la fase 2.
+# No despliega nada y no necesita secretos: todas las fuentes son públicas.
+
+on:
+  workflow_dispatch:
+    inputs:
+      holdout_years:
+        description: 'Años finales reservados como hold-out'
+        default: '2'
+      perm:
+        description: 'Desplazamientos del test de permutación'
+        default: '500'
+  push:
+    branches: [claude/paxg-phase2-backtest]
+    paths:
+      - 'functions/src/backtest/**'
+      - 'functions/scripts/backtest.mjs'
+      - '.github/workflows/backtest.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Run backtest
+        working-directory: functions
+        run: node scripts/backtest.mjs --holdout-years "${{ inputs.holdout_years || '2' }}" --perm "${{ inputs.perm || '500' }}"
+
+      - name: Publish report
+        if: always()
+        run: |
+          if [ -f functions/backtest-out/report.md ]; then cat functions/backtest-out/report.md >> "$GITHUB_STEP_SUMMARY"; fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backtest-report
+          path: functions/backtest-out/
