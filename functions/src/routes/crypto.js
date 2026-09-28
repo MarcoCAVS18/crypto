@@ -9,7 +9,8 @@ import { getPreviousMode } from '../services/previousMode.js';
 import { getGoldContext } from '../services/goldContext.js';
 import { getCryptoNewsContext } from '../services/cryptoNewsContext.js';
 import { makeDecision } from '../services/decisionEngine.js';
-import { analyzeCalendarRisk, generatePortfolioInsight } from '../services/groqAnalyzer.js';
+import { generatePortfolioInsight } from '../services/groqAnalyzer.js';
+import { applyEventRisk } from '../services/eventRisk.js';
 import { getUpcomingEvents } from '../data/macroCalendar.js';
 import { buildDecisionRecord } from '../services/decisionLog.js';
 import { insightCacheKey } from '../services/aiHelpers.js';
@@ -227,46 +228,12 @@ router.post('/decision', async (req, res) => {
     // Con datos macro degradados (fuentes caídas/viejas) se advierte y una compra pierde intensidad
     decision = applyDataQuality(decision, marketMode.goldContext?.dataHealth);
 
-    // ── Modulación por calendario macro (solo en BUY, via Groq) ───────────────
-    // Solo llamamos a Groq si la señal es BUY y hay eventos críticos en 7 días.
-    // El resultado se cachea 4h por (asset + action + conjunto de eventos próximos).
-    if (decision.action === 'BUY' && process.env.GROQ_API_KEY) {
+    // ── Riesgo de calendario macro (determinístico, solo compras; ver services/eventRisk.js) ──
+    if (decision.action === 'BUY') {
       try {
-        const upcomingEvents = getUpcomingEvents(7, symbol.toUpperCase());
-        if (upcomingEvents.length > 0) {
-          // Clave de caché determinista: depende del activo, acción, intensidad
-          // y qué eventos están próximos (no de precios — el riesgo de calendario
-          // es el mismo para cualquier señal BUY del mismo día)
-          const eventsKey    = upcomingEvents.map(e => `${e.name}:${e.daysUntil}:${e.phase}`).join(',');
-          const cacheKey     = `calrisk_${symbol}_${decision.action}_${decision.strength}_${eventsKey}`;
-          let   calendarRisk = await getAiCache(cacheKey);
-
-          if (!calendarRisk) {
-            console.log(`[CalendarRisk] Calling Groq for ${symbol} BUY — events: ${eventsKey}`);
-            const marketCtx = {
-              mode:          marketMode.mode,
-              currentZone:   zones.currentZone,
-              rsi:           indicators.rsi,
-              goldSentiment: marketMode.goldContext?.sentiment ?? null
-            };
-            calendarRisk = await analyzeCalendarRisk(
-              symbol.toUpperCase(), decision, upcomingEvents, marketCtx
-            );
-            await setAiCache(cacheKey, calendarRisk, 4).catch(e =>
-              console.warn('[CalendarRisk] Cache write failed:', e.message)
-            );
-            console.log(`[CalendarRisk] modulate=${calendarRisk.modulate}, capitalFraction=${calendarRisk.capitalFraction}`);
-          } else {
-            console.log(`[CalendarRisk] Cache hit for ${symbol}`);
-          }
-
-          if (calendarRisk.modulate) {
-            decision = applyCalendarModulation(decision, calendarRisk);
-          }
-        }
+        decision = applyEventRisk(decision, getUpcomingEvents(2, symbol.toUpperCase()));
       } catch (calErr) {
-        // No interrumpir la señal principal si el calendario falla
-        console.warn('[CalendarRisk] Error:', calErr.message);
+        console.warn('[EventRisk] Error:', calErr.message);      // no interrumpir la señal principal
       }
     }
 
@@ -323,49 +290,6 @@ router.post('/decision', async (req, res) => {
     res.status(500).json({ error: 'Error generando decisión' });
   }
 });
-
-// ── Helper: aplica la modulación de calendario a una decisión ─────────────────
-function applyCalendarModulation(decision, calendarRisk) {
-  const { action, strength, capitalFraction, reasoning, calendarNote } = calendarRisk;
-  const changed = action !== decision.action || strength !== decision.strength || capitalFraction < 1;
-
-  if (!changed) return decision;
-
-  // Si la acción cambia a WAIT, vaciar operaciones
-  const newOperations = action === 'WAIT'
-    ? []
-    : decision.operations.map(op => ({
-        ...op,
-        usdAmount: op.usdAmount != null
-          ? Math.round(op.usdAmount * capitalFraction * 100) / 100
-          : null,
-        units: op.units != null
-          ? op.units * capitalFraction
-          : null,
-        // Flag para que el frontend sepa que fue reducido por calendario
-        calendarReduced: capitalFraction < 1
-      }));
-
-  // Construir nota de modulación
-  const notePrefix = capitalFraction === 0
-    ? '⚠️ Entrada pausada por evento macro'
-    : capitalFraction < 0.6
-    ? `⚠️ Entrada reducida al ${Math.round(capitalFraction * 100)}% por evento macro`
-    : `⚠️ Posición reducida al ${Math.round(capitalFraction * 100)}% por precaución`;
-
-  const modNote = calendarNote
-    ? `${notePrefix}: ${calendarNote}`
-    : notePrefix;
-
-  return {
-    ...decision,
-    action,
-    strength,
-    operations: newOperations,
-    recommendation: `${modNote} · ${decision.recommendation}`,
-    calendarRisk: { capitalFraction, reasoning, calendarNote, originalAction: decision.action }
-  };
-}
 
 // POST /api/crypto/:symbol/news/refresh — fuerza recarga de noticias
 router.post('/:symbol/news/refresh', async (req, res) => {
