@@ -87,7 +87,7 @@ export function buildSnapshot({ symbol, marketData, indicators, volume, zones, m
         value: r(macro.realYield.value, 3), sentiment: macro.realYield.sentiment ?? null,
         change20d: macro.realYield.change20d ?? null, zscore1y: macro.realYield.zscore1y ?? null
       } : null,
-      cot: macro?.cot ? { netSpec: macro.cot.netSpec, weekChange: macro.cot.weekChange, sentiment: macro.cot.sentiment, reportDate: macro.cot.reportDate ?? null } : null,
+      cot: macro?.cot ? { netSpec: macro.cot.netSpec, weekChange: macro.cot.weekChange, sentiment: macro.cot.sentiment, reportDate: macro.cot.reportDate ?? null, percentile: macro.cot.netSpecPercentile ?? null } : null,
       gvz: macro?.gvz ? { value: r(macro.gvz.value), source: macro.gvz.source ?? 'yahoo' } : null,
       silver: macro?.silver ? r(macro.silver.value) : null,
       goldSilverRatio: gc.goldSilverRatio ?? null,
@@ -96,6 +96,7 @@ export function buildSnapshot({ symbol, marketData, indicators, volume, zones, m
         longAlignment: macro.dailyBias.longAlignment ?? null, extension200Pct: macro.dailyBias.extension200Pct ?? null,
         rsi: r(macro.dailyBias.rsi, 1), atrPercent: macro.dailyBias.atrPercent ?? null
       } : null,
+      decoupling: macro?.decoupling ? { corr60: macro.decoupling.corr60, corr250: macro.decoupling.corr250, status: macro.decoupling.status } : null,
       premium: gc.premium ? { premiumPct: gc.premium.premiumPct, stale: gc.premium.stale } : null,
       spotPrice: macro?.spot ? r(macro.spot.price) : null,
       headlineCount: Array.isArray(gc.headlines) ? gc.headlines.length : 0,

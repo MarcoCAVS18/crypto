@@ -135,10 +135,11 @@ export async function getMacroData() {
  * @returns {{ netSpec, weekChange, sentiment, longs, shorts, reportDate }}
  */
 export async function getCOTData() {
+  // ~3 años de reportes semanales: alcanza para el percentil del posicionamiento
   const url =
     'https://publicreporting.cftc.gov/resource/6dca-aqww.json' +
     '?market_and_exchange_names=GOLD%20-%20COMMODITY%20EXCHANGE%20INC.' +
-    '&$limit=4&$order=as_of_date_in_form_yymmdd%20DESC';
+    '&$limit=160&$order=as_of_date_in_form_yymmdd%20DESC';
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 12000);
@@ -150,32 +151,43 @@ export async function getCOTData() {
     clearTimeout(timer);
     if (!res.ok) throw new Error(`COT API HTTP ${res.status}`);
 
-    const data = await res.json();
-    if (!Array.isArray(data) || data.length < 2) throw new Error('COT data insuficiente');
-
-    const latest = data[0];
-    const prev   = data[1];
-
-    const longs  = parseInt(latest.noncomm_positions_long_all  || 0, 10);
-    const shorts = parseInt(latest.noncomm_positions_short_all || 0, 10);
-    const netSpec = longs - shorts;
-
-    const prevNet = parseInt(prev.noncomm_positions_long_all  || 0, 10)
-                  - parseInt(prev.noncomm_positions_short_all || 0, 10);
-    const weekChange = netSpec - prevNet;
-
-    let sentiment;
-    if (netSpec > 200000)      sentiment = 'crowded_long';    // contrarian bajista
-    else if (netSpec > 80000)  sentiment = 'bullish';
-    else if (netSpec > 0)      sentiment = 'neutral';
-    else                       sentiment = 'contrarian_bull'; // extremo short → contrarian alcista
-
-    return { netSpec, weekChange, sentiment, longs, shorts, reportDate: latest.as_of_date_in_form_yymmdd };
+    return parseCotHistory(await res.json());
   } catch (err) {
     clearTimeout(timer);
     console.warn('[MacroService] COT fetch failed:', err.message);
     throw err;
   }
+}
+
+const cotNet = (r) => parseInt(r.noncomm_positions_long_all || 0, 10) - parseInt(r.noncomm_positions_short_all || 0, 10);
+
+/**
+ * Filas de Socrata (más nueva primero) → posición actual + percentil histórico.
+ * El percentil (0–100) dice qué tan extremo es el posicionamiento neto frente a los últimos ~3 años;
+ * los umbrales absolutos de `sentiment` (80k / 200k) no se adaptan al tamaño del mercado. Es informativo:
+ * el score sigue usando `sentiment` hasta que el backtest respalde otra regla.
+ */
+export function parseCotHistory(data) {
+  if (!Array.isArray(data) || data.length < 2) throw new Error('COT data insuficiente');
+
+  const latest = data[0];
+  const netSpec = cotNet(latest);
+  const weekChange = netSpec - cotNet(data[1]);
+  const longs  = parseInt(latest.noncomm_positions_long_all  || 0, 10);
+  const shorts = parseInt(latest.noncomm_positions_short_all || 0, 10);
+
+  let sentiment;
+  if (netSpec > 200000)      sentiment = 'crowded_long';    // contrarian bajista
+  else if (netSpec > 80000)  sentiment = 'bullish';
+  else if (netSpec > 0)      sentiment = 'neutral';
+  else                       sentiment = 'contrarian_bull'; // extremo short → contrarian alcista
+
+  const nets = data.map(cotNet).filter(Number.isFinite);
+  const netSpecPercentile = nets.length >= 52
+    ? Math.round((nets.filter(v => v <= netSpec).length / nets.length) * 1000) / 10
+    : null;
+
+  return { netSpec, weekChange, sentiment, longs, shorts, reportDate: latest.as_of_date_in_form_yymmdd, netSpecPercentile, historyWeeks: nets.length };
 }
 
 /**

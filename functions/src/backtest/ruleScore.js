@@ -6,8 +6,10 @@
 // Diferencias inevitables con el score en vivo (declaradas para no sobrevender el resultado):
 //  - Sin componente IA: no existe historia de titulares/sentimiento.
 //  - "Técnico": producción usa velas 4h; acá se usan las diarias (precio vs EMA200/EMA50 y RSI). La
-//    volatilidad ATR/precio de 4h del oro es siempre < 1.5 %, o sea que suma +1 de forma constante;
-//    se replica igual (atr=0) en vez de inventar otra regla. El volumen se asume neutral.
+//    volatilidad ATR/precio de 4h del oro es siempre < 1.5 %, o sea que con el criterio ABSOLUTO suma +1
+//    de forma constante; se replica ese criterio (atr=0). Producción desde P2 usa percentil histórico del
+//    ATR (±1/2 según el régimen de volatilidad): esa parte no es replicable sin velas 4h históricas.
+//    El volumen se asume neutral. Tampoco replica la histéresis del modo (solo el score).
 //  - "dailyBias": idéntico en espíritu (EMA20/EMA50 diarias + RSI diario).
 //  - COT: reglas idénticas sobre el dato disponible en la fecha (rezago de publicación ya aplicado en features).
 //  - Ratio oro/plata: usa el oro futuro en vez de PAXG.

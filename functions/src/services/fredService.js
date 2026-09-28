@@ -115,6 +115,9 @@ export async function getFredMacro({ apiKey = process.env.FRED_API_KEY, now = Da
   );
 
   const series = {};
+  // Cola de observaciones de la tasa real (~1 año) para el monitor de desacople; el consumidor la retira
+  // antes de cachear/persistir el contexto (`history` no viaja a snapshots ni prompts).
+  let history = null;
   entries.forEach(([key, cfg], i) => {
     const r = results[i];
     const base = { id: cfg.id, label: cfg.label };
@@ -122,6 +125,7 @@ export async function getFredMacro({ apiKey = process.env.FRED_API_KEY, now = Da
       series[key] = { ...base, status: 'failed', error: r.reason?.message ?? 'error desconocido' };
       return;
     }
+    if (key === 'realYield10') history = { realYield10: r.value.slice(-300) };
     const f = computeSeriesFeatures(r.value, now);
     if (!f) { series[key] = { ...base, status: 'failed', error: 'sin observaciones' }; return; }
     series[key] = { ...base, status: f.ageDays <= cfg.maxAgeDays ? 'ok' : 'stale', ...f };
@@ -130,7 +134,8 @@ export async function getFredMacro({ apiKey = process.env.FRED_API_KEY, now = Da
   return {
     available: Object.values(series).some(s => s.status !== 'failed'),
     fetchedAt: new Date(now).toISOString(),
-    series
+    series,
+    history
   };
 }
 

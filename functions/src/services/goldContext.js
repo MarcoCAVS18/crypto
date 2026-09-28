@@ -3,6 +3,7 @@
 import { getMacroData, getCOTData, getRealYield, getGoldVolatilityData } from './macroService.js';
 import { getFredMacro, applyFredFallbacks } from './fredService.js';
 import { getGoldSpotDaily, computeRegime } from './spotGold.js';
+import { decouplingStatus } from './decoupling.js';
 import { buildGoldSources } from './dataHealth.js';
 import { getDailyCandles } from './marketData.js';
 import { calculateAllIndicators } from './technicalAnalysis.js';
@@ -97,6 +98,12 @@ export async function getGoldContext(forceRefresh = false) {
   if (fredResult.status === 'rejected') console.warn('[GoldContext] FRED error:', fredResult.reason?.message);
   if (fred && !fred.available) console.warn('[GoldContext] FRED no disponible (¿falta FRED_API_KEY?)');
 
+  // Monitor de desacople oro ↔ tasa real (informativo). La historia se retira de `fred` para no cachearla ni persistirla.
+  let decoupling = null;
+  try { decoupling = decouplingStatus(spot?.candles, fred?.history?.realYield10); }
+  catch (e) { console.warn('[GoldContext] decoupling error:', e.message); }
+  if (fred) delete fred.history;
+
   const macroFromSources = {
     ...baseMacro,
     cot:       cotResult.status       === 'fulfilled' ? cotResult.value       : null,
@@ -104,6 +111,7 @@ export async function getGoldContext(forceRefresh = false) {
     gvz:       volData.gvz,
     silver:    volData.silver,
     dailyBias,
+    decoupling,
     spot:      spot ? { ticker: spot.ticker, price: spot.quote.price, time: spot.quote.time } : null
   };
 

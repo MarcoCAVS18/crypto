@@ -203,6 +203,8 @@ export function determineGoldMarketMode(currentPrice, indicators, volumeAnalysis
     }
 
     add('realYield', ryAdj);
+    // Si la tasa real dejó de explicar al oro, decirlo (informativo: el peso no cambia solo)
+    if (macro.decoupling && macro.decoupling.status !== 'normal') reasons.push(`⚠ ${macro.decoupling.message}`);
   }
 
   // ── 7. GVZ — Índice de volatilidad del oro (aditivo ±0.08, continuo) ─────────
