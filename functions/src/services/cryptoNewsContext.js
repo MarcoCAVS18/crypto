@@ -6,6 +6,7 @@ import { analyzeAssetSentiment, translateHeadlines } from './groqAnalyzer.js';
 import { getAiCache, setAiCache } from '../config/database.js';
 
 const CACHE_TTL_H = 2;
+const FAILED_TTL_H = 5 / 60;
 
 /**
  * Obtiene el contexto de noticias + sentimiento para BTC o ETH.
@@ -85,8 +86,11 @@ export async function getCryptoNewsContext(symbol, forceRefresh = false) {
     ...(analysisError && { analysisError }),
   };
 
-  // Guardar en caché (fire-and-forget)
-  setAiCache(cacheKey, ctx, CACHE_TTL_H).catch(e =>
+  // Un contexto sin titulares o con el análisis fallido se cachea poco: si fue un fallo pasajero de los feeds
+  // o de Groq no debe faltar toda la ventana de 2 h. Se espera la escritura (en Cloud Functions el trabajo
+  // posterior a la respuesta no está garantizado).
+  const ttl = analysisError || headlines.length === 0 ? FAILED_TTL_H : CACHE_TTL_H;
+  await setAiCache(cacheKey, ctx, ttl).catch(e =>
     console.warn(`[CryptoNews:${symbol}] Cache write failed:`, e.message)
   );
 

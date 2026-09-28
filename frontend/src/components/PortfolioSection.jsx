@@ -1,5 +1,5 @@
 // Sección de Portfolio personal: registro de operaciones e inversiones
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card } from './ui/Card';
 import { Button } from './ui/Button';
 import { Badge } from './ui/Badge';
@@ -176,10 +176,20 @@ export function PortfolioSection() {
   const { operations, summary, loading } = portfolio;
 
   const [showForm, setShowForm] = useState(false);
+  const formRef = useRef(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [expandedOp, setExpandedOp] = useState(null);
+
+  // Al abrir el formulario, llevar la vista hasta él (la lista de operaciones/gráficos lo empujaba fuera de pantalla)
+  useEffect(() => {
+    if (!showForm) return;
+    const id = requestAnimationFrame(() => {
+      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [showForm]);
   const [filterSymbol, setFilterSymbol] = useState('ALL');
   const [visibleCount, setVisibleCount] = useState(3);
 
@@ -307,6 +317,7 @@ export function PortfolioSection() {
 
       {/* Formulario de nueva operación */}
       {showForm && (
+        <div ref={formRef} className="scroll-mt-20">
         <Card className="border border-blue-500/30">
           <h3 className="text-sm font-semibold text-blue-400 mb-4">Nueva Operación</h3>
 
@@ -408,9 +419,10 @@ export function PortfolioSection() {
             </button>
           </div>
         </Card>
+        </div>
       )}
 
-      {/* AI Signal History stats */}
+      {/* Historial de señales IA */}
       <BacktestStats />
 
       {/* Lista de operaciones */}

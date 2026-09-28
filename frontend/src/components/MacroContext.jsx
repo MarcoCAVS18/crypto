@@ -207,6 +207,19 @@ function CotSection({ data }) {
   );
 }
 
+/** Estado vacío explícito: antes la sección de noticias simplemente desaparecía sin explicar por qué. */
+function NoHeadlines({ card = false }) {
+  const body = (
+    <div className="flex items-start gap-2 text-xs text-slate-500">
+      <Newspaper className="w-3.5 h-3.5 mt-0.5 shrink-0 text-slate-600" />
+      <p>Sin noticias por ahora: las fuentes no respondieron o no hay titulares de las últimas 72 h. Se reintenta solo en unos minutos; también podés tocar actualizar.</p>
+    </div>
+  );
+  return card
+    ? <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4">{body}</div>
+    : <div className="rounded-xl bg-white/[0.02] border border-white/[0.04] p-3">{body}</div>;
+}
+
 // ── Contexto de noticias para BTC / ETH (vista simplificada) ─────────────────
 
 function CryptoNewsContext({ context: initialContext, symbol }) {
@@ -312,6 +325,7 @@ function CryptoNewsContext({ context: initialContext, symbol }) {
           </div>
         </div>
 
+        {headlines.length === 0 && <NoHeadlines />}
         {headlines.length > 0 && (
           <div>
             <div className="flex items-center gap-1.5 mb-2.5">
@@ -357,7 +371,7 @@ function CryptoNewsContext({ context: initialContext, symbol }) {
   );
 }
 
-export { CryptoNewsContext };
+export { CryptoNewsContext, NoHeadlines };
 
 // ── Contexto macro completo para PAXG / Oro ───────────────────────────────────
 
@@ -535,6 +549,7 @@ export function MacroContext({ goldContext: initialContext }) {
         )}
 
         {/* Headlines */}
+        {headlines.length === 0 && <NoHeadlines />}
         {headlines.length > 0 && (
           <div>
             <div className="flex items-center gap-1.5 mb-2.5">

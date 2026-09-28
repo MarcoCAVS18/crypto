@@ -49,8 +49,14 @@ function fetchUrl(url, redirectCount = 0) {
         'Accept':     'application/rss+xml, application/xml, text/xml, */*'
       }
     }, (res) => {
-      if ([301, 302, 307].includes(res.statusCode) && res.headers.location) {
-        return fetchUrl(res.headers.location, redirectCount + 1).then(resolve).catch(reject);
+      if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
+        res.resume();
+        return fetchUrl(new URL(res.headers.location, url).toString(), redirectCount + 1).then(resolve).catch(reject);
+      }
+      // Antes se parseaba igual el cuerpo de un 403/429 (HTML de bloqueo) y salían 0 titulares sin ningún aviso
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        res.resume();
+        return reject(new Error(`HTTP ${res.statusCode}`));
       }
       let data = '';
       res.on('data', chunk => { data += chunk; });
@@ -69,10 +75,9 @@ function decodeEntities(str) {
     .replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
 }
 
-function parseRssItems(xml) {
+export function parseRssItems(xml, now = Date.now()) {
   const items  = [];
   const itemRx = /<item[^>]*>([\s\S]*?)<\/item>/g;
-  const now    = Date.now();
   let m;
 
   while ((m = itemRx.exec(xml)) !== null && items.length < MAX_PER_FEED) {
@@ -111,8 +116,8 @@ function parseRssItems(xml) {
   return items;
 }
 
-async function fetchHeadlines(feeds, label) {
-  const results = await Promise.allSettled(feeds.map(fetchUrl));
+export async function fetchHeadlines(feeds, label, { fetcher = fetchUrl, now = Date.now() } = {}) {
+  const results = await Promise.allSettled(feeds.map(u => fetcher(u)));
 
   const seen     = new Set();
   const allItems = [];
@@ -122,7 +127,7 @@ async function fetchHeadlines(feeds, label) {
       console.warn(`[NewsService:${label}] Feed failed:`, r.reason?.message);
       continue;
     }
-    for (const item of parseRssItems(r.value)) {
+    for (const item of parseRssItems(r.value, now)) {
       if (!seen.has(item.title)) {
         seen.add(item.title);
         allItems.push(item);
@@ -136,7 +141,8 @@ async function fetchHeadlines(feeds, label) {
     return db - da;
   });
 
-  console.log(`[NewsService:${label}] ${allItems.length} headlines frescos (≤72h, ${feeds.length} feeds)`);
+  const failed = results.filter(r => r.status !== 'fulfilled').length;
+  console.log(`[NewsService:${label}] ${allItems.length} headlines frescos (≤72h, ${feeds.length - failed}/${feeds.length} feeds ok)`);
   return allItems.slice(0, 14);
 }
 

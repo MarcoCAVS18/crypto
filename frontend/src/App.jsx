@@ -8,7 +8,7 @@ import { ProfileSelector } from './components/ProfileSelector';
 import { MarketHero } from './components/MarketHero';
 import { DetailsSheet } from './components/DetailsSheet';
 import { DecisionPanel } from './components/DecisionPanel';
-import { MacroContext, CryptoNewsContext } from './components/MacroContext';
+import { MacroContext, CryptoNewsContext, NoHeadlines } from './components/MacroContext';
 import { MacroCalendarBanner } from './components/MacroCalendarBanner';
 import { PortfolioSection } from './components/PortfolioSection';
 import { PriceAlertBanner } from './components/PriceAlertBanner';
@@ -276,8 +276,10 @@ function AuthenticatedApp() {
                     <MacroContext goldContext={currentData.marketMode.goldContext} />
                   )}
 
-                  {(selectedCrypto === 'BTC' || selectedCrypto === 'ETH') && currentData.newsContext && (
-                    <CryptoNewsContext context={currentData.newsContext} symbol={selectedCrypto} />
+                  {(selectedCrypto === 'BTC' || selectedCrypto === 'ETH') && (
+                    currentData.newsContext
+                      ? <CryptoNewsContext context={currentData.newsContext} symbol={selectedCrypto} />
+                      : <NoHeadlines card />
                   )}
 
                   {decisionLoading ? (
