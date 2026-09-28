@@ -38,10 +38,6 @@ const RANGES = [
   { id: '90d', label: '3M', granularity: '1d',  count: 90  }
 ];
 
-// Alto reservado abajo para el panel de decisión: el eje de tiempo del gráfico quedaba DEBAJO del panel
-// (chart a pantalla completa) y los filtros 1D/7D/1M/3M no se podían distinguir.
-const PANEL_SPACE = 150;
-
 export function MarketHero({ symbol, price, change24h, zones, decision, onOpenDetails }) {
   const containerRef = useRef(null);
   const chartRef     = useRef(null);
@@ -134,24 +130,20 @@ export function MarketHero({ symbol, price, change24h, zones, decision, onOpenDe
     return () => lines.forEach(l => series.removePriceLine(l));
   }, [zones]);
 
+  // Layout en columna (encabezado / gráfico / panel): antes el gráfico ocupaba todo el hero y lo tapaban el
+  // encabezado y el panel (eje de tiempo oculto, filtros fuera de pantalla en móvil).
   return (
-    <div
-      className="relative w-full overflow-hidden rounded-3xl border border-white/[0.06] bg-[#060b1c]"
-      style={{ minHeight: '520px' }}
-    >
-      {/* Chart canvas: deja libre abajo el espacio del panel para que se vea el eje de tiempo */}
-      <div ref={containerRef} className="absolute inset-x-0 top-0 z-0" style={{ bottom: PANEL_SPACE }} />
-
-      {/* Top bar — symbol + price + range */}
-      <div className="relative z-20 flex items-start justify-between p-4 pointer-events-none">
-        <div className="pointer-events-auto">
-          <div className="flex items-baseline gap-3">
+    <div className="relative flex w-full flex-col overflow-hidden rounded-3xl border border-white/[0.06] bg-[#060b1c]">
+      {/* Top bar — símbolo + precio + rango. En móvil el rango baja a su propia fila (antes se salía de pantalla). */}
+      <div className="relative z-20 flex flex-col gap-2 p-3 sm:p-4 sm:flex-row sm:items-start sm:justify-between pointer-events-none">
+        <div className="pointer-events-auto min-w-0">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 sm:gap-x-3">
             <span className="text-[11px] uppercase tracking-widest text-slate-500 font-semibold">{symbol}</span>
-            <span className="text-3xl font-bold text-white tabular">
+            <span className="text-2xl sm:text-3xl font-bold text-white tabular">
               {price ? `$${price.toLocaleString('en-US', { maximumFractionDigits: symbol === 'BTC' ? 0 : 2 })}` : '—'}
             </span>
             {change24h != null && (
-              <span className={`text-sm font-semibold tabular px-2 py-0.5 rounded-lg ${
+              <span className={`text-xs sm:text-sm font-semibold tabular px-2 py-0.5 rounded-lg ${
                 change24h >= 0
                   ? 'text-emerald-400 bg-emerald-500/10'
                   : 'text-rose-400 bg-rose-500/10'
@@ -162,13 +154,13 @@ export function MarketHero({ symbol, price, change24h, zones, decision, onOpenDe
           </div>
         </div>
 
-        {/* Range selector */}
-        <div className="pointer-events-auto flex items-center gap-0.5 bg-slate-900/70 border border-white/[0.06] rounded-lg p-1 backdrop-blur-sm">
+        {/* Selector de rango */}
+        <div className="pointer-events-auto self-start flex items-center gap-0.5 bg-slate-900/70 border border-white/[0.06] rounded-lg p-1 backdrop-blur-sm shrink-0">
           {RANGES.map(r => (
             <button
               key={r.id}
               onClick={() => setRange(r.id)}
-              className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors tabular ${
+              className={`px-3 py-1.5 sm:px-2.5 sm:py-1 text-[11px] font-semibold rounded-md transition-colors tabular ${
                 range === r.id
                   ? 'bg-violet-500/20 text-violet-400'
                   : 'text-slate-500 hover:text-slate-300'
@@ -180,13 +172,17 @@ export function MarketHero({ symbol, price, change24h, zones, decision, onOpenDe
         </div>
       </div>
 
-      {candles.length === 0 && (
-        <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-center pointer-events-none" style={{ bottom: PANEL_SPACE }}>
-          <span className="text-xs text-slate-500">
-            {loadingCandles ? 'Cargando velas...' : (candlesError ?? 'Sin velas para este rango')}
-          </span>
-        </div>
-      )}
+      {/* Gráfico */}
+      <div className="relative w-full h-[260px] sm:h-[320px]">
+        <div ref={containerRef} className="absolute inset-0" />
+        {candles.length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <span className="text-xs text-slate-500">
+              {loadingCandles ? 'Cargando velas...' : (candlesError ?? 'Sin velas para este rango')}
+            </span>
+          </div>
+        )}
+      </div>
 
       {/* Glass decision panel */}
       <AnimatePresence mode="wait">
@@ -196,7 +192,7 @@ export function MarketHero({ symbol, price, change24h, zones, decision, onOpenDe
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -16 }}
           transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-          className="absolute inset-x-4 bottom-4 z-20"
+          className="relative z-20 px-3 pb-3 sm:px-4 sm:pb-4"
         >
           <div
             className={`rounded-2xl border border-white/[0.07] bg-[#08111f]/70 backdrop-blur-xl shadow-2xl p-4`}
