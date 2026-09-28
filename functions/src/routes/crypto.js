@@ -197,7 +197,7 @@ router.post('/decision', async (req, res) => {
 
     // Generar decisión
     const userState = {
-      cashPercent: cashPercent ?? 50,
+      cashPercent: cash,                 // número ya validado (0-100), no el valor crudo del body
       mode: mode || 'inversion',
       totalCapital: parseFloat(totalCapital) || 0
     };
