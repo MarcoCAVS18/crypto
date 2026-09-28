@@ -1,7 +1,7 @@
 // Bottom sheet con detalles técnicos + tu posición + recomendación detallada.
 // Se abre desde el botón "Detalles" del MarketHero.
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Activity, Settings2, Lightbulb, BrainCircuit, MapPin } from 'lucide-react';
+import { X, Activity, Settings2, Lightbulb, BrainCircuit } from 'lucide-react';
 import { UserStateInput } from './UserStateInput';
 import { MarketModeIndicator } from './MarketModeIndicator';
 import { CollapsibleSection } from './CollapsibleSection';
@@ -149,14 +149,6 @@ function PortfolioInsight({ insight }) {
           Análisis de tu posición
         </span>
         <p className="text-sm text-slate-300 leading-relaxed">{insight.insight}</p>
-        {insight.optimalEntryPrice && (
-          <div className="flex items-center gap-1.5 mt-2">
-            <MapPin className="w-3 h-3 text-blue-400/60 shrink-0" />
-            <span className="text-xs text-blue-400/80 font-mono tabular">
-              Entrada sugerida: ${insight.optimalEntryPrice.toLocaleString('en-US', { maximumFractionDigits: 0 })}
-            </span>
-          </div>
-        )}
       </div>
     </div>
   );

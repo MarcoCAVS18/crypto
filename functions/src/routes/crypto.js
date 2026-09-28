@@ -10,6 +10,7 @@ import { makeDecision } from '../services/decisionEngine.js';
 import { analyzeCalendarRisk, generatePortfolioInsight } from '../services/groqAnalyzer.js';
 import { getUpcomingEvents } from '../data/macroCalendar.js';
 import { buildDecisionRecord } from '../services/decisionLog.js';
+import { insightCacheKey } from '../services/aiHelpers.js';
 import { saveDecision, getPortfolioSummaryBySymbol, getAiCache, setAiCache, getDecisionsBySymbol } from '../config/database.js';
 
 const router = express.Router();
@@ -242,7 +243,7 @@ router.post('/decision', async (req, res) => {
             calendarRisk = await analyzeCalendarRisk(
               symbol.toUpperCase(), decision, upcomingEvents, marketCtx
             );
-            setAiCache(cacheKey, calendarRisk, 4).catch(e =>
+            await setAiCache(cacheKey, calendarRisk, 4).catch(e =>
               console.warn('[CalendarRisk] Cache write failed:', e.message)
             );
             console.log(`[CalendarRisk] modulate=${calendarRisk.modulate}, capitalFraction=${calendarRisk.capitalFraction}`);
@@ -263,9 +264,7 @@ router.post('/decision', async (req, res) => {
     // ── Portfolio insight personalizado (Groq, caché 1h) ─────────────────────
     if (portfolioContext?.hasPosition && portfolioContext.units > 0 && process.env.GROQ_API_KEY) {
       try {
-        const pb = Math.round(marketData.price / 500) * 500;
-        const ab = Math.round((portfolioContext.avgBuyPrice ?? 0) / 50) * 50;
-        const insightKey = `portinsight_${symbol}_${pb}_${ab}_${Math.round(portfolioContext.netInvested ?? 0)}`;
+        const insightKey = insightCacheKey(symbol, marketData.price, portfolioContext, decision.action);
 
         let portfolioInsight = await getAiCache(insightKey);
         if (!portfolioInsight) {
@@ -275,7 +274,7 @@ router.post('/decision', async (req, res) => {
           portfolioInsight = await generatePortfolioInsight(
             symbol.toUpperCase(), marketData.price, indicators, portfolioContext, userState, decision, recentDecisions
           );
-          setAiCache(insightKey, portfolioInsight, 1).catch(e =>
+          await setAiCache(insightKey, portfolioInsight, 1).catch(e =>
             console.warn('[PortfolioInsight] Cache write failed:', e.message)
           );
         } else {

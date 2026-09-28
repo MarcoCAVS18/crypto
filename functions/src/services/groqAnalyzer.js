@@ -4,40 +4,14 @@
 // 3. analyzeCalendarRisk      — modulación de decisión por eventos macro (caché 4h)
 // 4. generatePortfolioInsight — nota personalizada según posición del usuario (caché 1h)
 
-import Groq from 'groq-sdk';
+import { chatJson } from './groqChat.js';
+import { labelOutcome } from './aiHelpers.js';
 
-let groqClient = null;
-
-function getClient() {
-  if (!groqClient) {
-    const apiKey = process.env.GROQ_API_KEY;
-    if (!apiKey) throw new Error('GROQ_API_KEY no configurada en las variables de entorno');
-    groqClient = new Groq({ apiKey });
-  }
-  return groqClient;
-}
-
-function cleanContent(raw) {
-  return (raw ?? '').replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-}
-
-/**
- * Sentimiento de NOTICIAS para el oro (24-72 h). Recibe SOLO titulares.
- *
- * `macroData` se conserva en la firma por compatibilidad pero ya NO se envía al modelo:
- * DXY, 10Y, tasa real y COT los puntúa goldMarketMode de forma determinística. Pasárselos
- * al LLM hacía que esas señales entraran dos veces al score (una vía IA y otra directa).
- */
-export async function analyzeGoldSentiment(headlines, _macroData) {
-  // Sin noticias no hay nada que analizar: evitar una llamada y una opinión inventada
-  if (!headlines || headlines.length === 0) {
-    return { sentiment: 'neutral', score: 0, reasoning: 'Sin titulares recientes para analizar.', keyFactors: [] };
-  }
-  const client = getClient();
-
+/** Prompt de sentimiento de noticias (solo titulares; sin datos macro). Exportado para tests. */
+export function buildGoldSentimentPrompt(headlines, now = Date.now()) {
   function headlineAge(h) {
     if (!h.pubDate) return '';
-    const min = Math.floor((Date.now() - new Date(h.pubDate).getTime()) / 60000);
+    const min = Math.floor((now - new Date(h.pubDate).getTime()) / 60000);
     if (min < 60)  return ` [hace ${min}m]`;
     if (min < 1440) return ` [hace ${Math.floor(min/60)}h]`;
     return ` [hace ${Math.floor(min/1440)}d]`;
@@ -70,19 +44,25 @@ Respondé SOLO con un objeto JSON válido (sin markdown, sin texto extra):
   "reasoning": "<1-2 oraciones en español explicando el análisis>",
   "keyFactors": ["<factor 1 en español>", "<factor 2 en español>", "<factor 3 en español>"]
 }`;
+  return prompt;
+}
 
-  const completion = await client.chat.completions.create({
-    model: 'openai/gpt-oss-120b',
-    messages: [{ role: 'user', content: prompt }],
-    temperature: 0.2,
-    max_tokens: 600
-  });
+/**
+ * Sentimiento de NOTICIAS para el oro (24-72 h). Recibe SOLO titulares.
+ *
+ * `macroData` se conserva en la firma por compatibilidad pero ya NO se envía al modelo:
+ * DXY, 10Y, tasa real y COT los puntúa goldMarketMode de forma determinística. Pasárselos
+ * al LLM hacía que esas señales entraran dos veces al score (una vía IA y otra directa).
+ */
+export async function analyzeGoldSentiment(headlines, _macroData) {
+  // Sin noticias no hay nada que analizar: evitar una llamada y una opinión inventada
+  if (!headlines || headlines.length === 0) {
+    return { sentiment: 'neutral', score: 0, reasoning: 'Sin titulares recientes para analizar.', keyFactors: [] };
+  }
 
-  const content = completion.choices[0]?.message?.content ?? '';
-  const jsonMatch = content.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error(`Groq response did not contain JSON. Raw: ${content.slice(0, 200)}`);
+  const prompt = buildGoldSentimentPrompt(headlines);
 
-  const parsed = JSON.parse(jsonMatch[0]);
+  const parsed = await chatJson({ prompt, temperature: 0.2, maxTokens: 600, expect: 'object', label: 'goldSentiment' });
   const validSentiments = ['bullish', 'neutral', 'bearish'];
   return {
     sentiment: validSentiments.includes(parsed.sentiment) ? parsed.sentiment : 'neutral',
@@ -94,7 +74,6 @@ Respondé SOLO con un objeto JSON válido (sin markdown, sin texto extra):
 
 export async function translateHeadlines(headlines) {
   if (!headlines.length) return headlines;
-  const client = getClient();
 
   const numbered = headlines.map((h, i) => `${i + 1}. ${h.title}`).join('\n');
   const prompt = `Traducí al español rioplatense (Argentina) cada uno de estos titulares financieros.
@@ -105,18 +84,7 @@ Respondé ÚNICAMENTE con un array JSON de strings, en el mismo orden, sin texto
 TITULARES:
 ${numbered}`;
 
-  const completion = await client.chat.completions.create({
-    model:       'openai/gpt-oss-120b',
-    messages:    [{ role: 'user', content: prompt }],
-    temperature: 0.1,
-    max_tokens:  600
-  });
-
-  const content    = completion.choices[0]?.message?.content ?? '';
-  const arrayMatch = content.match(/\[[\s\S]*\]/);
-  if (!arrayMatch) throw new Error('Translation response has no JSON array');
-
-  const translated = JSON.parse(arrayMatch[0]);
+  const translated = await chatJson({ prompt, temperature: 0.1, maxTokens: 600, expect: 'array', label: 'translateHeadlines' });
   if (!Array.isArray(translated) || translated.length !== headlines.length) throw new Error('Translation array length mismatch');
 
   return headlines.map((h, i) => ({
@@ -126,7 +94,6 @@ ${numbered}`;
 }
 
 export async function analyzeCalendarRisk(asset, decision, upcomingEvents, marketCtx = {}) {
-  const client = getClient();
 
   const assetDesc = asset === 'PAXG'
     ? 'PAXG (oro tokenizado — sensible a tasas, dólar e inflación)'
@@ -176,18 +143,7 @@ Guía de criterio:
 - Eventos en 6-7 días con señal débil → modulate=true, capitalFraction=0.7
 - Sin eventos inminentes o señal débil existente → modulate=false`;
 
-  const completion = await client.chat.completions.create({
-    model: 'openai/gpt-oss-120b',
-    messages: [{ role: 'user', content: prompt }],
-    temperature: 0.15,
-    max_tokens: 400
-  });
-
-  const content   = completion.choices[0]?.message?.content ?? '';
-  const jsonMatch = content.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error(`Calendar risk response has no JSON. Raw: ${content.slice(0, 200)}`);
-
-  const p = JSON.parse(jsonMatch[0]);
+  const p = await chatJson({ prompt, temperature: 0.15, maxTokens: 400, expect: 'object', label: 'calendarRisk' });
   const validActions   = ['BUY', 'WAIT', 'SELL'];
   const validStrengths = ['fuerte', 'moderado', 'débil'];
 
@@ -202,7 +158,6 @@ Guía de criterio:
 }
 
 export async function generatePortfolioInsight(asset, currentPrice, indicators, portfolioCtx, userState, decision, recentDecisions = []) {
-  const client = getClient();
 
   const { units = 0, avgBuyPrice = 0, allBuys = [] } = portfolioCtx;
   const netInvested = portfolioCtx.costBasis ?? portfolioCtx.netInvested ?? 0;
@@ -236,9 +191,7 @@ export async function generatePortfolioInsight(asset, currentPrice, indicators, 
         const timeLabel = daysAgo === 0 ? 'hoy' : daysAgo === 1 ? 'ayer' : `hace ${daysAgo}d`;
         const priceAtDecision = d.price ?? 0;
         const pnlPct = priceAtDecision > 0 ? ((currentPrice - priceAtDecision) / priceAtDecision) * 100 : null;
-        const outcome = pnlPct != null
-          ? (pnlPct >= 0 ? `→ hoy ${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}% ✓` : `→ hoy ${pnlPct.toFixed(1)}% ✗`)
-          : '';
+        const outcome = labelOutcome(d.decision, pnlPct);
         return `  [${timeLabel}] ${d.decision} @ $${Math.round(priceAtDecision).toLocaleString('en-US')} ${outcome}`;
       }).join('\n')
     : '  Sin historial disponible';
@@ -271,36 +224,21 @@ Escribí UNA nota personalizada (máximo 3 oraciones cortas) en español rioplat
 1. Mencione el estado real de la posición (P&L, tiempo acumulando, distribución de compras)
 2. Diga si la señal tiene sentido para ESTE usuario específicamente o si conviene esperar
 3. Sea concreta, no genérica — nombré el activo, el P&L real, el porcentaje de cash libre
-4. Si hay señales recientes con buenos resultados, destacá la consistencia del sistema
-
-Si hay un precio de entrada más conveniente que el actual, indicalo como número. Si no aplica, null.
+4. Sé honesto con el historial: si las señales recientes acertaron, decilo sin exagerar; si fallaron, decilo también. No infles la confianza en el sistema.
+5. No inventes precios de entrada ni niveles: usá solo los números que aparecen arriba.
 
 Respondé SOLO con JSON válido (sin markdown):
 {
-  "insight": "...",
-  "optimalEntryPrice": null
+  "insight": "..."
 }`;
 
-  const completion = await client.chat.completions.create({
-    model:       'openai/gpt-oss-120b',
-    messages:    [{ role: 'user', content: prompt }],
-    temperature: 0.3,
-    max_tokens:  450
-  });
-
-  const content   = completion.choices[0]?.message?.content ?? '';
-  const jsonMatch = content.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error(`Portfolio insight response has no JSON. Raw: ${content.slice(0, 200)}`);
-
-  const parsed = JSON.parse(jsonMatch[0]);
+  const parsed = await chatJson({ prompt, temperature: 0.3, maxTokens: 450, expect: 'object', label: 'portfolioInsight' });
   return {
-    insight:           typeof parsed.insight === 'string' ? parsed.insight.trim() : '',
-    optimalEntryPrice: typeof parsed.optimalEntryPrice === 'number' ? parsed.optimalEntryPrice : null
+    insight: typeof parsed.insight === 'string' ? parsed.insight.trim() : ''
   };
 }
 
 export async function analyzeAssetSentiment(symbol, headlines, macroData) {
-  const client = getClient();
 
   const assetDesc = symbol === 'ETH'
     ? 'Ethereum (ETH) — sensible a actividad DeFi, staking, upgrades de red y flujo de capital cripto'
@@ -351,18 +289,7 @@ Respondé SOLO con JSON válido (sin markdown):
   "keyFactors": ["<factor 1>", "<factor 2>", "<factor 3>"]
 }`;
 
-  const completion = await client.chat.completions.create({
-    model: 'openai/gpt-oss-120b',
-    messages: [{ role: 'user', content: prompt }],
-    temperature: 0.2,
-    max_tokens: 800,
-  });
-
-  const content   = cleanContent(completion.choices[0]?.message?.content);
-  const jsonMatch = content.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error(`analyzeAssetSentiment: no JSON in response. Raw: ${content.slice(0, 200)}`);
-
-  const parsed = JSON.parse(jsonMatch[0]);
+  const parsed = await chatJson({ prompt, temperature: 0.2, maxTokens: 800, expect: 'object', label: 'assetSentiment' });
   const validSentiments = ['bullish', 'neutral', 'bearish'];
   return {
     sentiment:  validSentiments.includes(parsed.sentiment) ? parsed.sentiment : 'neutral',
@@ -373,7 +300,6 @@ Respondé SOLO con JSON válido (sin markdown):
 }
 
 export async function analyzeFuturesDirection(technicals, goldContext, fundingRate, maxLeverage = 10, portfolioContext = null) {
-  const client = getClient();
   const fr = fundingRate ?? 0;
 
   const techLines = [
@@ -449,18 +375,7 @@ Respondé SOLO con JSON válido (sin markdown):
   ${positionSizeInstruction}
 }`;
 
-  const completion = await client.chat.completions.create({
-    model: 'openai/gpt-oss-120b',
-    messages: [{ role: 'user', content: prompt }],
-    temperature: 0.15,
-    max_tokens: 800,
-  });
-
-  const content   = cleanContent(completion.choices[0]?.message?.content);
-  const jsonMatch = content.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error(`analyzeFuturesDirection: no JSON in response. Raw: ${content.slice(0, 200)}`);
-
-  const parsed = JSON.parse(jsonMatch[0]);
+  const parsed = await chatJson({ prompt, temperature: 0.15, maxTokens: 800, expect: 'object', label: 'futuresDirection' });
   const validDirections  = ['LONG', 'SHORT', 'NEUTRAL'];
   const validConfidences = ['high', 'medium', 'low'];
 

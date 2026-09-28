@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowUpCircle, Clock, ArrowDownCircle, Lightbulb, ShoppingCart, TrendingDown, ArrowRight, BrainCircuit, MapPin, Settings2 } from 'lucide-react';
+import { ArrowUpCircle, Clock, ArrowDownCircle, Lightbulb, ShoppingCart, TrendingDown, ArrowRight, BrainCircuit, Settings2 } from 'lucide-react';
 
 const ACTION = {
   BUY: {
@@ -215,14 +215,6 @@ function PortfolioInsightCard({ insight }) {
           Análisis de tu posición
         </span>
         <p className="text-sm text-slate-300 leading-relaxed">{insight.insight}</p>
-        {insight.optimalEntryPrice && (
-          <div className="flex items-center gap-1.5 mt-2">
-            <MapPin className="w-3 h-3 text-violet-400/60 shrink-0" />
-            <span className="text-xs text-violet-400/80 font-mono tabular">
-              Entrada sugerida: ${insight.optimalEntryPrice.toLocaleString('en-US', { maximumFractionDigits: 0 })}
-            </span>
-          </div>
-        )}
       </div>
     </motion.div>
   );

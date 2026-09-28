@@ -6,14 +6,21 @@ import api from '../services/api';
 
 function buildContext(cryptoData, selectedCrypto, currentDecision, portfolio) {
   const data = cryptoData[selectedCrypto];
+  const mm   = data?.marketMode;
   const portfolioSummary = portfolio.summary.find(s => s.symbol === selectedCrypto) ?? null;
   return {
-    symbol:      selectedCrypto,
-    price:       data?.price,
-    marketMode:  data?.marketMode?.mode ?? data?.marketMode,
-    zone:        data?.zones?.currentZone,
-    decision:    currentDecision?.action,
-    portfolio:   portfolioSummary
+    symbol:         selectedCrypto,
+    price:          data?.price,
+    marketMode:     mm?.mode ?? mm,
+    modeScore:      mm?.score,
+    marketReasons:  Array.isArray(mm?.reasons) ? mm.reasons.slice(0, 6) : [],
+    zone:           data?.zones?.currentZone,
+    decision:       currentDecision?.action,
+    strength:       currentDecision?.strength,
+    // Con el motivo y la recomendación el asistente puede explicar POR QUÉ el sistema dice lo que dice
+    decisionReason: currentDecision?.reason,
+    recommendation: currentDecision?.recommendation,
+    portfolio:      portfolioSummary
   };
 }
 
