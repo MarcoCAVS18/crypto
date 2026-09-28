@@ -2,7 +2,7 @@
 
 > **Documento vivo.** Leelo ANTES de tocar la lógica de PAXG: evita releer todo el código.
 > Verificado contra `main` @ `56a7baf` (2026-09-28). Al cerrar cada fase, actualizá la sección 5 (estado) y la tabla 3.
-> **Estado:** P0 implementado en el PR de la rama `claude/paxg-phase0-fixes` (ver sección 9). Siguiente: **P1**.
+> **Estado:** P0 ✅ mergeado (PR #41). P1 implementado en la rama `claude/paxg-phase1-data` (ver sección 9). Siguiente: **P2** (backtester y recalibración).
 > Convención de IDs: `B#` = bug verificado · `D#` = debilidad de diseño · `P#` = fase de la hoja de ruta.
 
 ## 0. Cómo usar este documento
@@ -20,14 +20,17 @@
 Flujo de datos de PAXG:
 
 ```
-Coinbase PAXG-USD (velas 1h, 250 ≈ 10 días)        functions/src/services/marketData.js
-  → indicadores (EMA/RSI/ATR/VWAP/swings)           services/technicalAnalysis.js
+Coinbase PAXG-USD (velas 4h cerradas ×250 ≈ 41 días,   functions/src/services/marketData.js + candles.js
+  agregadas desde 1h; paginado ≤300)
+  → indicadores (EMA/RSI/ATR/VWAP 24h/swings)       services/technicalAnalysis.js
   → zonas buy/neutral/sell                          services/zoneCalculator.js
   → market mode técnico (score entero)              services/marketMode.js
-Yahoo (DXY, ^TNX, ^GVZ, SI=F) + FRED DFII10 + CFTC COT + RSS  services/macroService.js, newsService.js
+Yahoo (DXY, ^TNX, ^GVZ, SI=F) + FRED (CSV DFII10 + API 7 series) + CFTC COT + RSS
+                                                    services/macroService.js, fredService.js, newsService.js
+Oro de referencia GC=F (2 años diarios): régimen EMA200, prima de PAXG   services/spotGold.js
   → Groq: sentimiento −1..1 (+ traducción)           services/groqAnalyzer.js
-  → contexto de oro (caché Firestore 2h)             services/goldContext.js
-  → market mode de oro (score −1..1, umbral ±0.25)   services/goldMarketMode.js
+  → contexto de oro (caché Firestore 2h; `sources` = estado por insumo)  services/goldContext.js, dataHealth.js
+  → market mode de oro (score −1..1, umbral ±0.25, `components`, `dataHealth`)  services/goldMarketMode.js
   → motor de reglas BUY/WAIT/SELL + tramos           services/decisionEngine.js
   → modulación por calendario (Groq) + insight (Groq) routes/crypto.js  (POST /api/crypto/decision)
   → historial idempotente por hora + features         services/decisionLog.js, config/database.js (Firestore `decisions`)
@@ -37,6 +40,8 @@ Antispam de push                                     services/zoneAlert.js (2 le
 Costo promedio ponderado (frontend)                  frontend/src/utils/portfolioMath.js
 UI: frontend/src (App.jsx, store/appStore.js, components/DecisionPanel|MacroContext|MarketHero|…)
 Push: scheduled/zoneWatcher.js (cada 60 min) + services/pushService.js
+Snapshots: scheduled/snapshotJob.js (cada 60 min, PAXG+BTC) → services/snapshot.js → Firestore `snapshots`
+Salud: GET /api/health (calendario) y GET /api/health/deep (config, frescura por insumo, último snapshot) → routes/health.js
 ```
 
 Pesos del score de oro (`goldMarketMode.js`, **tras P0**): IA de titulares ±0.15 (antes 40 %), DXY ±0.25, 10Y ±0.20, técnico ±0.15; aditivos COT ±0.10, tasa real ±0.10, GVZ ±0.08, oro/plata ±0.07, tendencia diaria ±0.10 (hasta ±0.15). Mapeos continuos (interpolación lineal). Modo: `> 0.25` risk_on, `< −0.25` risk_off. Suma de máximos = 1.25 (se recorta a ±1). Pesos sin calibrar (P2).
@@ -51,9 +56,10 @@ Perfiles (`frontend/src/data/profiles.js`): marco, tomas, victor. Auth = PIN en 
 
 | Fuente | Uso | Particularidad |
 |---|---|---|
-| Coinbase Exchange `/candles` | velas | Granularidades soportadas (por confirmar): 60, 300, 900, 3600, 21600, 86400. **4h (14400) no existe** → ver B15. Devuelve la vela en curso (por confirmar). Máx 300 velas/request. |
-| Yahoo `v8/finance/chart` | DXY, ^TNX, ^GVZ, SI=F | Endpoint no oficial. `changePercent` se calculaba con `chartPreviousClose` (ver B12). |
-| FRED `fredgraph.csv?id=DFII10` | tasa real 10Y | CSV; faltante = `.` (viejo) o vacío (nuevo). Ver B2. |
+| Coinbase Exchange `/candles` | velas | Granularidades nativas (por confirmar en vivo): 60, 300, 900, 3600, 21600, 86400. **4h (14400) no existe**: se agrega desde 1h (`candles.js`). Devuelve la vela en curso (por confirmar): se descarta. Máx 300 velas/request: se pagina en paralelo. Omite las horas sin operaciones (PAXG ilíquido): un balde 4h con ≥1 vela es válido. |
+| Yahoo `v8/finance/chart` | DXY, ^TNX, ^GVZ, SI=F, **GC=F** | Endpoint no oficial (puede bloquear IPs de Cloud Functions → por eso los fallbacks y el modo degradado). Cambio diario con los 2 últimos cierres (B12). GC=F: 2 años diarios para el régimen. |
+| FRED API `series/observations` (`FRED_API_KEY`) | DFII10, DGS10, DGS2, T10YIE, DTWEXBGS, VIXCLS, GVZCLS | Gratis (120 req/min). Faltante = `"."`. DTWEXBGS se publica semanalmente (vence a los 12 días). La clave nunca se loguea. |
+| FRED `fredgraph.csv?id=DFII10` | tasa real 10Y (sin clave) | CSV; faltante = `.` (viejo) o vacío (nuevo). Ver B2. Sigue siendo la fuente principal de `realYield`; la API la completa/enriquece. |
 | CFTC Socrata `6dca-aqww` | COT (legacy, no-comercial) | Umbrales absolutos 200k/80k/0 sin normalizar por open interest (D3). |
 | RSS (Google News ×2, Kitco, Yahoo GLD) | titulares | Sin dedupe semántico ni ponderación por fuente. |
 | Groq `openai/gpt-oss-120b` | sentimiento, traducción, calendario, insight, chat, futuros | Modelo de **razonamiento**: el razonamiento gasta el presupuesto de `max_tokens` (B11). Params documentados: `reasoning_effort` low/medium/high, `include_reasoning`. |
@@ -66,34 +72,34 @@ Estado: ⬜ pendiente · 🟡 implementado en el PR de su fase (pasa a ✅ al me
 
 | ID | Hallazgo | Dónde | Evidencia | Fase | Estado |
 |---|---|---|---|---|---|
-| B1 | **Costo promedio roto tras ventas**: `(invertido − cobrado)/unidades`. 1u@4000 y vender 0.3u@4800 → app promedio $3.657, P&L +31 % (real +20 %) → cruza el umbral de venta 30 % de PAXG. Vender la mitad a 8000 → promedio $0 → `hasPosition=false`. | `frontend/src/store/appStore.js:28-36` | Reproducido copiando la fórmula literal | P0 | 🟡 |
-| B2 | **Tasa real (FRED) nunca se lee**: el filtro `!valor.includes('.')` descarta todos los decimales; con CSV nuevo (vacío) o viejo (`.`) lanza error. Señal apagada en silencio (score, fracción de capital, override neutral, prompt IA). | `functions/src/services/macroService.js:193` | Probado con ambos formatos sobre el filtro literal | P0 | 🟡 |
-| B3 | **Indicadores sobre datos equivocados**: (a) `timeframe='4h'` se ignora, todo corre sobre 250 velas de 1h ≈ 10 días (la "EMA200" es de ~8 días); (b) la vela en formación entra a RSI/ATR/volumen: primeros ~24 min de cada hora dan volumen "muy bajo" (−1 al score) — asume que Coinbase la devuelve; (c) si Coinbase falla se usan velas sintéticas con `Math.random()` y el motor igual decide; (d) ATR% de PAXG en 1h ≈ 0,2 % → `<1.5 %` da +1 casi siempre y las ramas 3 %/5 % son código muerto; (e) VWAP acumulado desde hace 10 días. | `routes/crypto.js:83,175`, `marketData.js:45-48`, `technicalAnalysis.js:138`, `marketMode.js:29-41` | Simulación con volatilidad de oro (ATR% mediano 0,228 %; 100 % de ventanas < 1,5 %); Exp. 8 de volumen | P0 (a-parcial: cerrar vela, gate sintéticas, VWAP) / P1 (timeframes reales) / P2 (umbrales ATR calibrados) | 🟡 parcial (queda: timeframes reales → P1; umbrales ATR → P2) |
-| B4 | **Calendario macro**: el evento desaparece a las 00:00 UTC del mismo día (FOMC es 14:00 ET); `daysUntil` nunca es 0; 2 de 8 fechas contrastadas estaban mal (FOMC junio 10 vs 16–17; CPI sept 10 vs 11); termina 2026-12-18; 3 copias (backend, functions, frontend). | `functions/src/data/macroCalendar.js:60-75`, `frontend/src/data/macroCalendar.js` | Exp. 7 + contraste con federalreserve.gov y bls.gov | P0 | 🟡 |
-| B5 | **Sin salida de riesgo**: cash < 10 % bloquea también las VENTAS; risk_off nunca recorta. Con +50 %, RSI 78, zona de venta: cash 5 % → WAIT "sin cash"; risk_off → WAIT. | `decisionEngine.js:18,29` | Exp. 5 (gates) | P0 (mínimo) / P3 (salidas por régimen) | 🟡 |
-| B6 | **Score macro poco confiable**: la IA ya recibe DXY/10Y/COT/tasa real y luego se re-suman (doble conteo); COT/tasa real/GVZ/tendencia diaria se reusan en la fracción de capital y en el override neutral; la IA sola cambia el modo con \|score\| ≥ 0,63; escalones (DXY +0,149 %→+0,151 % mueve el score −0,125); sin histéresis. | `goldMarketMode.js:45-232`, `groqAnalyzer.js:24-96` | Exp. 4 (barrido de sensibilidad) | P0 (doble conteo, tope IA, continuidad) / P2 (histéresis, z-scores) | 🟡 parcial (queda: histéresis, z-scores → P2) |
+| B1 | **Costo promedio roto tras ventas**: `(invertido − cobrado)/unidades`. 1u@4000 y vender 0.3u@4800 → app promedio $3.657, P&L +31 % (real +20 %) → cruza el umbral de venta 30 % de PAXG. Vender la mitad a 8000 → promedio $0 → `hasPosition=false`. | `frontend/src/store/appStore.js:28-36` | Reproducido copiando la fórmula literal | P0 | ✅ |
+| B2 | **Tasa real (FRED) nunca se lee**: el filtro `!valor.includes('.')` descarta todos los decimales; con CSV nuevo (vacío) o viejo (`.`) lanza error. Señal apagada en silencio (score, fracción de capital, override neutral, prompt IA). | `functions/src/services/macroService.js:193` | Probado con ambos formatos sobre el filtro literal | P0 | ✅ |
+| B3 | **Indicadores sobre datos equivocados**: (a) `timeframe='4h'` se ignora, todo corre sobre 250 velas de 1h ≈ 10 días (la "EMA200" es de ~8 días); (b) la vela en formación entra a RSI/ATR/volumen: primeros ~24 min de cada hora dan volumen "muy bajo" (−1 al score) — asume que Coinbase la devuelve; (c) si Coinbase falla se usan velas sintéticas con `Math.random()` y el motor igual decide; (d) ATR% de PAXG en 1h ≈ 0,2 % → `<1.5 %` da +1 casi siempre y las ramas 3 %/5 % son código muerto; (e) VWAP acumulado desde hace 10 días. | `routes/crypto.js:83,175`, `marketData.js:45-48`, `technicalAnalysis.js:138`, `marketMode.js:29-41` | Simulación con volatilidad de oro (ATR% mediano 0,228 %; 100 % de ventanas < 1,5 %); Exp. 8 de volumen | P0 (a-parcial: cerrar vela, gate sintéticas, VWAP) / P1 (timeframes reales) / P2 (umbrales ATR calibrados) | 🟡 parcial (P1 hizo los timeframes reales; queda: umbrales ATR → P2) |
+| B4 | **Calendario macro**: el evento desaparece a las 00:00 UTC del mismo día (FOMC es 14:00 ET); `daysUntil` nunca es 0; 2 de 8 fechas contrastadas estaban mal (FOMC junio 10 vs 16–17; CPI sept 10 vs 11); termina 2026-12-18; 3 copias (backend, functions, frontend). | `functions/src/data/macroCalendar.js:60-75`, `frontend/src/data/macroCalendar.js` | Exp. 7 + contraste con federalreserve.gov y bls.gov | P0 | ✅ |
+| B5 | **Sin salida de riesgo**: cash < 10 % bloquea también las VENTAS; risk_off nunca recorta. Con +50 %, RSI 78, zona de venta: cash 5 % → WAIT "sin cash"; risk_off → WAIT. | `decisionEngine.js:18,29` | Exp. 5 (gates) | P0 (mínimo) / P3 (salidas por régimen) | ✅ |
+| B6 | **Score macro poco confiable**: la IA ya recibe DXY/10Y/COT/tasa real y luego se re-suman (doble conteo); COT/tasa real/GVZ/tendencia diaria se reusan en la fracción de capital y en el override neutral; la IA sola cambia el modo con \|score\| ≥ 0,63; escalones (DXY +0,149 %→+0,151 % mueve el score −0,125); sin histéresis. | `goldMarketMode.js:45-232`, `groqAnalyzer.js:24-96` | Exp. 4 (barrido de sensibilidad) | P0 (doble conteo, tope IA, continuidad) / P2 (histéresis, z-scores) | ✅ parcial (queda: histéresis, z-scores → P2) |
 
 ### Importantes
 
 | ID | Hallazgo | Dónde | Evidencia | Fase | Estado |
 |---|---|---|---|---|---|
-| B7 | **Zonas inestables**: banda ±ATR horario (~0,2 %) pero relleno fijo ±2 % sobre el último swing → la zona depende del último extremo de ~10 días. En simulación cambia en ~23 % de las horas (dura ~4,4 h). El "R/R estimado" nunca supera 0,33 (artefacto de 0,5/1,5×ATR). En la ruta DCA el tramo 3 "mínimo de zona" queda a −0,3 % (encima del tramo 2 a −1,5 %) con 40 % del monto. | `zoneCalculator.js:45-100`, `decisionEngine.js:108-124,465` | Exp. 1-3 (sintético; propiedades estructurales, frecuencias ilustrativas) | P0 (tramos, R/R) / P2 (zonas) | 🟡 parcial (queda: zonas inestables → P2) |
-| B8 | Mensaje PAXG usa 25 % en vez de 30 %: dice "subir −1,0 % adicional". | `decisionEngine.js:300-308` | Exp. 4 | P0 | 🟡 |
-| B9 | **`zoneWatcher` desplegado y roto**: importa `fetchMarketData` (no existe) y pasa `symbol` como 3er arg de `calculateZones`. Nunca salió un push. Además la zona flipea (B7) → habría spam. | `scheduled/zoneWatcher.js:17,25,30`, `index.js:27` | Reproducido (TypeError ×2) | P0 | 🟡 |
-| B10 | **Historial no medible**: se guarda una decisión cada 5 min por pestaña abierta; `getDecisionsBySymbol` sin `orderBy` → subconjunto arbitrario (orden por ID auto); no se guardan features/horizonte; "AI Signal History" solo cuenta BUY/WAIT/SELL; `savedToHistory` siempre `false`. | `config/database.js:18,41`, `routes/crypto.js:290-308`, `BacktestStats.jsx` | Lectura + semántica documentada de Firestore | P0 (dedupe/orden) / P1 (snapshots) / P4 (métricas) | 🟡 parcial (queda: snapshots completos → P1; métricas → P4) |
-| B11 | **Capa de IA**: fallos cacheados 2 h; sin `reasoning_effort` (gpt-oss razona y gasta `max_tokens`); prompt del insight sesgado ("destacá la consistencia"); outcome ✓/✗ por signo del precio sin importar BUY/SELL/WAIT; `optimalEntryPrice` inventado por el LLM se muestra como "Entrada sugerida"; clave de caché del insight usa buckets de $500 (pensados para BTC); el chat no recibe motivo/razones y espera `pnlPercent`/`currentValue` que nunca se envían. | `goldContext.js:123`, `groqAnalyzer.js:255-316`, `routes/crypto.js:262-264`, `FloatingChat.jsx:7-18` | Lectura + búsqueda de docs Groq | P0 | 🟡 |
-| B12 | **Yahoo "% hoy" probablemente es cambio de 5 días**: con `range=5d`, `chartPreviousClose` suele ser el cierre previo a la ventana. | `macroService.js:57` | **NO verificado** (egress bloqueado). Arreglo robusto: usar los 2 últimos cierres | P0 | 🟡 |
+| B7 | **Zonas inestables**: banda ±ATR horario (~0,2 %) pero relleno fijo ±2 % sobre el último swing → la zona depende del último extremo de ~10 días. En simulación cambia en ~23 % de las horas (dura ~4,4 h). El "R/R estimado" nunca supera 0,33 (artefacto de 0,5/1,5×ATR). En la ruta DCA el tramo 3 "mínimo de zona" queda a −0,3 % (encima del tramo 2 a −1,5 %) con 40 % del monto. | `zoneCalculator.js:45-100`, `decisionEngine.js:108-124,465` | Exp. 1-3 (sintético; propiedades estructurales, frecuencias ilustrativas) | P0 (tramos, R/R) / P2 (zonas) | ✅ parcial (queda: zonas inestables → P2) |
+| B8 | Mensaje PAXG usa 25 % en vez de 30 %: dice "subir −1,0 % adicional". | `decisionEngine.js:300-308` | Exp. 4 | P0 | ✅ |
+| B9 | **`zoneWatcher` desplegado y roto**: importa `fetchMarketData` (no existe) y pasa `symbol` como 3er arg de `calculateZones`. Nunca salió un push. Además la zona flipea (B7) → habría spam. | `scheduled/zoneWatcher.js:17,25,30`, `index.js:27` | Reproducido (TypeError ×2) | P0 | ✅ |
+| B10 | **Historial no medible**: se guarda una decisión cada 5 min por pestaña abierta; `getDecisionsBySymbol` sin `orderBy` → subconjunto arbitrario (orden por ID auto); no se guardan features/horizonte; "AI Signal History" solo cuenta BUY/WAIT/SELL; `savedToHistory` siempre `false`. | `config/database.js:18,41`, `routes/crypto.js:290-308`, `BacktestStats.jsx` | Lectura + semántica documentada de Firestore | P0 (dedupe/orden) / P1 (snapshots) / P4 (métricas) | 🟡 parcial (P1 hizo los snapshots; queda: métricas → P4) |
+| B11 | **Capa de IA**: fallos cacheados 2 h; sin `reasoning_effort` (gpt-oss razona y gasta `max_tokens`); prompt del insight sesgado ("destacá la consistencia"); outcome ✓/✗ por signo del precio sin importar BUY/SELL/WAIT; `optimalEntryPrice` inventado por el LLM se muestra como "Entrada sugerida"; clave de caché del insight usa buckets de $500 (pensados para BTC); el chat no recibe motivo/razones y espera `pnlPercent`/`currentValue` que nunca se envían. | `goldContext.js:123`, `groqAnalyzer.js:255-316`, `routes/crypto.js:262-264`, `FloatingChat.jsx:7-18` | Lectura + búsqueda de docs Groq | P0 | ✅ |
+| B12 | **Yahoo "% hoy" probablemente es cambio de 5 días**: con `range=5d`, `chartPreviousClose` suele ser el cierre previo a la ventana. | `macroService.js:57` | **NO verificado** (egress bloqueado). Arreglo robusto: usar los 2 últimos cierres | P0 | ✅ |
 
 ### Otros
 
 | ID | Hallazgo | Fase | Estado |
 |---|---|---|---|
 | B13 | **Seguridad**: `firestore.rules` con `if true` en `portfolio_operations` y `user_profiles` (hash SHA-256 de PIN legible, fuerza bruta trivial); `/api/chat` y `/api/gold-context/refresh` sin auth ni rate-limit (queman la cuota de Groq); CORS `origin: true`. | P5 | ⬜ |
-| B14 | Deuda: dos backends duplicados; modo trading inalcanzable; `evaluateSignalStrength`, `getModeDescription`, `calculateDistanceToZones`, `multiTimeframeData` sin uso; README desactualizado (CoinGecko/SQLite); **sin tests**. | P0 (tests) / P5 | 🟡 parcial (tests + CI hechos; resto → P5) |
-| B16 | **Órdenes de venta incoherentes**: la recomendación decía 30 %/50 % pero las órdenes mostraban 35 % + "venta adicional" del 65 % (el resto entero) contradiciendo "no salir completamente". | P0 | 🟡 |
+| B14 | Deuda: dos backends duplicados; modo trading inalcanzable; `evaluateSignalStrength`, `getModeDescription`, `calculateDistanceToZones`, `multiTimeframeData` sin uso; README desactualizado (CoinGecko/SQLite); **sin tests**. | P0 (tests) / P5 | ✅ parcial (tests + CI hechos; resto → P5) |
+| B16 | **Órdenes de venta incoherentes**: la recomendación decía 30 %/50 % pero las órdenes mostraban 35 % + "venta adicional" del 65 % (el resto entero) contradiciendo "no salir completamente". | P0 | ✅ |
 | B17 | **Futuros XAUUSDT** (`futuresAnalysis.js`, `analyzeFuturesDirection`): el LLM decide dirección, apalancamiento, stop y `positionUsd` sin guardarraíles determinísticos (tope de riesgo por operación, validación contra cash/volatilidad). Módulo nuevo, fuera del alcance de P0. | P3/P5 | ⬜ |
-| B18 | **Trabajo posterior a la respuesta**: en Cloud Functions no está garantizado; escrituras de historial y de caché de IA iban "fire-and-forget". | P0 | 🟡 |
-| B15 | **Velas de gráfico**: `granularity=15m` no está en `granMap` y cae a diario (el gráfico "1D" muestra 96 velas diarias); `4h` (14400) no lo soporta Coinbase (por confirmar) → falla el gráfico "1M". | `routes/crypto.js:56-60`, `MarketHero.jsx:34-37` | P1 | ⬜ |
+| B18 | **Trabajo posterior a la respuesta**: en Cloud Functions no está garantizado; escrituras de historial y de caché de IA iban "fire-and-forget". | P0 | ✅ |
+| B15 | **Velas de gráfico**: `granularity=15m` no está en `granMap` y cae a diario (el gráfico "1D" muestra 96 velas diarias); `4h` (14400) no lo soporta Coinbase (por confirmar) → falla el gráfico "1M". | `routes/crypto.js:56-60`, `MarketHero.jsx:34-37` | P1 | 🟡 |
 
 ### Debilidades de diseño (no bugs)
 
@@ -122,7 +128,7 @@ Estado: ⬜ pendiente · 🟡 implementado en el PR de su fase (pasa a ✅ al me
 
 Cada fase = un PR. Marcar `[x]` al mergear.
 
-### P0 — Correcciones + tests  → implementado (PR de `claude/paxg-phase0-fixes`)
+### P0 — Correcciones + tests  → ✅ mergeado (PR #41)
 - [x] Infra de tests (`node --test`, sin dependencias) + CI de PR (`.github/workflows/ci.yml`)
 - [x] B1 costo promedio ponderado (`portfolioMath.js`) + uso en motor/insight/preview DCA; el resumen se recalcula al rehidratar el store
 - [x] B2 parser FRED · B12 cambio diario Yahoo con los 2 últimos cierres
@@ -135,12 +141,12 @@ Cada fase = un PR. Marcar `[x]` al mergear.
 - [x] B10 una señal por símbolo y hora (`create()`), lectura por rango de ID sin índice compuesto, snapshot básico de features. **Resto:** snapshots completos (P1), métricas (P4)
 - [x] B11 helper único de Groq (`reasoning_effort`, colchón de tokens, reintento), TTL corto de fallos, prompt/outcome/insight/cache/chat corregidos, `GROQ_MODEL` configurable · B18 escrituras esperadas antes de responder
 
-### P1 — Fundamentos de datos
-- [ ] FRED API (DFII10, DGS10, DGS2, T10YIE, dólar amplio, VIXCLS, GVZCLS) con historia y frescura por insumo
-- [ ] Oro spot (GC=F/XAU) para tendencia/backtest; prima/descuento de PAXG
-- [ ] Velas: agregado 1h→4h, paginado >300, `15m`, solo velas cerradas; timeframe real (4h táctico, 1d régimen) — B3a, B15
-- [ ] Snapshot programado por evaluación (features, versión, acción, monto) en Firestore
-- [ ] Modo degradado explícito + health profundo (`/api/health`) con frescura por fuente
+### P1 — Fundamentos de datos  → implementado (rama `claude/paxg-phase1-data`)
+- [x] FRED API (`fredService.js`: DFII10, DGS10, DGS2, T10YIE, DTWEXBGS, VIXCLS, GVZCLS) con historia (~400 días), cambio 1/5/20, z-score y percentil a 1 año, frescura ok/stale/failed por serie; fallbacks a FRED para GVZ, 10Y y tasa real cuando falla la fuente principal. Secreto `FRED_API_KEY` declarado en `index.js`. **Las features todavía NO entran al score** (P2).
+- [x] Oro de referencia GC=F (`spotGold.js`): ~2 años de velas diarias → régimen con EMA200 real (`dailyBias.longAlignment`, `extension200Pct`, `atrPercent`); la regla `alignment` histórica se conserva (no cambia el score); respaldo: velas diarias de PAXG. Prima/descuento de PAXG vs GC=F (informativa, sesgada por la base de futuros; `stale` si la referencia tiene >6 h).
+- [x] Velas (B3a, B15): `candles.js` (agregado 1h→4h alineado a UTC, ventanas ≤300, merge); el análisis técnico usa **250 velas de 4h cerradas (~41 días)** en vez de 250 de 1h; VWAP de 24 h reales; `/candles` acepta `15m`/`1h`/`4h`/`6h`/`1d` y valida.
+- [x] Modo degradado (`dataHealth.js`): estado por insumo (`sources` en el contexto de oro), `dataHealth` en el modo de mercado, razón "Datos degradados…" primero, aviso en la tarjeta macro y, con degradación **severa**, una compra baja un escalón de intensidad. `GET /api/health/deep` (sin llamadas externas: lee el caché) con configuración, frescura, snapshots y advertencias.
+- [x] Snapshot horario (`snapshot.js` + `scheduled/snapshotJob.js`, colección `snapshots`, id `SYMBOL_YYYYMMDDHH`, `create()` idempotente): precio, técnicos, zona, score con **componentes** (`goldMarketMode` ahora devuelve `components`), macro completo, FRED, régimen, prima, `dataHealth` y estado de fuentes. Foto del **mercado** (sin datos de usuario). PAXG y BTC.
 
 ### P2 — Backtester y recalibración
 - [ ] Backtester point-in-time (GC=F + FRED + COT + GVZ) vs DCA fijo y buy&hold; walk-forward con hold-out
@@ -172,6 +178,11 @@ Cada fase = un PR. Marcar `[x]` al mergear.
 - Modelo de Groq configurable con `GROQ_MODEL` (por defecto `openai/gpt-oss-120b`); `reasoning_effort:'low'` solo se envía a modelos gpt-oss.
 - Fees no se incluyen en el costo base (mismo criterio que antes); revisar en P3 con el modelo de costos.
 - Firestore: `deploy.yml` no despliega índices; por eso el historial se lee por rango de ID de documento (sin índice compuesto).
+- **P1 — timeframe del análisis:** ahora 250 velas de 4h cerradas (antes 250 de 1h). Cambia zonas, market mode técnico e indicadores; los umbrales de ATR% y el relleno ±2 % de las zonas siguen sin calibrar (P2).
+- **P1 — régimen y prima informativos:** `longAlignment`, `extension200Pct` y la prima de PAXG **no** entran al score todavía; se registran en snapshots para evaluarlos en P2/P4.
+- **P1 — degradación severa** (sin DXY y 10Y, o ≥3 insumos del score faltantes): una compra baja un escalón de intensidad y lleva advertencia. La degradación parcial solo se muestra.
+- **P1 — snapshots:** foto del mercado, sin datos de usuario; PAXG y BTC cada hora (`snapshotJob`, ~24 docs/día por símbolo). Las reglas de Firestore no se despliegan solas: aplicar con `firebase deploy --only firestore:rules` si se quiere la regla explícita (sin regla, el cliente ya queda denegado por defecto).
+- **P1 — FRED:** las features (z-score, cambio 20d, percentil) se guardan pero no puntúan hasta P2. La tasa real sigue viniendo primero del CSV público; la API la completa/enriquece.
 
 ## 7. Verificación
 
@@ -189,7 +200,10 @@ Cada fase = un PR. Marcar `[x]` al mergear.
 - Vela en curso de Coinbase (B3b): el último elemento de `/candles?granularity=3600` ¿tiene `time` = hora actual?
 - Formato vigente del CSV de FRED: `curl -s 'https://fred.stlouisfed.org/graph/fredgraph.csv?id=DFII10' | tail -3` (el parser nuevo acepta ambos).
 - Truncamiento de gpt-oss por presupuesto de tokens (B11): revisar `choices[0].finish_reason === 'length'` y `usage`.
-- Granularidades de Coinbase (B15).
+- Granularidades de Coinbase (B15) y que una ventana de ≤299 velas de 1h no dispare "granularity too small".
+- **P1:** formato real de la respuesta de FRED `series/observations` (`observations[].value` como string, faltante `"."`); `GC=F` en Yahoo (`range=2y`) devuelve ≥250 velas diarias válidas; que Yahoo no bloquee las IPs de Cloud Functions (si lo hace, el modo degradado lo mostrará en `/api/health/deep`).
+- **P1:** primera ejecución de `snapshotJob` (revisar logs `[Snapshot] {"PAXG":"saved","BTC":"saved"}`) y que `GET /api/health/deep` muestre `snapshots.last` con edad < 60 min.
+- **P1:** con `FRED_API_KEY` cargada, `/api/health/deep` → `goldContext.sources.fred.status = ok` y `config.fredKey = true`.
 
 ## 8. Fechas de calendario contrastadas (fuente oficial)
 
@@ -207,3 +221,12 @@ Sin contrastar (`verified: false`, "fecha por confirmar"): PCE sep (30-oct), NFP
 - Commits (uno por unidad): docs · infra/CI · costo promedio (B1) · parsers macro (B2, B12) · velas (B3) · calendario (B4) · motor (B5, B7, B8, B16) · score de oro (B6) · zoneWatcher (B9) · historial (B10) · capa de IA (B11, B18) · fix del handler del scheduler.
 - Verificado con tests y `vite build`. **No verificado en vivo** (egress bloqueado en la sesión): comportamiento real de Groq con `reasoning_effort`, Coinbase (vela en curso, granularidades), Yahoo, FRED. Confirmar en staging con los comandos de la sección 7.
 - `backend/` no se tocó (D9).
+
+### P1 — Fundamentos de datos (rama `claude/paxg-phase1-data`)
+- Tests: 181 en `functions/test` + 11 en `frontend`; `vite build` OK.
+- Commits: velas 4h/paginado/15m (B3a, B15) · cliente FRED · régimen GC=F + prima · modo degradado + health profundo + snapshots.
+- Nuevos módulos puros y testeables: `candles.js`, `fredService.js`, `spotGold.js`, `dataHealth.js`, `snapshot.js`; jobs: `scheduled/snapshotJob.js`; rutas: `routes/health.js`.
+- Requiere: secreto `FRED_API_KEY` (ya cargado) — sin él todo sigue funcionando en modo degradado.
+- Comportamiento que cambia: indicadores/zonas/market mode técnico sobre 4h; una compra con degradación severa baja de intensidad; nuevo job horario.
+- **No verificado en vivo** (egress bloqueado): ver sección 7 (ítems P1).
+- Siguiente (P2): backtester point-in-time con GC=F + FRED + COT + GVZ (necesita historia larga: `fredService` hoy trae ~400 días, habrá que ampliar el rango para backtest).
