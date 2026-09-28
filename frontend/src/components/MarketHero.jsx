@@ -5,6 +5,7 @@ import { createChart, CrosshairMode } from 'lightweight-charts';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowUpCircle, Clock, ArrowDownCircle, ChevronDown, Sparkles } from 'lucide-react';
 import { fetchCandles } from '../services/api';
+import { toChartCandles } from '../utils/chartCandles';
 
 const ACTION_STYLE = {
   BUY:  {
@@ -37,6 +38,10 @@ const RANGES = [
   { id: '90d', label: '3M', granularity: '1d',  count: 90  }
 ];
 
+// Alto reservado abajo para el panel de decisión: el eje de tiempo del gráfico quedaba DEBAJO del panel
+// (chart a pantalla completa) y los filtros 1D/7D/1M/3M no se podían distinguir.
+const PANEL_SPACE = 150;
+
 export function MarketHero({ symbol, price, change24h, zones, decision, onOpenDetails }) {
   const containerRef = useRef(null);
   const chartRef     = useRef(null);
@@ -50,21 +55,22 @@ export function MarketHero({ symbol, price, change24h, zones, decision, onOpenDe
   const Icon     = cfg.Icon;
   const rangeCfg = useMemo(() => RANGES.find(r => r.id === range) ?? RANGES[1], [range]);
 
+  const [candlesError, setCandlesError] = useState(null);
+
   useEffect(() => {
     let cancelled = false;
     async function load() {
+      // Vaciar al cambiar de rango: antes quedaban las velas del rango anterior bajo la etiqueta nueva
+      setCandles([]);
+      setCandlesError(null);
       setLoadingCandles(true);
       try {
-        const data      = await fetchCandles(symbol, rangeCfg.granularity, rangeCfg.count);
+        const data = await fetchCandles(symbol, rangeCfg.granularity, rangeCfg.count);
         if (cancelled) return;
-        const formatted = (data?.candles ?? []).map(c => ({
-          time:  Math.floor((c.timestamp ?? c.time) / 1000),
-          open:  c.open, high: c.high, low: c.low, close: c.close
-        }));
-        setCandles(formatted);
+        setCandles(toChartCandles(data?.candles));
       } catch (err) {
         console.warn('No se pudieron cargar las velas:', err.message);
-        if (!cancelled) setCandles([]);
+        if (!cancelled) { setCandles([]); setCandlesError('No se pudieron cargar las velas'); }
       } finally {
         if (!cancelled) setLoadingCandles(false);
       }
@@ -113,10 +119,8 @@ export function MarketHero({ symbol, price, change24h, zones, decision, onOpenDe
 
   useEffect(() => {
     if (!seriesRef.current) return;
-    if (candles.length > 0) {
-      seriesRef.current.setData(candles);
-      chartRef.current?.timeScale().fitContent();
-    }
+    seriesRef.current.setData(candles);            // también con [] (limpia la serie anterior)
+    if (candles.length > 0) chartRef.current?.timeScale().fitContent();
   }, [candles]);
 
   useEffect(() => {
@@ -133,13 +137,10 @@ export function MarketHero({ symbol, price, change24h, zones, decision, onOpenDe
   return (
     <div
       className="relative w-full overflow-hidden rounded-3xl border border-white/[0.06] bg-[#060b1c]"
-      style={{ minHeight: '460px' }}
+      style={{ minHeight: '520px' }}
     >
-      {/* Chart canvas */}
-      <div ref={containerRef} className="absolute inset-0 z-0" />
-
-      {/* Bottom gradient overlay */}
-      <div className="absolute inset-x-0 bottom-0 h-56 z-10 bg-gradient-to-t from-[#060b1c] via-[#060b1c]/80 to-transparent pointer-events-none" />
+      {/* Chart canvas: deja libre abajo el espacio del panel para que se vea el eje de tiempo */}
+      <div ref={containerRef} className="absolute inset-x-0 top-0 z-0" style={{ bottom: PANEL_SPACE }} />
 
       {/* Top bar — symbol + price + range */}
       <div className="relative z-20 flex items-start justify-between p-4 pointer-events-none">
@@ -179,9 +180,11 @@ export function MarketHero({ symbol, price, change24h, zones, decision, onOpenDe
         </div>
       </div>
 
-      {loadingCandles && candles.length === 0 && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-xs text-slate-600">Cargando velas...</span>
+      {candles.length === 0 && (
+        <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-center pointer-events-none" style={{ bottom: PANEL_SPACE }}>
+          <span className="text-xs text-slate-500">
+            {loadingCandles ? 'Cargando velas...' : (candlesError ?? 'Sin velas para este rango')}
+          </span>
         </div>
       )}
 

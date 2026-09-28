@@ -175,7 +175,7 @@ function TimelineRow({ entry, index, isLast, currentPrice }) {
 }
 
 /** Stats + timeline panel for one symbol */
-function SymbolStats({ decisions, currentPrice }) {
+function SymbolStats({ decisions, currentPrice, error = null }) {
   const [showAll, setShowAll] = useState(false);
 
   const stats = computeStats(decisions);
@@ -186,8 +186,10 @@ function SymbolStats({ decisions, currentPrice }) {
   if (stats.total === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-8 gap-2 text-slate-600">
-        <Activity className="w-5 h-5 opacity-40" />
-        <span className="text-xs">No signals recorded yet</span>
+        {error ? <AlertCircle className="w-5 h-5 text-amber-400/70" /> : <Activity className="w-5 h-5 opacity-40" />}
+        <span className="text-xs text-center px-4">
+          {error ? `No se pudo leer el historial (${error}). Volvé a intentar en un momento.` : 'Todavía no hay señales registradas. Se guarda una por hora cuando abrís el análisis.'}
+        </span>
       </div>
     );
   }
@@ -198,7 +200,7 @@ function SymbolStats({ decisions, currentPrice }) {
       <div className="flex items-center gap-2">
         <Activity className="w-3.5 h-3.5 text-slate-500 shrink-0" />
         <span className="text-xs text-slate-500">
-          <span className="text-slate-300 font-semibold tabular">{stats.total}</span> signals in history
+          <span className="text-slate-300 font-semibold tabular">{stats.total}</span> señales en el historial
         </span>
       </div>
 
@@ -215,7 +217,7 @@ function SymbolStats({ decisions, currentPrice }) {
       {/* Mini timeline */}
       <div>
         <span className="text-[10px] uppercase tracking-widest text-slate-600 block mb-3">
-          Last {Math.min(stats.total, TIMELINE_PAGE)} signals
+          Últimas {Math.min(stats.total, TIMELINE_PAGE)} señales
         </span>
 
         <div>
@@ -243,8 +245,8 @@ function SymbolStats({ decisions, currentPrice }) {
               <ChevronDown className="w-3.5 h-3.5" />
             </motion.span>
             {showAll
-              ? 'Show less'
-              : `Show ${sorted.length - TIMELINE_PAGE} more`}
+              ? 'Ver menos'
+              : `Ver ${sorted.length - TIMELINE_PAGE} más`}
           </motion.button>
         )}
       </div>
@@ -306,6 +308,7 @@ export function BacktestStats() {
   const [data, setData]           = useState({});   // { [symbol]: decisions[] }
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState(null);
+  const [errors, setErrors]       = useState({});   // { [symbol]: mensaje } — para no mostrar un error como "sin señales"
   const [activeTab, setActiveTab] = useState(() => symbols[0] ?? 'BTC');
 
   // Keep activeTab valid when the symbol list changes (e.g. profile switch).
@@ -336,6 +339,7 @@ export function BacktestStats() {
       if (cancelled) return;
 
       const next = {};
+      const errs = {};
       let anyError = false;
 
       results.forEach((result, i) => {
@@ -346,12 +350,14 @@ export function BacktestStats() {
           next[sym] = Array.isArray(raw) ? raw : (raw?.decisions ?? []);
         } else {
           next[sym] = [];
+          errs[sym] = result.reason?.response?.data?.error ?? result.reason?.message ?? 'error de red';
           anyError = true;
         }
       });
 
       setData(next);
-      if (anyError) setError('Some symbols could not be loaded');
+      setErrors(errs);
+      if (anyError) setError('No se pudo cargar el historial de alguno de los activos');
       setLoading(false);
     }
 
@@ -379,14 +385,14 @@ export function BacktestStats() {
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Activity className="w-4 h-4 text-slate-500" />
-          <h3 className="text-sm font-semibold text-slate-300">AI Signal History</h3>
+          <h3 className="text-sm font-semibold text-slate-300">Historial de señales IA</h3>
         </div>
 
         {/* Soft error indicator — non-blocking */}
         {error && (
           <div className="flex items-center gap-1.5 text-[10px] text-amber-400/70">
             <AlertCircle className="w-3 h-3 shrink-0" />
-            <span className="hidden sm:inline">{error}</span>
+            <span>{error}</span>
           </div>
         )}
       </div>
@@ -429,7 +435,7 @@ export function BacktestStats() {
           exit={{ opacity: 0, y: -4 }}
           transition={{ duration: 0.18, ease: 'easeOut' }}
         >
-          <SymbolStats decisions={currentDecisions} currentPrice={cryptoData[safeTab]?.price} />
+          <SymbolStats decisions={currentDecisions} currentPrice={cryptoData[safeTab]?.price} error={errors[safeTab] ?? null} />
         </motion.div>
       </AnimatePresence>
     </motion.div>
