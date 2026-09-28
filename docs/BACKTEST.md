@@ -54,6 +54,19 @@ Features univariadas (solo datos previos al hold-out): las mayores son `curve_z`
 
 Lectura: **reducir compras cuando el score es bajo (lo que hace hoy la lógica risk_off/gates) encareció el costo promedio** frente a un DCA fijo; **comprar más cuando el score es bajo (dips) lo abarató ~1 %**. El efecto es chico, las ventanas se solapan mucho (≈12 muestras independientes en 25 años) y el placebo es algo liberal; se trata como *hipótesis para P3*, no como regla probada. **Confirmación en el hold-out** (2024-09 → 2026-09, ventanas de ~6 meses, 38 ventanas, run #5 `db70d3c`): "más con score alto" 1.0050 (0 % de ventanas ganadoras); "más con score bajo" 0.9953 (0.47 % más barato, 100 % de ventanas, p 0.003). Misma dirección que antes del hold-out, con magnitud menor y muy pocas ventanas independientes (~4 en 2 años).
 
+## Fase 3 — variantes de política de DCA (run #6, `fd81239`)
+
+Pre-declaradas antes de correr; 8 comparaciones más (4 variantes × pre-hold-out y hold-out). Ratio de costo promedio vs DCA fijo con gasto igualado:
+
+| Variante | 2001–2024 (ventanas 2 años) | Hold-out (ventanas 6 meses) | Lectura |
+|---|---|---|---|
+| **Score actual, más con score bajo (k 0.5, ×0.5–1.5)** — *la política desplegada* | 0.9966 (−0.34 %), 90 % de ventanas, p 0.003 | 0.9976 (−0.24 %), 100 %, p 0.003 | consistente, efecto chico |
+| Caída desde el máximo de 1 año, más cuando cae | 0.9925 (−0.75 %), p 0.003 | 0.9965 (−0.35 %), p 0.346 | no se confirma en hold-out → no se usa |
+| Volatilidad realizada alta → más | 1.0001, p 0.86 | 1.0007 | sin efecto |
+| Volatilidad realizada alta → menos | 0.9999, p 0.16 | 0.9992 (p 0.003, −0.08 %) | efecto despreciable → no se usa |
+
+Conclusión: el único efecto consistente es *no seguir al score* (comprar más cuando es bajo); el mapeo acotado conserva ~la mitad del efecto del mapeo amplio (×0.25–×2: −0.80 %) con menos riesgo. El efecto (~0.3 %) es menor que una comisión típica: modelar costos es el siguiente paso antes de sofisticar.
+
 ## Límites conocidos
 
 - GC=F ≠ PAXG (base de futuros, sesión de negociación distinta); el ratio oro/plata usa futuros.

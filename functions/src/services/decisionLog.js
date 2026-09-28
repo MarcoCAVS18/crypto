@@ -6,7 +6,7 @@
 // medir ni reproducir. Ahora: a lo sumo una señal por símbolo y hora (la primera de esa hora) con
 // las features que la explican. Los snapshots completos y las etiquetas de resultado llegan en P1/P4.
 
-export const DECISION_MODEL_VERSION = 'p0';
+export const DECISION_MODEL_VERSION = 'p3';
 
 /** Balde horario UTC: YYYYMMDDHH */
 export function hourBucket(ms) {
@@ -58,6 +58,7 @@ export function buildDecisionRecord({ symbol, marketData, marketMode, zones, ind
     strength:     decision?.strength ?? null,
     reason:       decision?.reason ?? null,
     opsCount:     decision?.operations?.length ?? 0,
+    dcaPolicy:    decision?.policy ? { version: decision.policy.version, multiplier: decision.policy.multiplier, capFraction: decision.policy.capFraction } : null,
     calendarModulated: !!decision?.calendarRisk,
     cashPercent:  Number(userState?.cashPercent),
     userMode:     userState?.mode ?? null,

@@ -164,3 +164,10 @@ test('el endpoint del historial puede pedir que una falla de lectura NO se disfr
   _setDbForTests({ collection: () => { throw new Error('boom'); } });
   await assert.rejects(() => getDecisionsBySymbol('PAXG', 5, { throwOnError: true }), /boom/);
 });
+
+test('P3: el registro de la decisión guarda la política de DCA aplicada (o null si no hubo)', () => {
+  const base = { symbol: 'PAXG', marketData: { price: 4000 }, marketMode: { mode: 'risk_off', score: -0.4 }, zones: { currentZone: 'buy' }, indicators: {}, userState: { cashPercent: 60 } };
+  const withPolicy = buildDecisionRecord({ ...base, decision: { action: 'BUY', operations: [], policy: { version: 'p3-1', multiplier: 1.2, capFraction: 0.9, score: -0.4 } } });
+  assert.deepEqual(withPolicy.dcaPolicy, { version: 'p3-1', multiplier: 1.2, capFraction: 0.9 });
+  assert.equal(buildDecisionRecord({ ...base, decision: { action: 'WAIT', operations: [] } }).dcaPolicy, null);
+});
