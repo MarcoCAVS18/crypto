@@ -27,9 +27,16 @@ async function loadDefaultDeps() {
   };
 }
 
-/** @param {object} [deps] - inyectable para tests */
-export async function handler(deps) {
-  const d = deps ?? await loadDefaultDeps();
+/**
+ * Punto de entrada del scheduler. onSchedule() invoca al handler con el EVENTO programado como
+ * primer argumento, por eso NO se aceptan dependencias acá (usar `run` en tests).
+ */
+export async function handler() {
+  return run(await loadDefaultDeps());
+}
+
+/** @param {object} d - dependencias (reales en producción, falsas en tests) */
+export async function run(d) {
 
   for (const symbol of SYMBOLS) {
     try {

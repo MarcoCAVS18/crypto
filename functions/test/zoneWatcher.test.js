@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { nextZoneState, CONFIRM_READINGS, COOLDOWN_MS } from '../src/services/zoneAlert.js';
-import { handler } from '../src/scheduled/zoneWatcher.js';
+import { run as handler, handler as scheduledHandler } from '../src/scheduled/zoneWatcher.js';
 
 const H = 3600 * 1000;
 
@@ -111,4 +111,17 @@ test('B9: con velas sintéticas no se actualiza estado ni se avisa', async () =>
   assert.equal(f.store.PAXG, undefined);
   assert.equal(f.sent.filter(x => x.data.symbol === 'PAXG').length, 0);
   assert.equal(f.sent.filter(x => x.data.symbol === 'BTC').length, 1);
+});
+
+test('B9: el handler del scheduler no toma el evento de onSchedule como dependencias', async () => {
+  // onSchedule() llama handler(event). Sin red (fetch falla) cada símbolo se registra y sigue:
+  // no debe explotar con "... is not a function" por usar el evento como si fueran las deps.
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error('sin red (test)'); };
+  try {
+    await assert.doesNotReject(() => scheduledHandler({ scheduleTime: '2026-09-28T12:00:00Z', jobName: 'zoneWatcher' }));
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  assert.equal(scheduledHandler.length, 0);   // no declara parámetros
 });
