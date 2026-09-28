@@ -33,7 +33,7 @@ export function isHourlyDecisionId(id) {
 const round = (x, d = 2) => (typeof x === 'number' && Number.isFinite(x) ? Math.round(x * 10 ** d) / 10 ** d : null);
 
 // Firestore rechaza `undefined`: reemplazar recursivamente por null
-function nullify(v) {
+export function nullify(v) {
   if (v === undefined) return null;
   if (Array.isArray(v)) return v.map(nullify);
   if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, nullify(x)]));

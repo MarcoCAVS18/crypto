@@ -1,7 +1,7 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeCandles, getCryptoData, getCache } from '../src/services/marketData.js';
-import { analyzeVolume, calculateAllIndicators, calculateVWAP, VWAP_WINDOW } from '../src/services/technicalAnalysis.js';
+import { analyzeVolume, calculateAllIndicators, calculateVWAP, vwapWindowCandles, VWAP_WINDOW_MS } from '../src/services/technicalAnalysis.js';
 import { makeDecision } from '../src/services/decisionEngine.js';
 
 const H = 3600;
@@ -62,15 +62,30 @@ test('B3: sin historial o volumen cero no produce NaN', () => {
 
 // ── B3e: VWAP ──────────────────────────────────────────────────────────────
 
-test('B3: el VWAP de los indicadores usa solo las últimas 24 velas', () => {
-  // 260 velas: las primeras 236 a 1000, las últimas 24 a 2000 (mismo volumen)
+test('B3: el VWAP de los indicadores cubre 24 horas reales (24 velas de 1h)', () => {
+  // 260 velas de 1h: las primeras 236 a 1000, las últimas 24 a 2000 (mismo volumen)
   const candles = Array.from({ length: 260 }, (_, i) => {
     const p = i < 236 ? 1000 : 2000;
-    return { timestamp: i, open: p, high: p, low: p, close: p, volume: 10 };
+    return { timestamp: i * H * 1000, open: p, high: p, low: p, close: p, volume: 10 };
   });
   const ind = calculateAllIndicators(candles);
-  assert.equal(VWAP_WINDOW, 24);
+  assert.equal(VWAP_WINDOW_MS, 24 * 3600 * 1000);
+  assert.equal(vwapWindowCandles(candles), 24);
   assert.ok(Math.abs(ind.vwap - 2000) < 1e-9, `vwap=${ind.vwap}`);
+});
+
+test('P1: con velas de 4h el VWAP sigue cubriendo 24 h (6 velas), no 4 días', () => {
+  const candles = Array.from({ length: 260 }, (_, i) => {
+    const p = i < 254 ? 1000 : 2000;
+    return { timestamp: i * 4 * H * 1000, open: p, high: p, low: p, close: p, volume: 10 };
+  });
+  assert.equal(vwapWindowCandles(candles), 6);
+  assert.ok(Math.abs(calculateAllIndicators(candles).vwap - 2000) < 1e-9);
+});
+
+test('P1: espaciado desconocido o una sola vela no rompe la ventana', () => {
+  assert.equal(vwapWindowCandles([{ timestamp: 5 }]), 1);
+  assert.equal(vwapWindowCandles([]), 0);
 });
 
 test('B3: VWAP con volumen 0 degrada al precio típico (sin NaN)', () => {

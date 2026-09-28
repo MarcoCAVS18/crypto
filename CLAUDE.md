@@ -32,3 +32,10 @@ Los tests usan `node --test` (sin dependencias extra). CI: `.github/workflows/ci
 - No datos sintéticos en decisiones; toda degradación de datos se muestra al usuario.
 - Los servicios de `functions/src/services` son módulos ESM puros y testeables; evitá importar `firebase-admin` en ellos (usá `config/database.js` solo desde rutas/jobs).
 - Egress de la sesión de desarrollo puede estar bloqueado (Coinbase, Yahoo, FRED, Groq): los tests no deben depender de red.
+
+## Secretos y variables (functions)
+
+- `GROQ_API_KEY`, `FRED_API_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`: secretos de Firebase (`firebase functions:secrets:set NOMBRE`), declarados en `functions/index.js`. Local: `functions/.env` (gitignored, ver `.env.example`).
+- `GROQ_MODEL` (opcional): modelo de Groq; por defecto `openai/gpt-oss-120b`.
+- Sin `FRED_API_KEY` todo sigue andando en **modo degradado** (visible en la tarjeta macro y en `GET /api/health/deep`).
+- Estado de salud en vivo: `GET /api/health/deep` (config, frescura por insumo, último snapshot, advertencias).

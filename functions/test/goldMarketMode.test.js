@@ -155,3 +155,23 @@ test('sin contexto de oro cae al modo técnico con goldContext null', () => {
   assert.equal(r.goldContext, null);
   assert.ok(['risk_on', 'neutral', 'risk_off'].includes(r.mode));
 });
+
+// ── P1: régimen largo y prima (informativos) ────────────────────────────────
+
+test('P1: el régimen largo aparece en las razones pero NO cambia el score', () => {
+  const daily = (extra) => ({ alignment: 'bull', trendShort: 'alcista', rsi: 55, ...extra });
+  const a = run(c => { c.macro.dailyBias = daily({}); });
+  const b = run(c => { c.macro.dailyBias = daily({ longAlignment: 'bull', extension200Pct: 8.5 }); });
+  assert.equal(a.score, b.score);
+  assert.ok(b.reasons.some(x => /Régimen largo.*alcista.*\+8\.5% sobre la EMA200/.test(x)));
+  assert.ok(!a.reasons.some(x => /Régimen largo/.test(x)));
+});
+
+test('P1: la prima de PAXG vs el oro de referencia viaja en el contexto', () => {
+  const now = Date.now();
+  const r = run(c => { c.macro.spot = { ticker: 'GC=F', price: 3990, time: now - 60000 }; });
+  assert.equal(r.goldContext.premium.premiumPct, 0.251);          // (4000-3990)/3990
+  assert.equal(r.goldContext.premium.stale, false);
+  assert.equal(r.goldContext.spot.ticker, 'GC=F');
+  assert.equal(run().goldContext.premium, null);                  // sin referencia no hay prima
+});

@@ -21,6 +21,8 @@
 //   entre          → neutral
 
 import { determineMarketMode } from './marketMode.js';
+import { computePremium } from './spotGold.js';
+import { summarizeSources } from './dataHealth.js';
 
 // Peso máximo de la IA en el score. Debe ser < umbral de modo (0.25) para que la IA nunca
 // decida sola un cambio de régimen.
@@ -73,6 +75,9 @@ export function determineGoldMarketMode(currentPrice, indicators, volumeAnalysis
   const { macro, analysis } = goldContext;
   const reasons = [];
   let score = 0;
+  // Aporte firmado de cada componente al score (para snapshots y para auditar el modelo)
+  const components = {};
+  const add = (key, value) => { components[key] = Math.round(value * 10000) / 10000; score += value; };
 
   // ── 1. Sentimiento IA de titulares (±AI_WEIGHT) ───────────────────────────
   const sentimentLabels = { bullish: 'alcista', neutral: 'neutral', bearish: 'bajista' };
@@ -82,7 +87,7 @@ export function determineGoldMarketMode(currentPrice, indicators, volumeAnalysis
     reasons.push('IA no disponible — sin aporte al score (el resto de las señales sigue activo)');
   } else {
     const sentimentScore = typeof analysis?.score === 'number' ? clamp(analysis.score, -1, 1) : 0;
-    score += sentimentScore * AI_WEIGHT;
+    add('ai', sentimentScore * AI_WEIGHT);
     if (analysis?.reasoning) {
       reasons.push(`IA: Sentimiento ${sentLabel} — ${analysis.reasoning}`);
     } else {
@@ -106,7 +111,7 @@ export function determineGoldMarketMode(currentPrice, indicators, volumeAnalysis
       reasons.push(`Dólar estable (DXY ${dxyVal.toFixed(1)})`);
     }
 
-    score += dxyScore(dxyChg) * 0.25;
+    add('dxy', dxyScore(dxyChg) * 0.25);
   }
 
   // ── 3. Bono 10Y (±0.20, continuo) ────────────────────────────────────────
@@ -125,13 +130,13 @@ export function determineGoldMarketMode(currentPrice, indicators, volumeAnalysis
       reasons.push(`Yields neutrales (${yldVal.toFixed(2)}%)`);
     }
 
-    score += yieldScore(yldVal) * 0.20;
+    add('tenYear', yieldScore(yldVal) * 0.20);
   }
 
   // ── 4. Técnicos (±0.15) ────────────────────────────────────────────────────
   const techMode = determineMarketMode(currentPrice, indicators, volumeAnalysis);
   const techScore = techMode.mode === 'risk_on' ? 1 : techMode.mode === 'risk_off' ? -1 : 0;
-  score += techScore * 0.15;
+  add('technical', techScore * 0.15);
 
   if (techMode.mode === 'risk_on') {
     reasons.push(`Técnico: tendencia alcista (EMA, RSI favorables)`);
@@ -164,7 +169,7 @@ export function determineGoldMarketMode(currentPrice, indicators, volumeAnalysis
       cotAdj = Math.max(cotAdj - 0.03, -0.10);
     }
 
-    score += cotAdj;
+    add('cot', cotAdj);
   }
 
   // ── 6. Rendimiento real 10Y TIPS (aditivo ±0.10) ─────────────────────────
@@ -185,7 +190,7 @@ export function determineGoldMarketMode(currentPrice, indicators, volumeAnalysis
       reasons.push(`Rendimiento real 10Y: ${ry.toFixed(2)}% (neutral)`);
     }
 
-    score += ryAdj;
+    add('realYield', ryAdj);
   }
 
   // ── 7. GVZ — Índice de volatilidad del oro (aditivo ±0.08, continuo) ─────────
@@ -201,7 +206,7 @@ export function determineGoldMarketMode(currentPrice, indicators, volumeAnalysis
     } else {
       reasons.push(`GVZ: volatilidad normal (${gvzVal.toFixed(1)})`);
     }
-    score += gvzAdjustment(gvzVal);
+    add('gvz', gvzAdjustment(gvzVal));
   }
 
   // ── 8. Ratio Oro/Plata (aditivo ±0.07, continuo) ──────────────────────────
@@ -220,7 +225,7 @@ export function determineGoldMarketMode(currentPrice, indicators, volumeAnalysis
     } else {
       reasons.push(`Ratio Oro/Plata: ${ratio} (neutral)`);
     }
-    score += ratioAdjustment(goldSilverRatio);
+    add('goldSilver', ratioAdjustment(goldSilverRatio));
   }
 
   // ── 9. Tendencia diaria PAXG (aditivo ±0.10) ────────────────────────────────
@@ -247,8 +252,19 @@ export function determineGoldMarketMode(currentPrice, indicators, volumeAnalysis
         reasons.push(`RSI diario sobrevendido (${dRsi.toFixed(1)}) → potencial rebote`);
       }
     }
-    score += dailyAdj;
+    add('dailyBias', dailyAdj);
+
+    // Régimen de largo plazo (EMA200 diaria del oro): informativo, todavía no entra al score (P2)
+    const { longAlignment, extension200Pct } = macro.dailyBias;
+    if (longAlignment) {
+      const lbl = { bull: 'alcista', bear: 'bajista', mixed: 'mixto' }[longAlignment];
+      reasons.push(`Régimen largo (EMA200 diaria del oro): ${lbl}${extension200Pct != null ? `, ${extension200Pct >= 0 ? '+' : ''}${extension200Pct}% sobre la EMA200` : ''}`);
+    }
   }
+
+  // ── Calidad de datos: si algún insumo falló o está viejo, decirlo primero ──────
+  const dataHealth = summarizeSources(goldContext.sources);
+  if (dataHealth?.degraded) reasons.unshift(dataHealth.message);
 
   // ── Modo final (score se clampea a [-1, 1]) ───────────────────────────────
   const finalScore = Math.round(Math.max(-1, Math.min(1, score)) * 1000) / 1000;
@@ -258,6 +274,7 @@ export function determineGoldMarketMode(currentPrice, indicators, volumeAnalysis
     mode,
     score: finalScore,
     reasons,
+    components,            // aporte de cada insumo al score (suma = score antes del recorte a ±1)
     goldContext: {
       macro:         macro ?? null,
       sentiment:     analysis?.sentiment ?? 'neutral',
@@ -275,7 +292,11 @@ export function determineGoldMarketMode(currentPrice, indicators, volumeAnalysis
       goldSilverRatio: macro?.silver?.value
         ? Math.round(currentPrice / macro.silver.value * 10) / 10
         : null,
-      dailyBias:     macro?.dailyBias ?? null
+      dailyBias:     macro?.dailyBias ?? null,
+      spot:          macro?.spot ?? null,
+      sources:       goldContext.sources ?? null,
+      dataHealth,
+      premium:       computePremium(currentPrice, macro?.spot)
     }
   };
 }
