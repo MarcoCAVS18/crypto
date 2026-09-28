@@ -1,6 +1,7 @@
 // Orquestador del contexto de oro (Firebase Functions — caché Firestore async)
 
 import { getMacroData, getCOTData, getRealYield, getGoldVolatilityData } from './macroService.js';
+import { getFredMacro, applyFredFallbacks } from './fredService.js';
 import { getDailyCandles } from './marketData.js';
 import { calculateAllIndicators } from './technicalAnalysis.js';
 import { getGoldHeadlines } from './newsService.js';
@@ -62,14 +63,16 @@ export async function getGoldContext(forceRefresh = false) {
     cotResult,
     realYieldResult,
     volDataResult,
-    dailyCandlesResult
+    dailyCandlesResult,
+    fredResult
   ] = await Promise.allSettled([
     getMacroData(),
     getGoldHeadlines(),
     getCOTData(),
     getRealYield(),
     getGoldVolatilityData(),
-    getDailyCandles('PAXG', 120)
+    getDailyCandles('PAXG', 120),
+    getFredMacro()
   ]);
 
   const baseMacro = macroResult.status === 'fulfilled'
@@ -79,7 +82,11 @@ export async function getGoldContext(forceRefresh = false) {
   const volData   = volDataResult.status === 'fulfilled' ? volDataResult.value : { gvz: null, silver: null };
   const dailyBias = dailyCandlesResult.status === 'fulfilled' ? computeDailyBias(dailyCandlesResult.value) : null;
 
-  const macro = {
+  const fred = fredResult.status === 'fulfilled' ? fredResult.value : null;
+  if (fredResult.status === 'rejected') console.warn('[GoldContext] FRED error:', fredResult.reason?.message);
+  if (fred && !fred.available) console.warn('[GoldContext] FRED no disponible (¿falta FRED_API_KEY?)');
+
+  const macroFromSources = {
     ...baseMacro,
     cot:       cotResult.status       === 'fulfilled' ? cotResult.value       : null,
     realYield: realYieldResult.status === 'fulfilled' ? realYieldResult.value : null,
@@ -87,6 +94,10 @@ export async function getGoldContext(forceRefresh = false) {
     silver:    volData.silver,
     dailyBias
   };
+
+  // Completa insumos que fallaron en su fuente principal con la serie de FRED y adjunta las
+  // features normalizadas (cambio 20d, z-score, percentil, frescura) para P2 y los snapshots.
+  const macro = { ...applyFredFallbacks(macroFromSources, fred), fred };
 
   const headlines = headlinesResult.status === 'fulfilled' ? headlinesResult.value : [];
 

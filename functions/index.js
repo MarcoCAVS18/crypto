@@ -8,6 +8,7 @@ initializeApp();
 const groqApiKey    = defineSecret('GROQ_API_KEY');
 const vapidPublic   = defineSecret('VAPID_PUBLIC_KEY');
 const vapidPrivate  = defineSecret('VAPID_PRIVATE_KEY');
+const fredApiKey    = defineSecret('FRED_API_KEY');   // series macro de FRED (gratis, ver docs/PAXG_AUDIT.md)
 
 import app from './src/app.js';
 import { handler as zoneWatcherHandler } from './src/scheduled/zoneWatcher.js';
@@ -18,7 +19,7 @@ export const api = onRequest(
     region:         'us-central1',
     memory:         '512MiB',
     timeoutSeconds: 120,
-    secrets:        [groqApiKey, vapidPublic, vapidPrivate]
+    secrets:        [groqApiKey, vapidPublic, vapidPrivate, fredApiKey]
   },
   app
 );
