@@ -1,5 +1,5 @@
 // Diagnóstico de noticias: ¿cada feed responde y el parser encuentra titulares? (corre en Actions, con red)
-import { RSS_FEEDS_GOLD, RSS_FEEDS_BTC, fetchUrl, parseRssItems, fetchHeadlines } from '../src/services/newsService.js';
+import { RSS_FEEDS_GOLD, RSS_FEEDS_BTC, fetchUrl, parseRssItems, getGoldHeadlines } from '../src/services/newsService.js';
 
 for (const url of [...RSS_FEEDS_GOLD, ...RSS_FEEDS_BTC]) {
   try {
@@ -13,6 +13,6 @@ for (const url of [...RSS_FEEDS_GOLD, ...RSS_FEEDS_BTC]) {
     console.log(`FAIL ${e.message} · ${url.slice(0, 90)}`);
   }
 }
-const gold = await fetchHeadlines(RSS_FEEDS_GOLD, 'PAXG');
+const gold = await getGoldHeadlines();
 console.log(`\nfetchHeadlines(oro): ${gold.length} titulares`);
-gold.slice(0, 5).forEach(h => console.log(' -', h.pubDate, '|', h.source, '|', h.title));
+gold.slice(0, 14).forEach(h => console.log(' -', h.pubDate, '|', h.source, '|', h.title));

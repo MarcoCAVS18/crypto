@@ -117,7 +117,21 @@ export function parseRssItems(xml, now = Date.now()) {
   return items;
 }
 
-export async function fetchHeadlines(feeds, label, { fetcher = fetchUrl, now = Date.now() } = {}) {
+/**
+ * Relevancia de un titular para el ORO como activo (no para empresas mineras ni bolsa en general).
+ * Los feeds de Yahoo/Google traen notas de mineras junior y de acciones que no mueven al oro; con 14 cupos
+ * desplazaban a las macro. > 0 = relevante.
+ */
+export function goldRelevance(title) {
+  const t = String(title ?? '').toLowerCase();
+  let score = 0;
+  if (/(gold|bullion|xau|xauusd|precious metals?|safe[- ]haven)\b/.test(t)) score += 1;
+  if (/\b(fed|federal reserve|fomc|treasur(y|ies)|yields?|dollar|dxy|inflation|cpi|pce|payrolls?|rate[- ](hike|cut)s?|rates|central banks?|tariffs?|geopolit\w*|sanctions?|war|iran|ukraine|russia|china|etf|silver)\b/.test(t)) score += 2;
+  if (/\b(drill(ing|s)?|private placement|anomal\w*|exploration|resource estimate|corridors?|targets?|mineralization|acquires?|project)\b/.test(t) && !/\b(fed|yields?|dollar|inflation)\b/.test(t)) score -= 3;
+  return score;
+}
+
+export async function fetchHeadlines(feeds, label, { fetcher = fetchUrl, now = Date.now(), filter = null } = {}) {
   const results = await Promise.allSettled(feeds.map(u => fetcher(u)));
 
   const seen     = new Set();
@@ -136,15 +150,17 @@ export async function fetchHeadlines(feeds, label, { fetcher = fetchUrl, now = D
     }
   }
 
-  allItems.sort((a, b) => {
+  const items = filter ? allItems.filter(i => filter(i.title)) : allItems;
+
+  items.sort((a, b) => {
     const da = a.pubDate ? new Date(a.pubDate).getTime() : 0;
     const db = b.pubDate ? new Date(b.pubDate).getTime() : 0;
     return db - da;
   });
 
   const failed = results.filter(r => r.status !== 'fulfilled').length;
-  console.log(`[NewsService:${label}] ${allItems.length} headlines frescos (≤72h, ${feeds.length - failed}/${feeds.length} feeds ok)`);
-  return allItems.slice(0, 14);
+  console.log(`[NewsService:${label}] ${items.length} headlines relevantes de ${allItems.length} frescos (≤72h, ${feeds.length - failed}/${feeds.length} feeds ok)`);
+  return items.slice(0, 14);
 }
 
 /**
@@ -152,7 +168,7 @@ export async function fetchHeadlines(feeds, label, { fetcher = fetchUrl, now = D
  * @returns {Promise<Array<{title,url,source,pubDate}>>}
  */
 export async function getGoldHeadlines() {
-  return fetchHeadlines(RSS_FEEDS_GOLD, 'PAXG');
+  return fetchHeadlines(RSS_FEEDS_GOLD, 'PAXG', { filter: (t) => goldRelevance(t) > 0 });
 }
 
 /**
