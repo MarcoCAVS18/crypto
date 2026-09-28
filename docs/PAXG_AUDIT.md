@@ -104,8 +104,8 @@ Estado: ⬜ pendiente · 🟡 implementado en el PR de su fase (pasa a ✅ al me
 ### Debilidades de diseño (no bugs)
 
 - **D1** Cada señal entra 2–3 veces (score, fracción de capital, override neutral).
-- **D2** Umbrales de nivel absolutos (10Y 3.5/4.0/4.25/4.75; oro/plata 70/80/90; GVZ 15/20/25; tasa real 0/1/2) sin z-score ni cambio; dependen del régimen.
-- **D3** COT: `contrarian_bull` exige net ≤ 0 (prácticamente inalcanzable hoy); `crowded_long` (>200k) pelea contra la tendencia en mercados alcistas; sin normalizar por open interest.
+- **D2** Umbrales de nivel absolutos (10Y 3.5/4.0/4.25/4.75; oro/plata 70/80/90; GVZ 15/20/25; tasa real 0/1/2) sin z-score ni cambio; dependen del régimen. *P2: el backtest no respalda un reemplazo estimado; siguen vigentes como criterio experto sin respaldo histórico.*
+- **D3** COT: `contrarian_bull` exige net ≤ 0 (prácticamente inalcanzable hoy); `crowded_long` (>200k) pelea contra la tendencia en mercados alcistas; sin normalizar por open interest. *P2: `netSpecPercentile` (3 años) disponible como dato informativo; el score aún usa los umbrales absolutos.*
 - **D4** SELL atado al P&L del usuario (costo hundido), no al estado del mercado; umbrales 30 %/45 % arbitrarios y dependientes de su camino.
 - **D5** Sin tope de exposición: `dcaOpportunity` puede repetir BUY "fuerte" cada 4 días promediando a la baja; `isHighlyConcentrated` solo cambia el texto, no el tamaño.
 - **D6** Sin costos: no compara edge esperado vs comisión + spread de PAXG.
@@ -148,10 +148,11 @@ Cada fase = un PR. Marcar `[x]` al mergear.
 - [x] Modo degradado (`dataHealth.js`): estado por insumo (`sources` en el contexto de oro), `dataHealth` en el modo de mercado, razón "Datos degradados…" primero, aviso en la tarjeta macro y, con degradación **severa**, una compra baja un escalón de intensidad. `GET /api/health/deep` (sin llamadas externas: lee el caché) con configuración, frescura, snapshots y advertencias.
 - [x] Snapshot horario (`snapshot.js` + `scheduled/snapshotJob.js`, colección `snapshots`, id `SYMBOL_YYYYMMDDHH`, `create()` idempotente): precio, técnicos, zona, score con **componentes** (`goldMarketMode` ahora devuelve `components`), macro completo, FRED, régimen, prima, `dataHealth` y estado de fuentes. Foto del **mercado** (sin datos de usuario). PAXG y BTC.
 
-### P2 — Backtester y recalibración
-- [ ] Backtester point-in-time (GC=F + FRED + COT + GVZ) vs DCA fijo y buy&hold; walk-forward con hold-out
-- [ ] Features normalizadas (z-score/percentiles), monitor de desacople gold–tasa real, histéresis, ATR relativo a la historia
-- [ ] Ponderaciones estimadas (ridge/logística) → P(sube 20d), retorno esperado, dispersión
+### P2 — Backtester y recalibración  → implementado (rama `claude/paxg-phase2-backtest`)
+- [x] Backtester point-in-time (`functions/src/backtest/`, ver `docs/BACKTEST.md`): GC=F + FRED + COT + GVZ desde 2000; features sin fuga (rezagos de publicación, test de propiedad), walk-forward con embargo por etiqueta, hold-out de 2 años aislado (también sus etiquetas), menú de modelos pre-declarado, test de permutación, conteo de comparaciones; simulador de DCA con gasto igualado, ventanas móviles y placebo por desplazamiento. Corre en GitHub Actions (`.github/workflows/backtest.yml`).
+- [x] **Resultado real (54 comparaciones): ningún modelo predice el retorno del oro a 20/60 días fuera de muestra; el score actual no tiene poder predictivo demostrable (IC −0.10/−0.13, signo levemente contrario).** Única señal consistente: en DCA, *comprar más cuando el score es bajo* abarata ~1 % el costo promedio (hold-out: 0.5 %) y *comprar menos* lo encarece; es hipótesis para P3, no regla.
+- [x] Runtime: ATR por percentil histórico (`atrPercentile`; reemplaza umbrales absolutos solo en el modo de oro) · histéresis del modo (entra ±0.25, sale ±0.15, modo previo del último snapshot < 6 h; `previousMode.js`) · percentil COT a ~3 años (informativo) · monitor de desacople oro↔tasa real (`decoupling.js`; advertencia en razones y snapshot, no reasigna pesos) · snapshot `p2` (atrPercentile, histéresis, percentil COT, desacople).
+- [ ] **Diferido a P3:** artefacto de modelo estimado en runtime (no hay modelo con evidencia que desplegar) y z-scores en el score en vivo (el backtest no respalda reemplazar los mapeos por niveles/cambios estimados).
 
 ### P3 — Política, cartera y LLM
 - [ ] Peso objetivo del sleeve de oro + bandas; DCA de monto variable; tamaño por volatilidad (Kelly fraccional acotado); escalones por cuantiles de retrocesos
@@ -184,6 +185,11 @@ Cada fase = un PR. Marcar `[x]` al mergear.
 - **P1 — snapshots:** foto del mercado, sin datos de usuario; PAXG y BTC cada hora (`snapshotJob`, ~24 docs/día por símbolo). Las reglas de Firestore no se despliegan solas: aplicar con `firebase deploy --only firestore:rules` si se quiere la regla explícita (sin regla, el cliente ya queda denegado por defecto).
 - **P1 — FRED:** las features (z-score, cambio 20d, percentil) se guardan pero no puntúan hasta P2. La tasa real sigue viniendo primero del CSV público; la API la completa/enriquece.
 
+- **P2 — el score no se recalibra con ponderaciones estimadas:** el backtest no encontró modelo con evidencia (p < 0.01 + hold-out). Se mantienen los pesos expertos actuales, ahora declarados *sin respaldo histórico*; no se presentan como predicción. Cualquier ponderación nueva exige pasar el mismo protocolo.
+- **P2 — la histéresis y el ATR por percentil cambian el comportamiento del modo de oro** (menos parpadeo; volatilidad juzgada contra el propio historial). El modo previo se toma del último snapshot (< 6 h); sin snapshot rige el umbral simple.
+- **P2 — GC=F como proxy de PAXG** en todo el backtest (PAXG existe desde 2019).
+- **P2 — hipótesis para P3:** el DCA con gates que *reducen* compras con score bajo (risk_off) empeoró el costo promedio (+0.5 %, ganó en 10 % de ventanas). Revisar en P3 si los gates de compra por modo deben pasar a *sizing informativo* o invertirse (comprar más en debilidad), con costos y hold-out.
+
 ## 7. Verificación
 
 **Cómo se verificó** (con el código real del repo sobre series sintéticas de volatilidad de oro ≈ 0,17 %/h y fixtures; egress a Coinbase/Yahoo/FRED/Groq bloqueado en la sesión de auditoría):
@@ -192,6 +198,7 @@ Cada fase = un PR. Marcar `[x]` al mergear.
 - Sensibilidad del score: IA sola cambia el modo con |score| ≥ 0,63; escalón DXY = −0,125.
 - Calendario: FOMC (2026-09-16) visible hasta 23:59 UTC del día previo y **no** a partir de 00:01 UTC del día del evento; 11 eventos restantes desde 2026-09-28.
 - Costo promedio, FRED y gates: ver filas B1, B2, B5.
+- **P2 (con datos reales, en GitHub Actions):** FRED CSV (7 series, historia completa), Yahoo GC=F/SI=F/DX-Y.NYB desde 2000 (`range=max` degradaba a ~270 filas: se usan fechas explícitas) y CFTC Socrata (1935 semanas) responden correctamente desde Actions; Stooq devuelve 403. Runs #4 y #5 del workflow *Backtest*. Yahoo GC=F ≥ 250 velas diarias (ítem de P1) queda confirmado indirectamente (6544 filas).
 
 **No verificado (confirmar con un comando):**
 
@@ -229,4 +236,12 @@ Sin contrastar (`verified: false`, "fecha por confirmar"): PCE sep (30-oct), NFP
 - Requiere: secreto `FRED_API_KEY` (ya cargado) — sin él todo sigue funcionando en modo degradado.
 - Comportamiento que cambia: indicadores/zonas/market mode técnico sobre 4h; una compra con degradación severa baja de intensidad; nuevo job horario.
 - **No verificado en vivo** (egress bloqueado): ver sección 7 (ítems P1).
-- Siguiente (P2): backtester point-in-time con GC=F + FRED + COT + GVZ (necesita historia larga: `fredService` hoy trae ~400 días, habrá que ampliar el rango para backtest).
+- Siguiente: P2 (hecha, ver abajo) → P3.
+
+### P2 — Backtester y recalibración (rama `claude/paxg-phase2-backtest`)
+- Tests: 258 en `functions/test` + 11 en `frontend`; `vite build` OK. Nuevos: `backtest.{stats,features,walkforward,dca,run}.test.js`, `p2runtime.test.js`.
+- Módulos nuevos (`functions/src/backtest/`): `stats` (ridge, logística, Spearman, permutación, Brier), `timeseries` (rezagos), `indicators`, `features` (19 variables, 3 horizontes), `walkForward`, `candidates` (menú + veredicto), `ruleScore` (réplica diaria del score, reutiliza los mapeos de producción), `dcaSim`, `data` (Yahoo/FRED/Stooq/COT), `run`, `report`; CLI `scripts/backtest.mjs`; workflow `backtest.yml`. Runtime: `previousMode.js`, `decoupling.js`, `atrPercentile`, `parseCotHistory`.
+- Hallazgos técnicos del proceso (detalle en `docs/BACKTEST.md`): p-values analíticos optimistas → permutación; sobreajuste del ridge de 19 variables incluso con señal fuerte; sesgo negativo del IC OOS sobre ruido; falsos positivos del placebo de DCA si se baraja por ventana; **fuga real corregida**: las etiquetas a h días de las últimas filas previas al hold-out miraban dentro del hold-out.
+- Comportamiento que cambia en producción: histéresis del modo de oro, ATR por percentil en el técnico de oro, `getCOTData` pide 160 semanas (percentil), `getFredMacro` devuelve `history` de la tasa real (se retira antes de cachear), snapshots `p2`.
+- No verificado en vivo: el runtime de P2 en Cloud Functions (histéresis con snapshots reales, percentil COT con la API real, `decoupling` con GC=F + FRED API); primer `[Snapshot]` con `modelVersion: p2` y `market.hysteresis` en Firestore.
+- Siguiente: P3 (política/cartera/sizing) usando la hipótesis de DCA y el criterio de evidencia de P2.
