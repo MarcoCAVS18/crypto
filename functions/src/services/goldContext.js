@@ -2,6 +2,7 @@
 
 import { getMacroData, getCOTData, getRealYield, getGoldVolatilityData } from './macroService.js';
 import { getFredMacro, applyFredFallbacks } from './fredService.js';
+import { getGoldSpotDaily, computeRegime } from './spotGold.js';
 import { getDailyCandles } from './marketData.js';
 import { calculateAllIndicators } from './technicalAnalysis.js';
 import { getGoldHeadlines } from './newsService.js';
@@ -34,6 +35,7 @@ function computeDailyBias(candles) {
       ema20:      Math.round(ema20 * 100) / 100,
       ema50:      Math.round(ema50 * 100) / 100,
       alignment,
+      source: 'paxg',
       candleCount: candles.length
     };
   } catch (e) {
@@ -64,7 +66,8 @@ export async function getGoldContext(forceRefresh = false) {
     realYieldResult,
     volDataResult,
     dailyCandlesResult,
-    fredResult
+    fredResult,
+    spotResult
   ] = await Promise.allSettled([
     getMacroData(),
     getGoldHeadlines(),
@@ -72,7 +75,8 @@ export async function getGoldContext(forceRefresh = false) {
     getRealYield(),
     getGoldVolatilityData(),
     getDailyCandles('PAXG', 120),
-    getFredMacro()
+    getFredMacro(),
+    getGoldSpotDaily()
   ]);
 
   const baseMacro = macroResult.status === 'fulfilled'
@@ -80,7 +84,13 @@ export async function getGoldContext(forceRefresh = false) {
     : { dxy: null, tenYearYield: null };
 
   const volData   = volDataResult.status === 'fulfilled' ? volDataResult.value : { gvz: null, silver: null };
-  const dailyBias = dailyCandlesResult.status === 'fulfilled' ? computeDailyBias(dailyCandlesResult.value) : null;
+  // Régimen diario: preferimos el oro de referencia (GC=F, ~2 años → EMA200 real); si falla,
+  // las velas diarias de PAXG (120 → sin EMA200), como antes.
+  const spot = spotResult.status === 'fulfilled' ? spotResult.value : null;
+  if (spotResult.status === 'rejected') console.warn('[GoldContext] Oro spot (GC=F) error:', spotResult.reason?.message);
+  const dailyBias =
+    (spot && computeRegime(spot.candles, 'gc-futures')) ||
+    (dailyCandlesResult.status === 'fulfilled' ? computeDailyBias(dailyCandlesResult.value) : null);
 
   const fred = fredResult.status === 'fulfilled' ? fredResult.value : null;
   if (fredResult.status === 'rejected') console.warn('[GoldContext] FRED error:', fredResult.reason?.message);
@@ -92,7 +102,8 @@ export async function getGoldContext(forceRefresh = false) {
     realYield: realYieldResult.status === 'fulfilled' ? realYieldResult.value : null,
     gvz:       volData.gvz,
     silver:    volData.silver,
-    dailyBias
+    dailyBias,
+    spot:      spot ? { ticker: spot.ticker, price: spot.quote.price, time: spot.quote.time } : null
   };
 
   // Completa insumos que fallaron en su fuente principal con la serie de FRED y adjunta las

@@ -21,6 +21,7 @@
 //   entre          → neutral
 
 import { determineMarketMode } from './marketMode.js';
+import { computePremium } from './spotGold.js';
 
 // Peso máximo de la IA en el score. Debe ser < umbral de modo (0.25) para que la IA nunca
 // decida sola un cambio de régimen.
@@ -248,6 +249,13 @@ export function determineGoldMarketMode(currentPrice, indicators, volumeAnalysis
       }
     }
     score += dailyAdj;
+
+    // Régimen de largo plazo (EMA200 diaria del oro): informativo, todavía no entra al score (P2)
+    const { longAlignment, extension200Pct } = macro.dailyBias;
+    if (longAlignment) {
+      const lbl = { bull: 'alcista', bear: 'bajista', mixed: 'mixto' }[longAlignment];
+      reasons.push(`Régimen largo (EMA200 diaria del oro): ${lbl}${extension200Pct != null ? `, ${extension200Pct >= 0 ? '+' : ''}${extension200Pct}% sobre la EMA200` : ''}`);
+    }
   }
 
   // ── Modo final (score se clampea a [-1, 1]) ───────────────────────────────
@@ -275,7 +283,9 @@ export function determineGoldMarketMode(currentPrice, indicators, volumeAnalysis
       goldSilverRatio: macro?.silver?.value
         ? Math.round(currentPrice / macro.silver.value * 10) / 10
         : null,
-      dailyBias:     macro?.dailyBias ?? null
+      dailyBias:     macro?.dailyBias ?? null,
+      spot:          macro?.spot ?? null,
+      premium:       computePremium(currentPrice, macro?.spot)
     }
   };
 }

@@ -52,6 +52,8 @@ const DAILY_BIAS_CFG = {
   mixed: { label: 'Mixto',    color: 'text-amber-400',   bg: 'bg-amber-500/10  border-amber-500/20',   dot: 'bg-amber-400' }
 };
 
+const LONG_LABEL = { bull: 'alcista', bear: 'bajista', mixed: 'mixto' };
+
 function DailyBiasBadge({ data }) {
   if (!data) return null;
   const cfg = DAILY_BIAS_CFG[data.alignment] ?? DAILY_BIAS_CFG.mixed;
@@ -59,10 +61,15 @@ function DailyBiasBadge({ data }) {
     <div className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl border ${cfg.bg}`}>
       <div className="flex items-center gap-2">
         <span className={`w-2 h-2 rounded-full shrink-0 ${cfg.dot}`} />
-        <span className="text-xs text-slate-400">Tendencia diaria PAXG</span>
+        <span className="text-xs text-slate-400">Tendencia diaria del oro</span>
       </div>
       <div className="flex items-center gap-2">
         <span className={`text-xs font-semibold ${cfg.color}`}>{cfg.label}</span>
+        {data.longAlignment && (
+          <span className="text-[10px] text-slate-500" title="Régimen de largo plazo (EMA200 diaria)">
+            · largo: {LONG_LABEL[data.longAlignment]}
+          </span>
+        )}
         {data.rsi != null && (
           <span className="text-[10px] text-slate-600 tabular">RSI {data.rsi.toFixed(0)}</span>
         )}
@@ -93,6 +100,23 @@ function GvzStat({ data }) {
         <span className="text-sm font-semibold text-white tabular">{v?.toFixed(1)}</span>
         {data.changePercent != null && <Delta v={data.changePercent} />}
       </div>
+    </div>
+  );
+}
+
+function PremiumStat({ data }) {
+  if (!data || data.premiumPct == null) return null;
+  const p = data.premiumPct;
+  const color = Math.abs(p) >= 0.5 ? 'text-amber-400' : 'text-slate-400';
+  return (
+    <div className="flex items-center justify-between py-2.5 border-b border-white/[0.04] last:border-0">
+      <div className="min-w-0 pr-2">
+        <p className="text-sm text-slate-300">Prima PAXG vs oro</p>
+        <p className="text-[10px] mt-0.5 text-slate-600">
+          {data.stale ? 'Referencia desactualizada (mercado cerrado)' : 'vs futuros COMEX (incluye base de futuros)'}
+        </p>
+      </div>
+      <span className={`text-sm font-semibold tabular ${color}`}>{p >= 0 ? '+' : ''}{p.toFixed(2)}%</span>
     </div>
   );
 }
@@ -350,7 +374,7 @@ export function MacroContext({ goldContext: initialContext }) {
   if (!context) return null;
 
   const { macro, sentiment, reasoning, keyFactors = [], headlines = [], fetchedAt, fromCache, analysisError,
-          cot, realYield, gvz, goldSilverRatio, dailyBias } = context;
+          cot, realYield, gvz, goldSilverRatio, dailyBias, premium } = context;
   const s = SENTIMENT[sentiment] ?? SENTIMENT.neutral;
   const SentIcon = s.Icon;
   const groqMissing = !!analysisError;
@@ -487,6 +511,7 @@ export function MacroContext({ goldContext: initialContext }) {
                   ratio={goldSilverRatio ?? context.goldSilverRatio}
                 />
               )}
+              {premium && <PremiumStat data={premium} />}
             </div>
           </div>
         )}
