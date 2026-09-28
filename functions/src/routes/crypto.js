@@ -12,6 +12,7 @@ import { makeDecision } from '../services/decisionEngine.js';
 import { generatePortfolioInsight } from '../services/groqAnalyzer.js';
 import { applyEventRisk } from '../services/eventRisk.js';
 import { pullbackLevels } from '../services/pullbacks.js';
+import { shadowFixedDca } from '../services/shadow.js';
 import { getUpcomingEvents } from '../data/macroCalendar.js';
 import { buildDecisionRecord } from '../services/decisionLog.js';
 import { insightCacheKey } from '../services/aiHelpers.js';
@@ -275,7 +276,8 @@ router.post('/decision', async (req, res) => {
     let savedToHistory = false;
     try {
       savedToHistory = await saveDecision(buildDecisionRecord({
-        symbol: symbol.toUpperCase(), marketData, marketMode, zones, indicators, userState, decision
+        symbol: symbol.toUpperCase(), marketData, marketMode, zones, indicators, userState, decision,
+        shadow: shadowFixedDca(userState)
       }));
     } catch (e) {
       console.error('Error guardando decisión:', e.message);

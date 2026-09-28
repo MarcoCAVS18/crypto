@@ -164,9 +164,12 @@ Cada fase = un PR. Marcar `[x]` al mergear.
 - [x] Eventos (`services/eventRisk.js`): riesgo de calendario **determinístico** (antes lo decidía Groq y cambiaba entre llamadas; guía del prompt pausaba compras con el FOMC "mañana o hoy"): pausa solo en ventana corta (crítico ≤ 3 h antes o ≤ 1 h después; alto: 50 % a ≤ 2 h), 75 %/90 % hasta 24 h antes, solo COMPRAS. **No respaldado por backtest** (no hay historia de calendario con horas): higiene de riesgo declarada. `analyzeCalendarRisk` eliminado.
 - [x] LLM como etiquetador estructurado: devuelve 4 etiquetas discretas (política monetaria, geopolítica, inflación, demanda de oro ∈ {−1,0,1}); el score sale de la media (regla fija), peso **±0.10** (antes 0.15), etiquetas guardadas en el snapshot. Explicador con paquete de decisión: pendiente (el insight actual ya recibe la decisión y el historial).
 
-### P4 — Aprendizaje continuo
-- [ ] Jobs que etiquetan resultados a 1/5/20/60 días (retorno, MAE/MFE), hit rate, calibración/Brier, vs baselines
-- [ ] Reemplazar "AI Signal History" por métricas reales; modo sombra (champion/challenger); alertas de fuente caída; seguimiento de si seguiste la señal
+### P4 — Aprendizaje continuo  → implementado (rama `claude/paxg-phase4-learning`)
+- [x] **Etiquetado de resultados** (`outcomeJob`, diario; `services/outcomes.js`): cada decisión con id horario se etiqueta a 1/5/20/60 días con retorno, MAE y MFE respecto del precio de la señal, solo cuando el horizonte terminó (colección `outcomes`, mismo id que la decisión; solo servidor).
+- [x] **Métricas reales** (`GET /api/metrics/:symbol`, `services/metrics.js`): acierto por acción y horizonte **contra la línea base** ("operar cualquier día"), por intensidad, seguimiento y campeón vs sombra. Reemplaza el conteo de "AI Signal History": el panel del Portfolio muestra n, acierto, azar, retorno medio y ventaja, con ⚠ si hay < 10 señales. Calibración/Brier: **no aplica** (el motor no emite probabilidades).
+- [x] **Modo sombra** (`services/shadow.js`): cada decisión registra qué habría hecho un DCA fijo (challenger `fixed_dca`); `compareShadow` lo enfrenta a las compras del motor.
+- [x] **Seguimiento**: `followStats` cruza señales con operaciones registradas (BUY/SELL del mismo símbolo dentro de 24 h) y compara el resultado de las seguidas vs no seguidas.
+- [x] **Alerta de fuente caída**: push (con antispam de 12 h) tras 3 ciclos horarios seguidos con degradación severa (`healthAlert.js`, dentro de `snapshotJob`).
 
 ### P5 — Ingeniería y seguridad
 - [ ] Decidir/eliminar `backend/`; núcleo puro compartido; config versionada; README
@@ -266,3 +269,9 @@ Sin contrastar (`verified: false`, "fecha por confirmar"): PCE sep (30-oct), NFP
 - Tests: 309+ en `functions` (nuevos: `policyRest.test.js`, casos P3c del motor, etiquetador) y 17 en `frontend` (`utils/settings.test.js`).
 - Comportamiento que cambia: tramos de PAXG a profundidades históricas (si hay ≥ 60 velas de retrocesos); costo estimado en cada orden y descarte de tramos < $10; nuevas salidas/rebalanceo (solo con los campos opcionales o con ganancia y régimen adverso); peso de la IA en el score 0.15 → 0.10; snapshot `p3` con etiquetas.
 - No verificado en vivo: el prompt de etiquetas contra Groq (con el 401 actual no se pudo probar), y cómo se ven los nuevos textos en la UI real.
+
+### P4 — Aprendizaje continuo (rama `claude/paxg-phase4-learning`)
+- Tests: nuevos `outcomesMetrics.test.js`, `p4jobs.test.js`, smoke de `/api/metrics`, `frontend/utils/metricsFormat.test.js`.
+- Nuevo job `outcomeJob` (cada 24 h; sin secretos) y colección `outcomes` (regla de solo servidor en `firestore.rules`: **hay que desplegarla** con `firebase deploy --only firestore:rules`; sin regla el cliente ya queda denegado por defecto).
+- Las decisiones nuevas guardan `ts` (ms) y `shadow`; las anteriores sin `ts` se etiquetan con su timestamp de servidor. Los primeros resultados de 20/60 días aparecerán recién cuando pasen esos días.
+- No verificado en vivo: primera corrida de `outcomeJob` (log `[Outcomes] {…}`), el endpoint con datos reales y la alerta de push.

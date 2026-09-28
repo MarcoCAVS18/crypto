@@ -25,6 +25,11 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Resultados etiquetados de las señales (P4) — solo el servidor (Admin SDK)
+    match /outcomes/{docId} {
+      allow read, write: if false;
+    }
+
     // Cachés internas de la Function — solo acceso desde el servidor (Admin SDK)
     match /_cache/{docId} {
       allow read, write: if false;

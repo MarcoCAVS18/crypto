@@ -94,3 +94,8 @@ test('GET /api/health/ai está montado en esa ruta (sin clave responde con el di
     assert.match(j.hint, /No hay GROQ_API_KEY/);
   } finally { if (saved !== undefined) process.env.GROQ_API_KEY = saved; }
 });
+
+test('GET /api/metrics/:symbol valida el símbolo', async () => {
+  const r = await fetch(`${base}/api/metrics/%3Cbad%3E`);
+  assert.equal(r.status, 400);
+});
