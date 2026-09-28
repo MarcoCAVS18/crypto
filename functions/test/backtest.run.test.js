@@ -44,12 +44,13 @@ test('runBacktest + renderReport: protocolo completo sobre datos sintéticos (ru
   assert.equal(res.models.length, 5 * 2);
   assert.equal(res.baseline.length, 2);
   assert.ok(res.dca.length >= 2);
+  assert.equal(res.dcaHoldout.length, 2);
   assert.ok(res.meta.comparisons >= 19 * 2 + 10 + 2 + 2);
   assert.ok(res.models.every(m => m.holdout && !m.holdout.coef));                 // hold-out evaluado, sin coeficientes voluminosos
   assert.ok(res.models.every(m => !m.verdict.startsWith('evidencia') || m.oos.icPermP < 0.01));
 
   const md = renderReport(res, { sources: { gold: { ok: true, n: 10, from: 'a', to: 'b' } }, generatedAt: 'ahora' });
-  for (const s of ['Comparaciones realizadas', 'Hold-out', 'DCA', 'Cómo leer esto', 'Compuesto de signos a priori']) assert.ok(md.includes(s), `falta "${s}"`);
+  for (const s of ['Comparaciones realizadas', 'Hold-out', 'DCA', 'Cómo leer esto', 'DCA en el hold-out', 'Compuesto de signos a priori']) assert.ok(md.includes(s), `falta "${s}"`);
 });
 
 test('runBacktest declara datos insuficientes en vez de inventar', () => {

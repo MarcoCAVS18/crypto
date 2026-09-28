@@ -45,6 +45,15 @@ export function renderReport(res, { sources = null, generatedAt = null } = {}) {
       : `| ${d.label} | ${d.windows} | ${f(d.meanRatio, 4)} | ${pct(d.winRate, 0)} | ${f(d.avgAdvantagePct, 2)} % | ${f(d.pValue, 3)} |`);
   }
 
+  if (res.dcaHoldout?.length) {
+    L.push(`\n### DCA en el hold-out (desde ${meta.holdoutStart}, ventanas de ~6 meses)\n`);
+    L.push('| Estrategia | Ventanas | Ratio medio | Gana en | Ventaja | p vs. placebo |\n|---|---|---|---|---|---|');
+    for (const d of res.dcaHoldout) {
+      L.push(d.insufficient ? `| ${d.label} | ${d.windows} | datos insuficientes | | | |`
+        : `| ${d.label} | ${d.windows} | ${f(d.meanRatio, 4)} | ${pct(d.winRate, 0)} | ${f(d.avgAdvantagePct, 2)} % | ${f(d.pValue, 3)} |`);
+    }
+  }
+
   L.push('\n## Cómo leer esto (límites)\n');
   L.push('- "Sin evidencia" **no** significa "no hay señal": con etiquetas solapadas y pocos años de OOS la potencia es baja (medido en datos sintéticos).');
   L.push('- Las ventanas de DCA se solapan mucho: las muestras independientes son bastante menos que "Ventanas".');

@@ -36,7 +36,7 @@ export function runBacktest(raw, { holdoutYears = 2, permB = 500, horizons = HOR
       firstDate: rows[0].date, lastDate, rows: rows.length, holdoutStart, holdoutYears, permB,
       minHistory: MIN_HISTORY, horizons, coverage: coverage(rows)
     },
-    featureICs: {}, models: [], baseline: [], dca: []
+    featureICs: {}, models: [], baseline: [], dca: [], dcaHoldout: []
   };
 
   for (const h of horizons) {
@@ -90,6 +90,16 @@ export function runBacktest(raw, { holdoutYears = 2, permB = 500, horizons = HOR
     const { perWindow, ...rest } = r;
     out.dca.push({ id: d.id, label: d.label, period: [d.rows[0]?.date, d.rows[d.rows.length - 1]?.date], ...rest });
     log(`dca ${d.id}: ratio ${r.meanRatio?.toFixed?.(4)} p=${r.pValue?.toFixed?.(3)}`);
+  }
+
+  // Hold-out del DCA (una sola mirada): el score actual sobre los últimos años, ventanas de ~6 meses
+  // (con 2 años no entran ventanas de 2). Mismas dos direcciones ya pre-declaradas.
+  const holdRows = rows.filter(r => r.date >= holdoutStart);
+  for (const [id, label, dir] of [['rule_follow', 'Score actual — más con score alto', +1], ['rule_contra', 'Score actual — más con score bajo (contrarian)', -1]]) {
+    const sched = buildSchedule(holdRows, ruleScoreOfRow, { everyDays: 5, mod: { k: 1, dir } });
+    const { perWindow, ...rest } = compareDCA(sched, { windowBuys: 26, stepBuys: 2, placebo: dcaPlacebo });
+    comparisons++;
+    out.dcaHoldout.push({ id, label, period: [holdRows[0]?.date, holdRows[holdRows.length - 1]?.date], ...rest });
   }
 
   out.meta.comparisons = comparisons;
