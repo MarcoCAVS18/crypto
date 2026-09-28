@@ -222,7 +222,8 @@ Guía de criterio:
 export async function generatePortfolioInsight(asset, currentPrice, indicators, portfolioCtx, userState, decision, recentDecisions = []) {
   const client = getClient();
 
-  const { units = 0, avgBuyPrice = 0, netInvested = 0, allBuys = [] } = portfolioCtx;
+  const { units = 0, avgBuyPrice = 0, allBuys = [] } = portfolioCtx;
+  const netInvested = portfolioCtx.costBasis ?? portfolioCtx.netInvested ?? 0;
   const { totalCapital = 0 } = userState;
 
   const unrealizedPnl    = (currentPrice - avgBuyPrice) * units;

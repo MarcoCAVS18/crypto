@@ -93,7 +93,8 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
   const executedBuys = portfolioCtx?.executedBuys ?? [];
   const hasPosition = portfolioCtx?.hasPosition ?? false;
   const avgBuyPrice = portfolioCtx?.avgBuyPrice ?? 0;
-  const netInvested = portfolioCtx?.netInvested ?? 0;
+  // Costo de lo que aún tenés (no el flujo neto: tras ventas netInvested deja de ser un costo)
+  const netInvested = portfolioCtx?.costBasis ?? portfolioCtx?.netInvested ?? 0;
   const pnlPercent = hasPosition && avgBuyPrice > 0
     ? ((currentPrice - avgBuyPrice) / avgBuyPrice) * 100
     : null;

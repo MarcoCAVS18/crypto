@@ -49,7 +49,8 @@ function calcDcaEffect(op, portfolioSummary) {
 
   const addedUnits  = op.usdAmount / op.price;
   const newUnits    = portfolioSummary.units + addedUnits;
-  const newInvested = (portfolioSummary.netInvested ?? 0) + op.usdAmount;
+  // costBasis = costo de lo que aún tenés (netInvested mezclaba lo cobrado por ventas)
+  const newInvested = (portfolioSummary.costBasis ?? portfolioSummary.netInvested ?? 0) + op.usdAmount;
   const newAvg      = newInvested / newUnits;
   const avgDelta    = newAvg - portfolioSummary.avgBuyPrice;
   const avgDeltaPct = (avgDelta / portfolioSummary.avgBuyPrice) * 100;
