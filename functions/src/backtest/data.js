@@ -102,9 +102,23 @@ async function cached(cacheDir, name, loader) {
   return data;
 }
 
-const yahoo = (symbol) => httpGet(
-  `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=max&interval=1d&includeAdjustedClose=false`, { json: true }
-).then(parseYahooChart);
+// Con `range=max` Yahoo degrada la granularidad (devolvió ~270 filas para GC=F): se piden fechas explícitas.
+// Se prueban dos hosts y se queda la serie más larga; el mínimo de filas evita aceptar una serie degradada.
+const YAHOO_START = 946684800;   // 2000-01-01
+export async function yahoo(symbol, { minRows = 1000, fetcher = httpGet } = {}) {
+  const period2 = Math.floor(Date.now() / 1000);
+  let best = [], lastErr = null;
+  for (const host of ['query1', 'query2']) {
+    try {
+      const rows = parseYahooChart(await fetcher(
+        `https://${host}.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${YAHOO_START}&period2=${period2}&interval=1d&events=history`, { json: true }));
+      if (rows.length > best.length) best = rows;
+      if (best.length >= minRows) break;
+    } catch (e) { lastErr = e; }
+  }
+  if (best.length < minRows) throw new Error(`Yahoo ${symbol}: solo ${best.length} filas${lastErr ? ` (${lastErr.message})` : ''}`);
+  return best;
+}
 
 /** Descarga todo lo que necesita `buildDataset`. Devuelve también `sources` para el reporte. */
 export async function loadHistory({ cacheDir = null, log = () => {} } = {}) {
@@ -116,10 +130,11 @@ export async function loadHistory({ cacheDir = null, log = () => {} } = {}) {
 
   let gold = await step('gold', 'gold_gcf', () => yahoo('GC=F'));
   if (gold.length < 1000) {
-    gold = await step('gold(stooq)', 'gold_stooq', async () => parseStooqCsv(await httpGet('https://stooq.com/q/d/l/?s=xauusd&i=d')));
+    const alt = await step('gold(stooq)', 'gold_stooq', async () => parseStooqCsv(await httpGet('https://stooq.com/q/d/l/?s=xauusd&i=d')));
+    if (alt.length > gold.length) gold = alt;          // nunca reemplazar por algo más corto
   }
-  const silver = await step('silver', 'silver_sif', () => yahoo('SI=F'));
-  const dxy = await step('dxy', 'dxy', () => yahoo('DX-Y.NYB').then(rows => rows.map(r => ({ date: r.date, value: r.close }))));
+  const silver = await step('silver', 'silver_sif', () => yahoo('SI=F', { minRows: 500 }));
+  const dxy = await step('dxy', 'dxy', () => yahoo('DX-Y.NYB', { minRows: 500 }).then(rows => rows.map(r => ({ date: r.date, value: r.close }))));
 
   const fred = {};
   for (const [key, id] of Object.entries(FRED_IDS)) {

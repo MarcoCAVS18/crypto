@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { runBacktest } from '../src/backtest/run.js';
 import { renderReport } from '../src/backtest/report.js';
-import { parseFredCsv, parseYahooChart, parseStooqCsv, parseCotRows } from '../src/backtest/data.js';
+import { parseFredCsv, parseYahooChart, parseStooqCsv, parseCotRows, yahoo } from '../src/backtest/data.js';
 import { makeRaw } from './helpers/synth.js';
 
 // ── parsers ─────────────────────────────────────────────────────────────────
@@ -67,4 +67,16 @@ test('el hold-out de runBacktest no se usa en las features univariadas (perturba
   assert.equal(r2.meta.holdoutStart, a.meta.holdoutStart);
   assert.deepEqual(r2.featureICs, a.featureICs);
   assert.deepEqual(r2.models.map(m => m.oos), a.models.map(m => m.oos));
+});
+
+test('yahoo(): pide fechas explícitas, prueba el segundo host y rechaza series degradadas', async () => {
+  const mk = (n) => ({ chart: { result: [{ timestamp: Array.from({ length: n }, (_, i) => 946684800 + i * 86400),
+    indicators: { quote: [{ open: Array(n).fill(1), high: Array(n).fill(1), low: Array(n).fill(1), close: Array(n).fill(2), volume: Array(n).fill(1) }] } }] } });
+  const urls = [];
+  const fetcher = async (url) => { urls.push(url); return url.includes('query1') ? mk(270) : mk(1500); };
+  const rows = await yahoo('GC=F', { fetcher });
+  assert.equal(rows.length, 1500);
+  assert.ok(urls[0].includes('period1=946684800') && !urls[0].includes('range=max'));
+  assert.ok(urls[1].includes('query2'));
+  await assert.rejects(() => yahoo('GC=F', { fetcher: async () => mk(270) }), /solo 270 filas/);
 });
