@@ -102,6 +102,28 @@ export function runBacktest(raw, { holdoutYears = 2, permB = 500, horizons = HOR
     out.dcaHoldout.push({ id, label, period: [holdRows[0]?.date, holdRows[holdRows.length - 1]?.date], ...rest });
   }
 
+  // P3 — variantes de POLÍTICA pre-declaradas (mapeo acotado, el que se desplegaría) y señales simples de "comprar la debilidad".
+  // Cada una se mide antes del hold-out (ventanas de 2 años) y en el hold-out (6 meses). 4 variantes × 2 = 8 comparaciones más.
+  const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
+  const policyVariants = [
+    { id: 'policy_score', label: 'POLÍTICA: score actual, más con score bajo (k 0.5, ×0.5–1.5)', score: ruleScoreOfRow, mod: { k: 0.5, min: 0.5, max: 1.5, dir: -1 } },
+    { id: 'dd_dip', label: 'Caída desde el máximo de 1 año: más cuando cae (k 1, ×0.5–1.5)', score: r => (Number.isFinite(r.x.dd252) ? clamp(r.x.dd252 / 0.10, -1, 0) + 0.5 : NaN), mod: { k: 1, min: 0.5, max: 1.5, dir: -1 } },
+    { id: 'vol_follow', label: 'Volatilidad realizada alta: más (k 0.5, ×0.5–1.5)', score: r => (Number.isFinite(r.x.rvol20) ? clamp(r.x.rvol20 / 2, -1, 1) : NaN), mod: { k: 0.5, min: 0.5, max: 1.5, dir: +1 } },
+    { id: 'vol_contra', label: 'Volatilidad realizada alta: menos (k 0.5, ×0.5–1.5)', score: r => (Number.isFinite(r.x.rvol20) ? clamp(r.x.rvol20 / 2, -1, 1) : NaN), mod: { k: 0.5, min: 0.5, max: 1.5, dir: -1 } }
+  ];
+  for (const v of policyVariants) {
+    const preSched = buildSchedule(pre, v.score, { everyDays: 5, mod: v.mod });
+    const a = compareDCA(preSched, { windowBuys: 104, stepBuys: 4, placebo: dcaPlacebo });
+    const { perWindow: _a, ...ra } = a;
+    out.dca.push({ id: v.id, label: v.label, period: [pre[0]?.date, pre[pre.length - 1]?.date], ...ra });
+    const holdSched = buildSchedule(holdRows, v.score, { everyDays: 5, mod: v.mod });
+    const b = compareDCA(holdSched, { windowBuys: 26, stepBuys: 2, placebo: dcaPlacebo });
+    const { perWindow: _b, ...rb } = b;
+    out.dcaHoldout.push({ id: v.id, label: v.label, period: [holdRows[0]?.date, holdRows[holdRows.length - 1]?.date], ...rb });
+    comparisons += 2;
+    log(`dca ${v.id}: pre ${ra.meanRatio?.toFixed?.(4)} p=${ra.pValue?.toFixed?.(3)} · hold-out ${rb.meanRatio?.toFixed?.(4)} p=${rb.pValue?.toFixed?.(3)}`);
+  }
+
   out.meta.comparisons = comparisons;
   return out;
 }

@@ -43,8 +43,9 @@ test('runBacktest + renderReport: protocolo completo sobre datos sintéticos (ru
   assert.ok(!res.insufficient);
   assert.equal(res.models.length, 5 * 2);
   assert.equal(res.baseline.length, 2);
-  assert.ok(res.dca.length >= 2);
-  assert.equal(res.dcaHoldout.length, 2);
+  assert.ok(res.dca.length >= 6);
+  assert.equal(res.dcaHoldout.length, 6);
+  assert.ok(res.dca.some(d => d.id === 'policy_score'));
   assert.ok(res.meta.comparisons >= 19 * 2 + 10 + 2 + 2);
   assert.ok(res.models.every(m => m.holdout && !m.holdout.coef));                 // hold-out evaluado, sin coeficientes voluminosos
   assert.ok(res.models.every(m => !m.verdict.startsWith('evidencia') || m.oos.icPermP < 0.01));

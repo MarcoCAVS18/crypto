@@ -1,5 +1,7 @@
 // Motor de decisión: cruza market mode, zonas, indicadores y perfil del usuario
 
+import { dcaCapFraction, tiltNote } from './dcaPolicy.js';
+
 /**
  * @param {object} marketMode      - { mode: 'risk_on'|'neutral'|'risk_off', score, reasons }
  * @param {object} zones           - { buy, neutral, sell, currentZone }
@@ -60,8 +62,8 @@ export function makeDecision(marketMode, zones, currentPrice, userState, indicat
     };
   }
 
-  const { action, strength, reason, recommendation, operations } = result;
-  return { action, strength, reason, recommendation, operations };
+  const { action, strength, reason, recommendation, operations, policy } = result;
+  return { action, strength, reason, recommendation, operations, ...(policy ? { policy } : {}) };
 }
 
 function riskOffWait(marketMode) {
@@ -157,22 +159,13 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
   const isStrongProfit   = pnlPercent !== null && pnlPercent >= sellStrongPct;
   const sellMakesSense   = isGoodProfit || isStrongProfit;
 
-  // ── PAXG: fracción de capital modulada por score y COT/realYield ───────────
-  // Un score de 0.9 (muy alcista) despliega más capital que uno de 0.3 (justo risk_on).
-  let paxgCapFraction = 1.0;
-  if (isPaxg && marketMode.mode === 'risk_on') {
-    paxgCapFraction = goldScore > 0.6 ? 1.0 : goldScore > 0.45 ? 0.80 : 0.65;
-    if (cot?.sentiment === 'crowded_long')       paxgCapFraction = Math.max(paxgCapFraction - 0.20, 0.50);
-    if (cot?.sentiment === 'contrarian_bull')    paxgCapFraction = Math.min(paxgCapFraction + 0.10, 1.00);
-    if (realYield?.sentiment === 'very_bullish') paxgCapFraction = Math.min(paxgCapFraction + 0.10, 1.00);
-    if (realYield?.sentiment === 'bearish')      paxgCapFraction = Math.max(paxgCapFraction - 0.15, 0.50);
-    // GVZ: volatilidad muy alta → reducir exposición
-    if (gvz?.value > 25)                         paxgCapFraction = Math.max(paxgCapFraction - 0.15, 0.40);
-    else if (gvz?.value < 15)                    paxgCapFraction = Math.min(paxgCapFraction + 0.05, 1.00);
-    // Daily bias: tendencia diaria contraria reduce posición; alineada la refuerza
-    if (dailyBias?.alignment === 'bear')         paxgCapFraction = Math.max(paxgCapFraction - 0.20, 0.40);
-    if (dailyBias?.alignment === 'bull')         paxgCapFraction = Math.min(paxgCapFraction + 0.05, 1.00);
-  }
+  // ── PAXG: tamaño del DCA (política respaldada por backtest, ver dcaPolicy.js) ──
+  // Antes la fracción SEGUÍA al score (más capital con score alto) y se recortaba por COT/tasa real/GVZ/tendencia:
+  // el backtest mostró que eso encarece el costo promedio, y esas señales ya forman parte del score (doble conteo).
+  // Ahora: base fija con un tilt acotado a comprar más en la debilidad.
+  const dcaPolicy = isPaxg ? dcaCapFraction(goldScore) : null;
+  const paxgCapFraction = dcaPolicy ? dcaPolicy.capFraction : 1.0;
+  const policyNote = dcaPolicy ? tiltNote(dcaPolicy) : '';
 
   // ── PAXG: línea de contexto macro para recomendaciones ─────────────────────
   let macroLine = '';
@@ -213,6 +206,22 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
         recommendation: `Recorte parcial recomendado: ${pctSell}% de la posición. Con el entorno en contra conviene asegurar ganancias.${paxgSellNote} No salir completamente.${macroLine}${rrLine}`,
         operations: generateSellOperations(currentPrice, zones, totalCapital, 'inversion', { pct: pctSell, keepCore: isPaxg })
       };
+    }
+    // PAXG (acumulación): el backtest mostró que NO comprar cuando el score es bajo encareció el costo promedio
+    // (y que comprar más en esos momentos lo abarató). Se sigue acumulando en zona de compra o bajo el promedio,
+    // salvo posición ya concentrada; el tamaño lo fija la política de DCA (más peso a la debilidad, acotado).
+    if (isPaxg && !isHighlyConcentrated && (currentZone === 'buy' || isBelowAvg) && cashPercent >= 30) {
+      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', paxgCapFraction, executedBuys, symbol);
+      if (ops.length > 0) {
+        return {
+          action: 'BUY',
+          strength: 'moderado',
+          reason: `PAXG en Risk OFF: se sigue acumulando la debilidad (DCA) — no comprar en estos momentos encareció el costo promedio en el backtest${pnlTag}${allocationLine}`,
+          recommendation: `Acumulación en tramos con tamaño acotado. El score bajo no es motivo para frenar el DCA del oro; sí para no apurarse: usá los tramos escalonados.${policyNote}${macroLine}${rrLine}`,
+          operations: ops,
+          policy: dcaPolicy
+        };
+      }
     }
     return riskOffWait(marketMode);
   }
@@ -305,9 +314,10 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
           ? `Precio por debajo del promedio de compra${pnlTag}${allocationLine}`
           : `Risk ON + zona de compra + ${cashPercent}% cash disponible${pnlTag}${allocationLine}`,
         recommendation: isDca
-          ? `Oportunidad de DCA: el precio está ${Math.abs(pnlPercent).toFixed(1)}% por debajo de tu promedio (${formatPrice(avgBuyPrice)}). Acumular en tramos reduce el precio promedio.${concentrationNote}${macroLine}${rrLine}`
-          : `Acumulación progresiva. Dividir entrada en 2-3 tramos para promediar precio.${concentrationNote}${macroLine}${rrLine}`,
-        operations: ops
+          ? `Oportunidad de DCA: el precio está ${Math.abs(pnlPercent).toFixed(1)}% por debajo de tu promedio (${formatPrice(avgBuyPrice)}). Acumular en tramos reduce el precio promedio.${concentrationNote}${policyNote}${macroLine}${rrLine}`
+          : `Acumulación progresiva. Dividir entrada en 2-3 tramos para promediar precio.${concentrationNote}${policyNote}${macroLine}${rrLine}`,
+        operations: ops,
+        policy: dcaPolicy
       };
     }
 
@@ -361,15 +371,16 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
     const normalBuy = currentZone === 'buy' && cashPercent >= 50;
 
     if (strongDca || normalBuy) {
-      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', 0.5, executedBuys, symbol);
+      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', isPaxg ? paxgCapFraction : 0.5, executedBuys, symbol);
       return {
         action: 'BUY',
         strength: 'moderado',
         reason: strongDca
           ? `Precio ${Math.abs(pnlPercent).toFixed(1)}% por debajo del promedio${pnlTag} — contexto mixto pero DCA válido`
           : `Zona de soporte con cash suficiente (${cashPercent}%)${pnlTag}`,
-        recommendation: `Entrada reducida — máximo 50% del capital previsto. Contexto incierto, dividir en tramos.${macroLine}`,
-        operations: ops
+        recommendation: `Entrada reducida — máximo ${Math.round((isPaxg ? paxgCapFraction : 0.5) * 100)}% del capital previsto. Contexto incierto, dividir en tramos.${policyNote}${macroLine}`,
+        operations: ops,
+        policy: dcaPolicy
       };
     }
 

@@ -154,9 +154,13 @@ Cada fase = un PR. Marcar `[x]` al mergear.
 - [x] Runtime: ATR por percentil histórico (`atrPercentile`; reemplaza umbrales absolutos solo en el modo de oro) · histéresis del modo (entra ±0.25, sale ±0.15, modo previo del último snapshot < 6 h; `previousMode.js`) · percentil COT a ~3 años (informativo) · monitor de desacople oro↔tasa real (`decoupling.js`; advertencia en razones y snapshot, no reasigna pesos) · snapshot `p2` (atrPercentile, histéresis, percentil COT, desacople).
 - [ ] **Diferido a P3:** artefacto de modelo estimado en runtime (no hay modelo con evidencia que desplegar) y z-scores en el score en vivo (el backtest no respalda reemplazar los mapeos por niveles/cambios estimados).
 
-### P3 — Política, cartera y LLM
-- [ ] Peso objetivo del sleeve de oro + bandas; DCA de monto variable; tamaño por volatilidad (Kelly fraccional acotado); escalones por cuantiles de retrocesos
-- [ ] Salidas por rotura de tendencia + macro adverso; recorte por sobre-extensión; costos (comisión + spread)
+### P3 — Política, cartera y LLM  → parte 1 implementada (rama `claude/paxg-phase3-policy`); resto pendiente
+- [x] **Política de DCA de PAXG con evidencia** (`services/dcaPolicy.js`, evaluada en el backtest con el mismo mapeo): base fija (75 % del efectivo asignado) con un **tilt acotado ×0.5–×1.5 hacia comprar más cuando el score es bajo**. Reemplaza la fracción que *seguía* al score (0.65/0.80/1.0) y los recortes por COT/tasa real/GVZ/tendencia (doble conteo con el score; el backtest mostró que seguir al score encarece el costo promedio +0.5 %).
+- [x] **Gate de acumulación:** PAXG en `risk_off` ya no queda siempre en WAIT: sigue acumulando en zona de compra o bajo el promedio (tamaño por la política), salvo posición concentrada (>70 %), efectivo < 30 % o tramos ya ejecutados. Las ventas por macro adverso no cambian. BTC/ETH no cambian.
+- [x] Volatilidad realizada como señal de tamaño: probada, sin efecto (±0.01 %) → **no se usa**. Caída desde el máximo de 1 año: no confirmada en el hold-out (p 0.35) → no se usa.
+- [x] Registro: cada decisión guarda `dcaPolicy` (versión, multiplicador, fracción); `modelVersion` de decisiones pasa a `p3`.
+- [ ] Peso objetivo del sleeve de oro + bandas; escalones por cuantiles de retrocesos; tamaño por volatilidad *de la posición* (Kelly fraccional acotado — sin evidencia aún)
+- [ ] Salidas por rotura de tendencia + macro adverso; recorte por sobre-extensión; costos (comisión + spread; el efecto medido del tilt, ~0.3 %, es menor que una comisión: hay que modelarlos antes de más sofisticación)
 - [ ] Eventos: multiplicador determinístico por horas-al-evento (ET), blackout, ventana post-evento
 - [ ] LLM como etiquetador estructurado (peso ±0.05–0.10, logueado) + explicador con paquete de decisión
 
@@ -189,6 +193,8 @@ Cada fase = un PR. Marcar `[x]` al mergear.
 - **P2 — la histéresis y el ATR por percentil cambian el comportamiento del modo de oro** (menos parpadeo; volatilidad juzgada contra el propio historial). El modo previo se toma del último snapshot (< 6 h); sin snapshot rige el umbral simple.
 - **P2 — GC=F como proxy de PAXG** en todo el backtest (PAXG existe desde 2019).
 - **P2 — hipótesis para P3:** el DCA con gates que *reducen* compras con score bajo (risk_off) empeoró el costo promedio (+0.5 %, ganó en 10 % de ventanas). Revisar en P3 si los gates de compra por modo deben pasar a *sizing informativo* o invertirse (comprar más en debilidad), con costos y hold-out.
+
+- **P3 — cambio de comportamiento deliberado (PAXG):** en `risk_off` ahora puede recomendar BUY (antes siempre WAIT salvo venta). Base: el backtest (2001–2026 + hold-out) mostró que reducir compras con score bajo encarece el costo promedio y que el tilt hacia la debilidad lo abarata ~0.3 % (p 0.003, hold-out 0.24 %). **Efecto pequeño, pocas muestras independientes, placebo algo liberal**: es una política prudente (acotada, con salvaguardas), no una promesa de rendimiento. Para revertir: `DCA_POLICY.tilt` en `dcaPolicy.js` y la rama `isPaxg` de `risk_off` en `decisionEngine.js`.
 
 ## 7. Verificación
 
@@ -245,3 +251,8 @@ Sin contrastar (`verified: false`, "fecha por confirmar"): PCE sep (30-oct), NFP
 - Comportamiento que cambia en producción: histéresis del modo de oro, ATR por percentil en el técnico de oro, `getCOTData` pide 160 semanas (percentil), `getFredMacro` devuelve `history` de la tasa real (se retira antes de cachear), snapshots `p2`.
 - No verificado en vivo: el runtime de P2 en Cloud Functions (histéresis con snapshots reales, percentil COT con la API real, `decoupling` con GC=F + FRED API); primer `[Snapshot]` con `modelVersion: p2` y `market.hysteresis` en Firestore.
 - Siguiente: P3 (política/cartera/sizing) usando la hipótesis de DCA y el criterio de evidencia de P2.
+
+### P3 (parte 1) — Política de DCA (rama `claude/paxg-phase3-policy`)
+- Tests: 274 en `functions/test`. Nuevos: `dcaPolicy.test.js` (mapeo idéntico al evaluado, monotonía, límites, score no finito), casos P3 en `decisionEngine.test.js` (acumula en risk_off, salvaguardas, el tamaño no sigue al score, BTC intacto), registro de política en `decisionLog.test.js`.
+- Backtest (run #6 de Actions): variantes de política pre-declaradas — ver `docs/BACKTEST.md`.
+- No verificado en vivo: cómo se ve la recomendación de BUY en risk_off en la UI real y la primera decisión guardada con `dcaPolicy`.

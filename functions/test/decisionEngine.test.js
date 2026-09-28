@@ -63,10 +63,59 @@ test('B5: risk_off sin ganancia suficiente → WAIT con el motivo de Risk OFF', 
   assert.match(d.reason, /Risk OFF: Dólar fuerte/);
 });
 
-test('B5: risk_off sin posición o sin zona de venta → WAIT (nunca compra)', () => {
+test('B5: risk_off sin zona de compra ni caída bajo el promedio → WAIT; en BTC risk_off nunca compra', () => {
   const price = 4000;
-  assert.equal(makeDecision(off, atrZones(price, 'buy'), price, st(60), ind, 'PAXG', null).action, 'WAIT');
   assert.equal(makeDecision(off, atrZones(6000, 'neutral'), 6000, st(60), ind, 'PAXG', position(6000, 50)).action, 'WAIT');
+  assert.equal(makeDecision(off, atrZones(price, 'buy'), price, st(60), ind, 'BTC', null).action, 'WAIT');   // la política de DCA es solo de PAXG
+});
+
+// ── P3: política de DCA de PAXG (respaldada por backtest, ver dcaPolicy.js) ─────
+
+test('P3: PAXG en risk_off + zona de compra SIGUE acumulando (antes: WAIT, lo que encareció el promedio)', () => {
+  const price = 4000;
+  const d = makeDecision(off, atrZones(price, 'buy'), price, st(60), ind, 'PAXG', null);
+  assert.equal(d.action, 'BUY');
+  assert.equal(d.strength, 'moderado');
+  assert.ok(d.operations.length >= 2);
+  assert.ok(d.operations.every(o => o.usdAmount > 0));
+  assert.equal(d.policy.version, 'p3-1');
+  assert.ok(d.policy.multiplier > 1, 'score bajo ⇒ tilt hacia comprar la debilidad');
+  assert.match(d.recommendation, /Tamaño ajustado ×/);
+});
+
+test('P3: en risk_off también acumula si el precio está bajo el promedio (aunque no esté en zona de compra)', () => {
+  const price = 4000;
+  const d = makeDecision(off, atrZones(price, 'neutral'), price, st(60), ind, 'PAXG', position(price, -10));
+  assert.equal(d.action, 'BUY');
+});
+
+test('P3: límites de seguridad en risk_off — posición concentrada (>70 %), poco efectivo o tramos ya ejecutados ⇒ WAIT', () => {
+  const price = 4000;
+  // concentrada: costo = 90 % del capital
+  assert.equal(makeDecision(off, atrZones(price, 'buy'), price, st(60, 'inversion', 20000), ind, 'PAXG', position(price, -5, { costBasis: 18000, netInvested: 18000 })).action, 'WAIT');
+  // efectivo insuficiente (<30 %)
+  assert.equal(makeDecision(off, atrZones(price, 'buy'), price, st(25), ind, 'PAXG', null).action, 'WAIT');
+  // vender sigue funcionando con macro adverso y ganancia
+  const sell = makeDecision(off, atrZones(6000, 'sell'), 6000, st(60), ind, 'PAXG', position(6000, 50));
+  assert.equal(sell.action, 'SELL');
+});
+
+test('P3: el tamaño NO sigue al score: score bajo despliega ≥ que score alto (antes ocurría lo contrario)', () => {
+  const price = 4000;
+  const amount = (mode) => makeDecision(mode, atrZones(price, 'buy'), price, st(60), ind, 'PAXG', null).operations.reduce((a, o) => a + o.usdAmount, 0);
+  const low  = amount({ mode: 'risk_on', score: 0.30, reasons: [] });
+  const high = amount({ mode: 'risk_on', score: 0.90, reasons: [] });
+  assert.ok(low >= high, `score bajo ${low} vs alto ${high}`);
+  // rangos: nunca más del 100 % del efectivo asignado
+  const cash = 20000 * 0.6;
+  assert.ok(amount({ mode: 'risk_off', score: -1, reasons: [] }) <= cash + 1e-6);
+});
+
+test('P3: BTC no cambia (misma fracción de siempre, sin política de PAXG)', () => {
+  const price = 60000;
+  const d = makeDecision(on, atrZones(price, 'buy'), price, st(60), ind, 'BTC', null);
+  assert.equal(d.action, 'BUY');
+  assert.equal(d.policy, undefined);
 });
 
 test('B5: observación y trading en risk_off siguen en WAIT', () => {
