@@ -7,6 +7,10 @@ import { getGoldHeadlines } from './newsService.js';
 import { analyzeGoldSentiment, translateHeadlines } from './groqAnalyzer.js';
 import { getGoldContextCache, setGoldContextCache } from '../config/database.js';
 
+// TTL del contexto de oro: 2 h si el análisis salió bien; 5 min si falló
+export const GOLD_CONTEXT_TTL_HOURS = 2;
+export const FAILED_ANALYSIS_TTL_HOURS = 5 / 60;
+
 function computeDailyBias(candles) {
   if (!candles || candles.length < 50) return null;
   try {
@@ -120,7 +124,10 @@ export async function getGoldContext(forceRefresh = false) {
     analysisError
   };
 
-  setGoldContextCache(context, 2).catch(e =>
+  // Un análisis fallido no debe quedar cacheado tanto como uno bueno: antes el error de Groq
+  // (p. ej. un modelo deprecado) seguía a la vista 2 h aun después de arreglarlo.
+  const ttlHours = analysisError ? FAILED_ANALYSIS_TTL_HOURS : GOLD_CONTEXT_TTL_HOURS;
+  await setGoldContextCache(context, ttlHours).catch(e =>
     console.warn('[GoldContext] No se pudo guardar caché:', e.message)
   );
 

@@ -1,12 +1,16 @@
 // Reemplaza better-sqlite3 con Firestore Admin SDK.
 // Las funciones de caché son async; las demás mantienen la misma firma.
-import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { getFirestore, FieldValue, FieldPath } from 'firebase-admin/firestore';
+import { decisionDocId, decisionIdPrefix, isHourlyDecisionId } from '../services/decisionLog.js';
 
 let _db = null;
 const db = () => {
   if (!_db) _db = getFirestore();
   return _db;
 };
+
+// Solo para tests: inyecta un Firestore falso
+export function _setDbForTests(fake) { _db = fake; }
 
 // Sanitiza una clave arbitraria para usarla como ID de documento Firestore
 function toDocId(key) {
@@ -15,17 +19,23 @@ function toDocId(key) {
 
 // ── Historial de decisiones ───────────────────────────────────────────────────
 
-export async function saveDecision(decision) {
-  await db().collection('decisions').add({
-    symbol:     decision.symbol,
-    price:      decision.price,
-    marketMode: decision.marketMode,
-    decision:   decision.decision,
-    cashPercent: decision.cashPercent,
-    userMode:   decision.userMode,
-    reason:     decision.reason,
-    timestamp:  FieldValue.serverTimestamp()
-  });
+/**
+ * Guarda la decisión con id idempotente por (símbolo, hora UTC): la primera de cada hora gana.
+ * `create()` falla con ALREADY_EXISTS si ya hay una, así que repetir la llamada es barato e inocuo.
+ * @returns {Promise<boolean>} true si se guardó, false si esa hora ya tenía señal.
+ */
+export async function saveDecision(record, now = Date.now()) {
+  const id = decisionDocId(record.symbol, now);
+  try {
+    await db().collection('decisions').doc(id).create({
+      ...record,
+      timestamp: FieldValue.serverTimestamp()
+    });
+    return true;
+  } catch (err) {
+    if (err?.code === 6 || /ALREADY_EXISTS/i.test(err?.message ?? '')) return false;
+    throw err;
+  }
 }
 
 export async function getDecisions(limit = 20) {
@@ -37,18 +47,37 @@ export async function getDecisions(limit = 20) {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
-// Obtiene las últimas N decisiones de un símbolo específico (para contexto de Groq)
+// Últimas N decisiones de un símbolo, de la más nueva a la más vieja.
+// Se consulta por RANGO DE ID de documento (`PAXG_2026092812`): el ID ordena cronológicamente
+// y no exige un índice compuesto (deploy.yml no despliega firestore:indexes). Antes se pedía
+// `where(symbol).limit(n*3)` SIN orden, que devuelve un subconjunto arbitrario (orden por ID
+// automático) y ordenaba solo esa muestra.
 export async function getDecisionsBySymbol(symbol, limit = 10) {
   try {
+    const prefix = decisionIdPrefix(symbol);
+    const docId = FieldPath.documentId();
     const snap = await db()
       .collection('decisions')
-      .where('symbol', '==', symbol.toUpperCase())
+      .where(docId, '>=', prefix)
+      .where(docId, '<', prefix + '\uf8ff')
+      .orderBy(docId, 'desc')
+      .limit(limit)
+      .get();
+    const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    if (fresh.length >= limit) return fresh;
+
+    // Transición: completar con documentos legacy (IDs automáticos, muestra arbitraria).
+    // TODO: eliminar cuando el historial nuevo cubra la ventana que se muestra.
+    const legacySnap = await db()
+      .collection('decisions')
+      .where('symbol', '==', String(symbol).toUpperCase())
       .limit(limit * 3)
       .get();
-    return snap.docs
-      .map(d => ({ id: d.id, ...d.data() }))
-      .sort((a, b) => (b.timestamp?.toMillis?.() ?? 0) - (a.timestamp?.toMillis?.() ?? 0))
-      .slice(0, limit);
+    const legacy = legacySnap.docs
+      .filter(d => !isHourlyDecisionId(d.id))
+      .map(d => ({ id: d.id, ...d.data() }));
+    const millis = x => x.timestamp?.toMillis?.() ?? 0;
+    return [...fresh, ...legacy].sort((a, b) => millis(b) - millis(a)).slice(0, limit);
   } catch (err) {
     console.warn('[DB] getDecisionsBySymbol failed:', err.message);
     return [];
@@ -128,8 +157,9 @@ export async function getZoneState(symbol) {
   return doc.exists ? doc.data() : null;
 }
 
-export async function setZoneState(symbol, zone, price) {
+// `state` = { zone, price, streak, lastPushAt, checkedAt } (ver services/zoneAlert.js)
+export async function setZoneState(symbol, state) {
   await db().collection('_zone_state').doc(symbol.toUpperCase()).set({
-    zone, price, updatedAt: FieldValue.serverTimestamp()
+    ...state, updatedAt: FieldValue.serverTimestamp()
   });
 }

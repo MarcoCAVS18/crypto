@@ -44,32 +44,65 @@ function fetchYahooChart(ticker) {
   });
 }
 
+/**
+ * Convierte la respuesta de Yahoo `chart` en { value, changePercent, prevClose }.
+ *
+ * changePercent es el cambio contra el cierre de la sesión ANTERIOR. Con `range=5d`,
+ * `meta.chartPreviousClose` suele ser el cierre previo a toda la ventana (cambio de
+ * ~5 días, no de "hoy"), por eso se calcula con los dos últimos cierres diarios y
+ * se usa el meta solo como último recurso.
+ *
+ * @param {object} json - respuesta completa de Yahoo (`{ chart: { result: [...] } }`)
+ * @param {string} ticker
+ */
+export function parseYahooChart(json, ticker = '') {
+  const result = json?.chart?.result?.[0];
+  if (!result) throw new Error(`No data in Yahoo response for ${ticker}`);
+
+  const meta  = result.meta ?? {};
+  const closesRaw = result.indicators?.quote?.[0]?.close ?? [];
+  const stamps    = result.timestamp ?? [];
+
+  // Pares (timestamp, cierre) válidos, en orden cronológico
+  const bars = [];
+  for (let i = 0; i < closesRaw.length; i++) {
+    const c = closesRaw[i];
+    if (typeof c === 'number' && Number.isFinite(c) && c > 0) bars.push({ ts: stamps[i], close: c });
+  }
+
+  const lastBar = bars[bars.length - 1];
+  const price   = meta.regularMarketPrice ?? meta.price ?? lastBar?.close;
+  if (price == null) throw new Error(`No price for ${ticker}`);
+
+  let prevClose = null;
+  if (bars.length >= 2 && meta.regularMarketTime != null && lastBar.ts != null) {
+    const off    = meta.gmtoffset ?? 0;
+    const dayKey = t => Math.floor((t + off) / 86400);
+    // Si la última barra es la sesión de hoy, el previo es la anterior; si todavía no
+    // hay barra de hoy, la última barra ya es el cierre previo.
+    prevClose = dayKey(meta.regularMarketTime) === dayKey(lastBar.ts)
+      ? bars[bars.length - 2].close
+      : lastBar.close;
+  } else if (bars.length === 1) {
+    prevClose = null;
+  }
+  if (prevClose == null) prevClose = meta.previousClose ?? meta.chartPreviousClose ?? null;
+
+  const changePercent = prevClose && prevClose > 0 ? ((price - prevClose) / prevClose) * 100 : 0;
+
+  // Para el bono 10Y Yahoo devuelve porcentaje directo (4.35 = 4.35 %)
+  return {
+    value: Math.round(price * 1000) / 1000,
+    changePercent: Math.round(changePercent * 1000) / 1000,
+    prevClose: prevClose ?? null
+  };
+}
+
 function parseYahooResponse(rawData, ticker, resolve, reject) {
   try {
-    const json = JSON.parse(rawData);
-    const result = json.chart?.result?.[0];
-    if (!result) {
-      return reject(new Error(`No data in Yahoo response for ${ticker}`));
-    }
-
-    const meta = result.meta;
-    const price = meta.regularMarketPrice ?? meta.price;
-    const prevClose = meta.chartPreviousClose ?? meta.previousClose;
-
-    if (price == null) return reject(new Error(`No price for ${ticker}`));
-
-    const changePercent = prevClose && prevClose > 0
-      ? ((price - prevClose) / prevClose) * 100
-      : 0;
-
-    // For 10Y yield, Yahoo returns percent directly (e.g. 4.35 means 4.35%)
-    resolve({
-      value: Math.round(price * 1000) / 1000,
-      changePercent: Math.round(changePercent * 1000) / 1000,
-      prevClose: prevClose ?? null
-    });
+    resolve(parseYahooChart(JSON.parse(rawData), ticker));
   } catch (err) {
-    reject(new Error(`Parse error for ${ticker}: ${err.message}`));
+    reject(err.message?.startsWith('No ') ? err : new Error(`Parse error for ${ticker}: ${err.message}`));
   }
 }
 
@@ -171,7 +204,33 @@ export async function getGoldVolatilityData() {
 }
 
 /**
- * Sin API key. Interpreta: <0% muy alcista para oro, >2% bajista.
+ * Último valor válido de un CSV de FRED (`fredgraph.csv`).
+ * Los faltantes vienen como "." (formato viejo) o vacíos (formato nuevo); los valores
+ * válidos SON decimales (p. ej. "1.85"), así que no se puede filtrar por "." en el valor.
+ * @returns {{ date: string, value: number }}
+ */
+export function parseFredCsv(text) {
+  const lines = String(text).trim().split(/\r?\n/).slice(1); // omitir encabezado
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const [date, raw] = lines[i].split(',').map(x => x?.trim());
+    if (!raw || raw === '.') continue;
+    const value = Number(raw);
+    if (Number.isFinite(value) && Math.abs(value) < 20) return { date, value };
+  }
+  throw new Error('Sin datos válidos de DFII10');
+}
+
+/** Clasificación del rendimiento real 10Y para el oro. */
+export function classifyRealYield(value) {
+  if (value < 0)      return 'very_bullish'; // tasa real negativa → muy bueno para el oro
+  if (value < 1)      return 'bullish';
+  if (value < 2)      return 'neutral';
+  return 'bearish';                          // tasa real alta → presión sobre el oro
+}
+
+/**
+ * Rendimiento real 10Y (TIPS, FRED DFII10). Sin API key.
+ * Interpreta: <0% muy alcista para oro, >2% bajista.
  * @returns {{ value, date, sentiment }}
  */
 export async function getRealYield() {
@@ -187,23 +246,8 @@ export async function getRealYield() {
     clearTimeout(timer);
     if (!res.ok) throw new Error(`FRED API HTTP ${res.status}`);
 
-    const text = await res.text();
-    const lines = text.trim().split('\n').slice(1); // omitir encabezado
-    // '.' significa dato ausente; filtrar y quedarse con los válidos
-    const valid = lines.filter(l => !l.split(',')[1]?.trim().includes('.'));
-    if (valid.length === 0) throw new Error('Sin datos válidos de DFII10');
-
-    const [date, valueStr] = valid[valid.length - 1].split(',');
-    const value = parseFloat(valueStr);
-    if (isNaN(value)) throw new Error('Valor DFII10 inválido');
-
-    let sentiment;
-    if (value < 0)      sentiment = 'very_bullish'; // tasa real negativa → muy bueno para el oro
-    else if (value < 1) sentiment = 'bullish';
-    else if (value < 2) sentiment = 'neutral';
-    else                sentiment = 'bearish';       // tasa real alta → presión sobre el oro
-
-    return { value, date: date.trim(), sentiment };
+    const { date, value } = parseFredCsv(await res.text());
+    return { value, date, sentiment: classifyRealYield(value) };
   } catch (err) {
     clearTimeout(timer);
     console.warn('[MacroService] Real yield fetch failed:', err.message);

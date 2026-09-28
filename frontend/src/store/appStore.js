@@ -3,38 +3,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { fetchCryptoData, requestDecision } from '../services/api';
 import { fsAddOperation, fsGetOperations, fsDeleteOperation } from '../services/firestorePortfolio';
-
-// ── Helper: calcula el resumen del portfolio desde las operaciones ─────────
-function computePortfolioSummary(operations) {
-  const bySymbol = {};
-  for (const op of operations) {
-    if (!bySymbol[op.symbol]) {
-      bySymbol[op.symbol] = {
-        symbol: op.symbol, units: 0, invested: 0,
-        withdrawn: 0, fees: 0, operations: 0
-      };
-    }
-    const s = bySymbol[op.symbol];
-    s.operations += 1;
-    s.fees += op.fee || 0;
-    if (op.type === 'BUY') {
-      s.units    += op.units;
-      s.invested += op.amount_usd;
-    } else if (op.type === 'SELL') {
-      s.units     -= op.units;
-      s.withdrawn += op.amount_usd;
-    }
-  }
-  return Object.values(bySymbol).map(s => ({
-    ...s,
-    units:        Math.max(0, s.units),
-    netInvested:  s.invested - s.withdrawn,
-    avgBuyPrice:  s.invested > 0 && s.units > 0
-      ? (s.invested - s.withdrawn) / s.units
-      : 0,
-    hasPosition:  s.units > 0
-  }));
-}
+import { computePortfolioSummary } from '../utils/portfolioMath';
 
 export const useAppStore = create(
   persist(
@@ -275,6 +244,20 @@ export const useAppStore = create(
     }),
     {
       name: 'crypto-dashboard-storage',
+      // El resumen se recalcula al rehidratar: un resumen persistido con la fórmula
+      // vieja (sin costBasis) seguiría mostrando promedios erróneos hasta la próxima operación.
+      merge: (persisted, current) => {
+        const merged = { ...current, ...persisted };
+        const ops = persisted?.portfolio?.operations;
+        if (Array.isArray(ops)) {
+          merged.portfolio = {
+            ...current.portfolio,
+            ...persisted.portfolio,
+            summary: computePortfolioSummary(ops)
+          };
+        }
+        return merged;
+      },
       partialize: (state) => ({
         userState:      state.userState,
         selectedCrypto: state.selectedCrypto,

@@ -9,6 +9,8 @@ import { getCryptoNewsContext } from '../services/cryptoNewsContext.js';
 import { makeDecision } from '../services/decisionEngine.js';
 import { analyzeCalendarRisk, generatePortfolioInsight } from '../services/groqAnalyzer.js';
 import { getUpcomingEvents } from '../data/macroCalendar.js';
+import { buildDecisionRecord } from '../services/decisionLog.js';
+import { insightCacheKey } from '../services/aiHelpers.js';
 import { saveDecision, getPortfolioSummaryBySymbol, getAiCache, setAiCache, getDecisionsBySymbol } from '../config/database.js';
 
 const router = express.Router();
@@ -195,7 +197,7 @@ router.post('/decision', async (req, res) => {
 
     // Generar decisión
     const userState = {
-      cashPercent: cashPercent ?? 50,
+      cashPercent: cash,                 // número ya validado (0-100), no el valor crudo del body
       mode: mode || 'inversion',
       totalCapital: parseFloat(totalCapital) || 0
     };
@@ -211,7 +213,10 @@ router.post('/decision', async (req, res) => {
       }
     }
 
-    let decision = makeDecision(marketMode, zones, marketData.price, userState, indicators, symbol.toUpperCase(), portfolioContext);
+    let decision = makeDecision(
+      marketMode, zones, marketData.price, userState, indicators, symbol.toUpperCase(), portfolioContext,
+      { candlesSource: marketData.candlesSource }
+    );
 
     // ── Modulación por calendario macro (solo en BUY, via Groq) ───────────────
     // Solo llamamos a Groq si la señal es BUY y hay eventos críticos en 7 días.
@@ -223,7 +228,7 @@ router.post('/decision', async (req, res) => {
           // Clave de caché determinista: depende del activo, acción, intensidad
           // y qué eventos están próximos (no de precios — el riesgo de calendario
           // es el mismo para cualquier señal BUY del mismo día)
-          const eventsKey    = upcomingEvents.map(e => `${e.name}:${e.daysUntil}`).join(',');
+          const eventsKey    = upcomingEvents.map(e => `${e.name}:${e.daysUntil}:${e.phase}`).join(',');
           const cacheKey     = `calrisk_${symbol}_${decision.action}_${decision.strength}_${eventsKey}`;
           let   calendarRisk = await getAiCache(cacheKey);
 
@@ -238,7 +243,7 @@ router.post('/decision', async (req, res) => {
             calendarRisk = await analyzeCalendarRisk(
               symbol.toUpperCase(), decision, upcomingEvents, marketCtx
             );
-            setAiCache(cacheKey, calendarRisk, 4).catch(e =>
+            await setAiCache(cacheKey, calendarRisk, 4).catch(e =>
               console.warn('[CalendarRisk] Cache write failed:', e.message)
             );
             console.log(`[CalendarRisk] modulate=${calendarRisk.modulate}, capitalFraction=${calendarRisk.capitalFraction}`);
@@ -259,9 +264,7 @@ router.post('/decision', async (req, res) => {
     // ── Portfolio insight personalizado (Groq, caché 1h) ─────────────────────
     if (portfolioContext?.hasPosition && portfolioContext.units > 0 && process.env.GROQ_API_KEY) {
       try {
-        const pb = Math.round(marketData.price / 500) * 500;
-        const ab = Math.round((portfolioContext.avgBuyPrice ?? 0) / 50) * 50;
-        const insightKey = `portinsight_${symbol}_${pb}_${ab}_${Math.round(portfolioContext.netInvested ?? 0)}`;
+        const insightKey = insightCacheKey(symbol, marketData.price, portfolioContext, decision.action);
 
         let portfolioInsight = await getAiCache(insightKey);
         if (!portfolioInsight) {
@@ -271,7 +274,7 @@ router.post('/decision', async (req, res) => {
           portfolioInsight = await generatePortfolioInsight(
             symbol.toUpperCase(), marketData.price, indicators, portfolioContext, userState, decision, recentDecisions
           );
-          setAiCache(insightKey, portfolioInsight, 1).catch(e =>
+          await setAiCache(insightKey, portfolioInsight, 1).catch(e =>
             console.warn('[PortfolioInsight] Cache write failed:', e.message)
           );
         } else {
@@ -286,18 +289,17 @@ router.post('/decision', async (req, res) => {
       }
     }
 
-    // Guardar en historial (fire-and-forget — Firestore es async)
+    // Guardar en historial: una señal por símbolo y hora, con las features que la produjeron.
+    // Se espera el resultado antes de responder: en Cloud Functions el trabajo posterior a la
+    // respuesta no está garantizado, y `savedToHistory` antes era siempre false.
     let savedToHistory = false;
-    saveDecision({
-      symbol:     symbol.toUpperCase(),
-      price:      marketData.price,
-      marketMode: marketMode.mode,
-      decision:   decision.action,
-      cashPercent: userState.cashPercent,
-      userMode:   userState.mode,
-      reason:     decision.reason
-    }).then(() => { savedToHistory = true; })
-      .catch(e => console.error('Error guardando decisión:', e.message));
+    try {
+      savedToHistory = await saveDecision(buildDecisionRecord({
+        symbol: symbol.toUpperCase(), marketData, marketMode, zones, indicators, userState, decision
+      }));
+    } catch (e) {
+      console.error('Error guardando decisión:', e.message);
+    }
 
     res.json({
       symbol: symbol.toUpperCase(),

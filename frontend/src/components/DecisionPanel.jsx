@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowUpCircle, Clock, ArrowDownCircle, Lightbulb, ShoppingCart, TrendingDown, ArrowRight, BrainCircuit, MapPin, Settings2 } from 'lucide-react';
+import { ArrowUpCircle, Clock, ArrowDownCircle, Lightbulb, ShoppingCart, TrendingDown, ArrowRight, BrainCircuit, Settings2 } from 'lucide-react';
 
 const ACTION = {
   BUY: {
@@ -49,7 +49,8 @@ function calcDcaEffect(op, portfolioSummary) {
 
   const addedUnits  = op.usdAmount / op.price;
   const newUnits    = portfolioSummary.units + addedUnits;
-  const newInvested = (portfolioSummary.netInvested ?? 0) + op.usdAmount;
+  // costBasis = costo de lo que aún tenés (netInvested mezclaba lo cobrado por ventas)
+  const newInvested = (portfolioSummary.costBasis ?? portfolioSummary.netInvested ?? 0) + op.usdAmount;
   const newAvg      = newInvested / newUnits;
   const avgDelta    = newAvg - portfolioSummary.avgBuyPrice;
   const avgDeltaPct = (avgDelta / portfolioSummary.avgBuyPrice) * 100;
@@ -214,14 +215,6 @@ function PortfolioInsightCard({ insight }) {
           Análisis de tu posición
         </span>
         <p className="text-sm text-slate-300 leading-relaxed">{insight.insight}</p>
-        {insight.optimalEntryPrice && (
-          <div className="flex items-center gap-1.5 mt-2">
-            <MapPin className="w-3 h-3 text-violet-400/60 shrink-0" />
-            <span className="text-xs text-violet-400/80 font-mono tabular">
-              Entrada sugerida: ${insight.optimalEntryPrice.toLocaleString('en-US', { maximumFractionDigits: 0 })}
-            </span>
-          </div>
-        )}
       </div>
     </motion.div>
   );
