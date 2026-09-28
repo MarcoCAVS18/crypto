@@ -90,6 +90,43 @@ export function icSignificance(ic, n, horizon = 1) {
   return { tStat, pValue: 2 * (1 - normalCdf(Math.abs(tStat))), effectiveN };
 }
 
+/**
+ * Test de permutación por DESPLAZAMIENTO CIRCULAR para el IC (Spearman).
+ *
+ * Por qué: las predicciones de un modelo con features persistentes y los retornos a h días están
+ * ambos muy autocorrelacionados; el IC "muestral" tiene una varianza mucho mayor que la fórmula
+ * con n/h (en pruebas con ruido puro el IC fuera de muestra oscila ±0.2). Desplazar circularmente
+ * la serie de resultados respecto de los scores conserva la autocorrelación de ambas series pero
+ * destruye su alineación, así que da la distribución nula CORRECTA del IC.
+ *
+ * @param {number[]} scores
+ * @param {number[]} actual
+ * @param {object} o
+ * @param {number} [o.B]        cantidad de desplazamientos
+ * @param {number} [o.seed]
+ * @param {number} [o.minShift] desplazamiento mínimo (≥ horizonte, para no reutilizar el mismo tramo)
+ * @returns {{ ic:number, pValue:number, nullSd:number, B:number }} p-value de dos colas (con corrección +1)
+ */
+export function icPermutationTest(scores, actual, { B = 1000, seed = 1, minShift = 40 } = {}) {
+  const n = Math.min(scores.length, actual.length);
+  if (n < 3 * minShift) return { ic: NaN, pValue: NaN, nullSd: NaN, B: 0 };
+  const rs = rank(scores.slice(0, n)), ra = rank(actual.slice(0, n));
+  const ic = pearson(rs, ra);
+  const rng = mulberry32(seed);
+  const span = n - 2 * minShift;
+  let extreme = 0;
+  const nulls = [];
+  for (let b = 0; b < B; b++) {
+    const shift = minShift + Math.floor(rng() * span);
+    const shifted = new Array(n);
+    for (let i = 0; i < n; i++) shifted[i] = ra[(i + shift) % n];
+    const v = pearson(rs, shifted);
+    nulls.push(v);
+    if (Math.abs(v) >= Math.abs(ic)) extreme++;
+  }
+  return { ic, pValue: (extreme + 1) / (B + 1), nullSd: std(nulls), B };
+}
+
 // ── RNG con semilla ─────────────────────────────────────────────────────────
 
 /** Mulberry32: uniforme [0,1) determinístico. */
