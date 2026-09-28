@@ -40,9 +40,19 @@ export function calculateATR(candles, period = 14) {
   return result;
 }
 
-// Ventana del VWAP: 24 velas (≈1 día con velas de 1h). Antes se acumulaba desde la
-// primera vela de las ~250 (≈10 días), un "VWAP" anclado en un punto arbitrario.
-export const VWAP_WINDOW = 24;
+// Ventana del VWAP: 24 horas REALES, sea cual sea el timeframe de las velas (24 velas de 1h,
+// 6 de 4h). Antes eran 24 velas fijas: con velas de 4h serían 4 días.
+export const VWAP_WINDOW_MS = 24 * 3600 * 1000;
+
+/** Cantidad de velas que cubren VWAP_WINDOW_MS según el espaciado (mediana de las últimas diferencias). */
+export function vwapWindowCandles(candles) {
+  const ts = candles.slice(-11).map(c => c.timestamp).filter(Number.isFinite);
+  const diffs = [];
+  for (let i = 1; i < ts.length; i++) diffs.push(ts[i] - ts[i - 1]);
+  diffs.sort((a, b) => a - b);
+  const spacing = diffs.length ? diffs[Math.floor(diffs.length / 2)] : 0;
+  return spacing > 0 ? Math.max(1, Math.round(VWAP_WINDOW_MS / spacing)) : candles.length;
+}
 
 // Calcula VWAP (Volume Weighted Average Price) acumulado sobre las velas dadas
 export function calculateVWAP(candles) {
@@ -113,7 +123,7 @@ export function calculateAllIndicators(candles) {
   const ema200 = calculateEMA(candles, 200);
   const rsi = calculateRSI(candles, 14);
   const atr = calculateATR(candles, 14);
-  const vwap = calculateVWAP(candles.slice(-VWAP_WINDOW));
+  const vwap = calculateVWAP(candles.slice(-vwapWindowCandles(candles)));
   const swingPoints = findSwingPoints(candles, 5);
 
   // Obtener últimos valores

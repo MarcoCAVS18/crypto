@@ -1,5 +1,6 @@
 import express from 'express';
 import { getCryptoData, getHistoricalCandles } from '../services/marketData.js';
+import { GRANULARITY_SECONDS, planGranularity } from '../services/candles.js';
 import { calculateAllIndicators, analyzeVolume } from '../services/technicalAnalysis.js';
 import { calculateZones } from '../services/zoneCalculator.js';
 import { determineMarketMode } from '../services/marketMode.js';
@@ -58,9 +59,13 @@ router.get('/:symbol/candles', async (req, res) => {
       return res.status(400).json({ error: 'Símbolo no válido' });
     }
 
-    const granMap = { '1h': 3600, '4h': 14400, '1d': 86400 };
-    const gran = granMap[granularity] ?? 86400;
-    const cnt  = Math.min(300, Math.max(10, parseInt(count) || 120));
+    // Antes '15m' no estaba en el mapa y caía a diario (el gráfico "1D" mostraba 96 velas diarias)
+    const gran = GRANULARITY_SECONDS[granularity];
+    if (!gran) {
+      return res.status(400).json({ error: `Granularidad no válida. Usá: ${Object.keys(GRANULARITY_SECONDS).join(', ')}` });
+    }
+    planGranularity(gran); // valida que sea servible (nativa o agregable)
+    const cnt  = Math.min(500, Math.max(10, parseInt(count) || 120));
 
     const candles = await getHistoricalCandles(symbol, gran, cnt);
     res.json({ symbol, granularity, count: candles.length, candles });
@@ -74,7 +79,6 @@ router.get('/:symbol/candles', async (req, res) => {
 router.get('/:symbol', async (req, res) => {
   try {
     const { symbol } = req.params;
-    const { timeframe = '4h' } = req.query;
 
     // Validar símbolo
     if (!isValidSymbol(symbol.toUpperCase())) {
@@ -82,7 +86,7 @@ router.get('/:symbol', async (req, res) => {
     }
 
     // Obtener datos de mercado
-    const marketData = await getCryptoData(symbol.toUpperCase(), timeframe);
+    const marketData = await getCryptoData(symbol.toUpperCase());
 
     // Calcular indicadores técnicos
     const indicators = calculateAllIndicators(marketData.candles);
@@ -174,7 +178,7 @@ router.post('/decision', async (req, res) => {
     }
 
     // Obtener datos de mercado
-    const marketData = await getCryptoData(symbol.toUpperCase(), '4h');
+    const marketData = await getCryptoData(symbol.toUpperCase());
 
     // Calcular indicadores
     const indicators = calculateAllIndicators(marketData.candles);

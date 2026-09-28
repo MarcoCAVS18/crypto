@@ -42,3 +42,43 @@ test('humo: /api/chat sin API key responde 503 y sin mensaje 400', async () => {
   assert.equal((await post({ message: 'hola' })).status, 503);
   assert.equal((await post({})).status, 400);
 });
+
+// ── P1/B15: ruta de velas para gráficos ─────────────────────────────────────
+
+function withCoinbaseMock(fn) {
+  return async () => {
+    const realFetch = globalThis.fetch;
+    const seen = [];
+    globalThis.fetch = (url, opts) => {
+      const u = String(url);
+      if (!u.includes('coinbase.com')) return realFetch(url, opts);       // el test llama al server local
+      const p = new URL(u).searchParams;
+      seen.push(Number(p.get('granularity')));
+      const end = Date.parse(p.get('end')), step = Number(p.get('granularity')) * 1000;
+      const rows = [];
+      for (let t = Math.floor(end / step) * step; t >= Date.parse(p.get('start')); t -= step) rows.push([t / 1000, 99, 101, 100, 100, 1]);
+      return Promise.resolve({ ok: true, json: async () => rows });
+    };
+    try { await fn(seen); } finally { globalThis.fetch = realFetch; }
+  };
+}
+
+test('P1/B15: /candles rechaza granularidades inválidas con 400 (sin llamar al exchange)', async () => {
+  const r = await fetch(`${base}/api/crypto/PAXG/candles?granularity=7m`);
+  assert.equal(r.status, 400);
+  assert.match((await r.json()).error, /Granularidad no válida/);
+});
+
+test('P1/B15: /candles?granularity=15m pide velas de 15 minutos (antes caía a diario)', withCoinbaseMock(async (seen) => {
+  const j = await (await fetch(`${base}/api/crypto/PAXG/candles?granularity=15m&count=96`)).json();
+  assert.deepEqual([...new Set(seen)], [900]);
+  assert.equal(j.candles.length, 96);
+  assert.equal(j.granularity, '15m');
+}));
+
+test('P1/B15: /candles?granularity=4h se arma desde 1h y responde velas de 4h', withCoinbaseMock(async (seen) => {
+  const j = await (await fetch(`${base}/api/crypto/PAXG/candles?granularity=4h&count=180`)).json();
+  assert.ok(seen.every(g => g === 3600));
+  assert.equal(j.candles.length, 180);
+  assert.equal(j.candles[1].timestamp - j.candles[0].timestamp, 4 * 3600 * 1000);
+}));
