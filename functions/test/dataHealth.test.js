@@ -250,5 +250,5 @@ test('versions: expone versiones y parámetros vigentes (coherentes con los mód
   assert.match(v.decision, /^p\d/); assert.match(v.snapshot, /^p\d/);
   assert.equal(v.parameters.aiWeight, 0.10);
   assert.ok(v.parameters.modeExit < v.parameters.modeEnter);
-  assert.equal(v.parameters.defaultCosts.feeBps, 50);
+  assert.equal(v.parameters.defaultCosts.feeBps, 10);   // Binance spot 0.10 %
 });

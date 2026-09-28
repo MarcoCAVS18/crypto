@@ -5,7 +5,8 @@
 //    La lógica anterior hacía justo eso: fracción de capital 0.65/0.80/1.0 según el score, más recortes por
 //    COT/tasa real/GVZ/tendencia (que ya son componentes del score: se contaban dos veces).
 //  - Comprar MÁS cuando el score está BAJO lo abarató un 0.34 % (hold-out 0.24 %; p 0.003 en ambos). Efecto CHICO:
-//    menor que una comisión. Por eso el tilt está acotado (×0.5–×1.5) y el resto no cambia.
+//    similar a 3 comisiones de Binance (0.1 %): existe, pero es fina y con pocas muestras independientes. Por eso el tilt
+//    está acotado (×0.5–×1.5) y el resto no cambia.
 //  - La volatilidad realizada como señal de tamaño no mostró efecto (±0.01 %): no se usa.
 //  - La caída desde el máximo de 1 año (dd252) no se confirmó en el hold-out (p 0.35): no se usa.
 //
