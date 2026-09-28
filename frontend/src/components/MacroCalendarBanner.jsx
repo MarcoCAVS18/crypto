@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, Zap, Calendar, ChevronDown, ChevronUp, X } from 'lucide-react';
-import { getUpcomingEvents } from '../data/macroCalendar';
+import { fetchUpcomingEvents } from '../services/api';
 
 // Umbrales de urgencia
 const URGENCY = {
@@ -32,11 +32,25 @@ export function MacroCalendarBanner({ symbol }) {
   const [expanded, setExpanded] = useState(false);
   const [dismissed, setDismissed] = useState(false);
 
-  const events = getUpcomingEvents(21, symbol);
+  const [events, setEvents] = useState([]);
+
+  // El calendario vive en el backend (una sola fuente de verdad); se refresca cada 30 min
+  useEffect(() => {
+    let cancelled = false;
+    const load = () =>
+      fetchUpcomingEvents(21, symbol)
+        .then(d => { if (!cancelled) setEvents(d.events ?? []); })
+        .catch(() => { if (!cancelled) setEvents([]); });
+    load();
+    const t = setInterval(load, 30 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [symbol]);
+
   if (!events.length || dismissed) return null;
 
   const next = events[0];
-  const urg = getUrgency(next.daysUntil);
+  const released = next.phase === 'released';
+  const urg = released ? URGENCY.today : getUrgency(next.daysUntil);
   const hasMore = events.length > 1;
   const isUrgent = next.daysUntil <= 1;
   const isSoon = next.daysUntil <= 5;
@@ -76,8 +90,11 @@ export function MacroCalendarBanner({ symbol }) {
               </div>
               <p className={`text-xs mt-0.5 ${urg.sub}`}>
                 {formatDate(next.date, next.daysUntil)}
+                {released && ' · Publicado hace pocas horas — volatilidad posible'}
+                {!released && next.daysUntil === 0 && next.hoursUntil > 0 && ` · en ~${Math.max(1, Math.round(next.hoursUntil))} h`}
                 {next.daysUntil > 1 && ` · en ${next.daysUntil} días`}
-                {isSoon && ` · ${next.note}`}
+                {!released && isSoon && ` · ${next.note}`}
+                {next.verified === false && ' · fecha por confirmar'}
               </p>
             </div>
 

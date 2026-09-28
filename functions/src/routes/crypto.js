@@ -226,7 +226,7 @@ router.post('/decision', async (req, res) => {
           // Clave de caché determinista: depende del activo, acción, intensidad
           // y qué eventos están próximos (no de precios — el riesgo de calendario
           // es el mismo para cualquier señal BUY del mismo día)
-          const eventsKey    = upcomingEvents.map(e => `${e.name}:${e.daysUntil}`).join(',');
+          const eventsKey    = upcomingEvents.map(e => `${e.name}:${e.daysUntil}:${e.phase}`).join(',');
           const cacheKey     = `calrisk_${symbol}_${decision.action}_${decision.strength}_${eventsKey}`;
           let   calendarRisk = await getAiCache(cacheKey);
 

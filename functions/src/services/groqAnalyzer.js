@@ -156,8 +156,14 @@ export async function analyzeCalendarRisk(asset, decision, upcomingEvents, marke
     ? 'PAXG (oro tokenizado — sensible a tasas, dólar e inflación)'
     : 'BTC (Bitcoin — sensible a liquidez global y risk-off)';
 
+  const whenText = (e) =>
+    e.phase === 'released' ? 'YA PUBLICADO hace pocas horas (volatilidad posible)'
+    : e.daysUntil === 0    ? `HOY (en ~${Math.max(1, Math.round(e.hoursUntil ?? 1))} h)`
+    : e.daysUntil === 1    ? 'MAÑANA'
+    :                        `en ${e.daysUntil} días`;
+
   const eventsText = upcomingEvents
-    .map(e => `  • ${e.fullName} en ${e.daysUntil} día${e.daysUntil === 1 ? '' : 's'} (impacto: ${e.impact === 'critical' ? 'CRÍTICO' : 'ALTO'})`)
+    .map(e => `  • ${e.fullName} ${whenText(e)} (impacto: ${e.impact === 'critical' ? 'CRÍTICO' : 'ALTO'})`)
     .join('\n');
 
   const mktText = [
