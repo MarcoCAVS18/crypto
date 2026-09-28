@@ -29,7 +29,7 @@ router.get('/:symbol/decisions', async (req, res) => {
       return res.status(400).json({ error: 'Símbolo no válido' });
     }
 
-    const raw = await getDecisionsBySymbol(symbol, limit);
+    const raw = await getDecisionsBySymbol(symbol, limit, { throwOnError: true });
     const decisions = raw.map(d => {
       const ts = d.timestamp?.toDate?.() ?? new Date(d.timestamp);
       return {

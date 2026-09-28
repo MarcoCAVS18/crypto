@@ -159,3 +159,8 @@ test('B10: una falla de lectura devuelve [] en vez de romper la decisión', asyn
   _setDbForTests({ collection: () => { throw new Error('boom'); } });
   assert.deepEqual(await getDecisionsBySymbol('PAXG', 5), []);
 });
+
+test('el endpoint del historial puede pedir que una falla de lectura NO se disfrace de "sin señales"', async () => {
+  _setDbForTests({ collection: () => { throw new Error('boom'); } });
+  await assert.rejects(() => getDecisionsBySymbol('PAXG', 5, { throwOnError: true }), /boom/);
+});

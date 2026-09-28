@@ -156,7 +156,8 @@ export async function getGoldContext(forceRefresh = false) {
 
   // Un análisis fallido no debe quedar cacheado tanto como uno bueno: antes el error de Groq
   // (p. ej. un modelo deprecado) seguía a la vista 2 h aun después de arreglarlo.
-  const ttlHours = analysisError ? FAILED_ANALYSIS_TTL_HOURS : GOLD_CONTEXT_TTL_HOURS;
+  // Sin titulares tampoco se cachea 2 h: si los feeds fallaron un momento, las noticias no deben faltar toda la ventana.
+  const ttlHours = analysisError || headlines.length === 0 ? FAILED_ANALYSIS_TTL_HOURS : GOLD_CONTEXT_TTL_HOURS;
   await setGoldContextCache(context, ttlHours).catch(e =>
     console.warn('[GoldContext] No se pudo guardar caché:', e.message)
   );

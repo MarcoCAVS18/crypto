@@ -52,7 +52,9 @@ export async function getDecisions(limit = 20) {
 // y no exige un índice compuesto (deploy.yml no despliega firestore:indexes). Antes se pedía
 // `where(symbol).limit(n*3)` SIN orden, que devuelve un subconjunto arbitrario (orden por ID
 // automático) y ordenaba solo esa muestra.
-export async function getDecisionsBySymbol(symbol, limit = 10) {
+// `throwOnError`: el endpoint del historial necesita distinguir "sin señales" de "falló la lectura" (antes ambos
+// llegaban como lista vacía y la UI mostraba "sin señales" sin decir que algo estaba roto).
+export async function getDecisionsBySymbol(symbol, limit = 10, { throwOnError = false } = {}) {
   try {
     const prefix = decisionIdPrefix(symbol);
     const docId = FieldPath.documentId();
@@ -80,6 +82,7 @@ export async function getDecisionsBySymbol(symbol, limit = 10) {
     return [...fresh, ...legacy].sort((a, b) => millis(b) - millis(a)).slice(0, limit);
   } catch (err) {
     console.warn('[DB] getDecisionsBySymbol failed:', err.message);
+    if (throwOnError) throw err;
     return [];
   }
 }
