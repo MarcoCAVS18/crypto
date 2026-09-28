@@ -239,7 +239,7 @@ Sin contrastar (`verified: false`, "fecha por confirmar"): PCE sep (30-oct), NFP
 - Siguiente: P2 (hecha, ver abajo) → P3.
 
 ### P2 — Backtester y recalibración (rama `claude/paxg-phase2-backtest`)
-- Tests: 258 en `functions/test` + 11 en `frontend`; `vite build` OK. Nuevos: `backtest.{stats,features,walkforward,dca,run}.test.js`, `p2runtime.test.js`.
+- Tests: 259 en `functions/test` + 11 en `frontend`; `vite build` OK. Nuevos: `backtest.{stats,features,walkforward,dca,run}.test.js`, `p2runtime.test.js`.
 - Módulos nuevos (`functions/src/backtest/`): `stats` (ridge, logística, Spearman, permutación, Brier), `timeseries` (rezagos), `indicators`, `features` (19 variables, 3 horizontes), `walkForward`, `candidates` (menú + veredicto), `ruleScore` (réplica diaria del score, reutiliza los mapeos de producción), `dcaSim`, `data` (Yahoo/FRED/Stooq/COT), `run`, `report`; CLI `scripts/backtest.mjs`; workflow `backtest.yml`. Runtime: `previousMode.js`, `decoupling.js`, `atrPercentile`, `parseCotHistory`.
 - Hallazgos técnicos del proceso (detalle en `docs/BACKTEST.md`): p-values analíticos optimistas → permutación; sobreajuste del ridge de 19 variables incluso con señal fuerte; sesgo negativo del IC OOS sobre ruido; falsos positivos del placebo de DCA si se baraja por ventana; **fuga real corregida**: las etiquetas a h días de las últimas filas previas al hold-out miraban dentro del hold-out.
 - Comportamiento que cambia en producción: histéresis del modo de oro, ATR por percentil en el técnico de oro, `getCOTData` pide 160 semanas (percentil), `getFredMacro` devuelve `history` de la tasa real (se retira antes de cachear), snapshots `p2`.
