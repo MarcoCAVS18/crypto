@@ -40,7 +40,11 @@ export function calculateATR(candles, period = 14) {
   return result;
 }
 
-// Calcula VWAP (Volume Weighted Average Price)
+// Ventana del VWAP: 24 velas (≈1 día con velas de 1h). Antes se acumulaba desde la
+// primera vela de las ~250 (≈10 días), un "VWAP" anclado en un punto arbitrario.
+export const VWAP_WINDOW = 24;
+
+// Calcula VWAP (Volume Weighted Average Price) acumulado sobre las velas dadas
 export function calculateVWAP(candles) {
   let cumulativeTPV = 0;
   let cumulativeVolume = 0;
@@ -50,7 +54,8 @@ export function calculateVWAP(candles) {
     const typicalPrice = (candle.high + candle.low + candle.close) / 3;
     cumulativeTPV += typicalPrice * candle.volume;
     cumulativeVolume += candle.volume;
-    vwapValues.push(cumulativeTPV / cumulativeVolume);
+    // Sin volumen acumulado (velas de volumen 0) el VWAP degenera al precio típico
+    vwapValues.push(cumulativeVolume > 0 ? cumulativeTPV / cumulativeVolume : typicalPrice);
   }
 
   return vwapValues;
@@ -108,7 +113,7 @@ export function calculateAllIndicators(candles) {
   const ema200 = calculateEMA(candles, 200);
   const rsi = calculateRSI(candles, 14);
   const atr = calculateATR(candles, 14);
-  const vwap = calculateVWAP(candles);
+  const vwap = calculateVWAP(candles.slice(-VWAP_WINDOW));
   const swingPoints = findSwingPoints(candles, 5);
 
   // Obtener últimos valores
@@ -134,12 +139,20 @@ export function calculateAllIndicators(candles) {
   };
 }
 
-// Analiza el volumen actual respecto al promedio
+// Analiza el volumen de la última vela respecto al promedio de las `period` velas
+// ANTERIORES (la vela actual no entra en su propio promedio). Se asume que la última
+// vela está cerrada (ver normalizeCandles).
 export function analyzeVolume(candles, period = 20) {
   const volumes = candles.map(c => c.volume);
-  const recentVolumes = volumes.slice(-period);
-  const avgVolume = recentVolumes.reduce((a, b) => a + b, 0) / period;
   const currentVolume = volumes[volumes.length - 1];
+  const previous = volumes.slice(-(period + 1), -1);
+  const avgVolume = previous.length > 0
+    ? previous.reduce((a, b) => a + b, 0) / previous.length
+    : 0;
+
+  if (!(avgVolume > 0) || !Number.isFinite(currentVolume)) {
+    return { current: currentVolume, average: avgVolume, ratio: 1, status: 'normal' };
+  }
 
   const ratio = currentVolume / avgVolume;
 

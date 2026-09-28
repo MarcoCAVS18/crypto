@@ -8,6 +8,9 @@ const KNOWN_PAIRS = {
 
 const cache = {};
 
+// Velas reales de hasta 30 min se consideran aceptables si Coinbase falla un instante
+const STALE_CANDLES_MAX_MS = 30 * 60 * 1000;
+
 function getPair(symbol) {
   return KNOWN_PAIRS[symbol] ?? `${symbol}-USD`;
 }
@@ -38,15 +41,25 @@ export async function getCryptoData(symbol) {
     const open = parseFloat(stats.open) || price;
     const change = ((price - open) / open) * 100;
 
-    // Obtener velas reales (1h, 250 candles = ~10 días, suficiente para EMA200)
+    // Obtener velas reales (1h, 250 candles = ~10 días). Solo velas CERRADAS.
+    // Si Coinbase falla: 1) reutilizar las últimas velas reales (< 30 min) como 'stale';
+    // 2) recién entonces sintéticas, que el motor de decisión NUNCA usa para operar.
     let candles;
     let candlesSource = 'real';
     try {
       candles = await fetchRealCandles(pair, 3600, 250);
     } catch (candleError) {
-      console.warn(`[${symbol}] Falló fetch de candles reales, usando sintéticas:`, candleError.message);
-      candles = generateSyntheticCandles(high, low, volume);
-      candlesSource = 'synthetic';
+      const prev = cache[symbol];
+      const prevAgeMs = prev ? Date.now() - new Date(prev.timestamp).getTime() : Infinity;
+      if (prev && prev.candlesSource !== 'synthetic' && prevAgeMs < STALE_CANDLES_MAX_MS) {
+        console.warn(`[${symbol}] Falló fetch de candles, reutilizando velas reales de hace ${Math.round(prevAgeMs / 60000)} min:`, candleError.message);
+        candles = prev.candles;
+        candlesSource = 'stale';
+      } else {
+        console.warn(`[${symbol}] Falló fetch de candles reales, usando sintéticas:`, candleError.message);
+        candles = generateSyntheticCandles(high, low, volume);
+        candlesSource = 'synthetic';
+      }
     }
 
     const data = {
@@ -75,13 +88,42 @@ export async function getCryptoData(symbol) {
 }
 
 /**
- * Obtiene velas OHLCV reales desde la API pública de Coinbase Exchange.
+ * Convierte filas de Coinbase `[time, low, high, open, close, volume]` (newest-first)
+ * en velas ordenadas cronológicamente, descartando la vela EN FORMACIÓN.
+ * Una vela en curso tiene volumen parcial y sesga RSI/ATR/volumen (p. ej. los primeros
+ * minutos de cada hora parecían "volumen muy bajo").
+ *
+ * @param {Array} rows
+ * @param {number} granularity - segundos por vela
+ * @param {number} now         - ms; inyectable para tests
+ */
+export function normalizeCandles(rows, granularity, now = Date.now()) {
+  if (!Array.isArray(rows)) return [];
+  const gMs = granularity * 1000;
+  return rows
+    .map(([time, low, high, open, close, volume]) => ({
+      timestamp: time * 1000,
+      open: parseFloat(open),
+      high: parseFloat(high),
+      low: parseFloat(low),
+      close: parseFloat(close),
+      volume: parseFloat(volume)
+    }))
+    .filter(c => Number.isFinite(c.timestamp) && Number.isFinite(c.close) && Number.isFinite(c.high) && Number.isFinite(c.low))
+    .sort((a, b) => a.timestamp - b.timestamp)
+    .filter(c => c.timestamp + gMs <= now);
+}
+
+/**
+ * Obtiene velas OHLCV reales cerradas desde la API pública de Coinbase Exchange.
  * Devuelve hasta `count` velas de `granularity` segundos cada una.
  * Coinbase limita a 300 velas por request.
  */
 async function fetchRealCandles(pair, granularity = 3600, count = 250) {
   const end = new Date();
-  const start = new Date(end.getTime() - count * granularity * 1000);
+  // +1: la vela en formación se descarta, así que pedimos una de más
+  const requested = Math.min(count + 1, 300);
+  const start = new Date(end.getTime() - requested * granularity * 1000);
 
   const url = `https://api.exchange.coinbase.com/products/${pair}/candles` +
     `?start=${start.toISOString()}&end=${end.toISOString()}&granularity=${granularity}`;
@@ -99,17 +141,9 @@ async function fetchRealCandles(pair, granularity = 3600, count = 250) {
     throw new Error('No candle data received');
   }
 
-  // Coinbase devuelve [time, low, high, open, close, volume] en orden newest-first
-  return data
-    .reverse()
-    .map(([time, low, high, open, close, volume]) => ({
-      timestamp: time * 1000,
-      open: parseFloat(open),
-      high: parseFloat(high),
-      low: parseFloat(low),
-      close: parseFloat(close),
-      volume: parseFloat(volume)
-    }));
+  const candles = normalizeCandles(data, granularity, end.getTime());
+  if (candles.length === 0) throw new Error('No closed candles received');
+  return candles.slice(-count);
 }
 
 /**

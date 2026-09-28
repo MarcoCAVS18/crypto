@@ -211,7 +211,10 @@ router.post('/decision', async (req, res) => {
       }
     }
 
-    let decision = makeDecision(marketMode, zones, marketData.price, userState, indicators, symbol.toUpperCase(), portfolioContext);
+    let decision = makeDecision(
+      marketMode, zones, marketData.price, userState, indicators, symbol.toUpperCase(), portfolioContext,
+      { candlesSource: marketData.candlesSource }
+    );
 
     // ── Modulación por calendario macro (solo en BUY, via Groq) ───────────────
     // Solo llamamos a Groq si la señal es BUY y hay eventos críticos en 7 días.

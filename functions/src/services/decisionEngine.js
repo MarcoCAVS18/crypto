@@ -7,12 +7,23 @@
  * @param {object} userState       - { cashPercent, mode, totalCapital }
  * @param {object} indicators      - { rsi, atr, ema, trendShort, trendLong }
  * @param {string} symbol          - e.g. 'BTC', 'PAXG'
- * @param {object|null} portfolioContext - { units, avgBuyPrice, netInvested, hasPosition, ... }
+ * @param {object|null} portfolioContext - { units, avgBuyPrice, costBasis, hasPosition, ... }
+ * @param {object} meta            - { candlesSource: 'real'|'stale'|'synthetic' }
  */
-export function makeDecision(marketMode, zones, currentPrice, userState, indicators = {}, symbol = '', portfolioContext = null) {
+export function makeDecision(marketMode, zones, currentPrice, userState, indicators = {}, symbol = '', portfolioContext = null, meta = {}) {
   const { cashPercent, mode: userMode, totalCapital = 0 } = userState;
-  const { rsi = 50, atr = null } = indicators;
-  const currentZone = zones.currentZone;
+  const { rsi = 50 } = indicators;
+
+  // Nunca operar con datos sintéticos: son aleatorios, no mercado.
+  if (meta?.candlesSource === 'synthetic') {
+    return {
+      action: 'WAIT',
+      strength: 'fuerte',
+      reason: 'Datos de mercado no confiables (velas sintéticas)',
+      recommendation: 'No se pudieron obtener las velas reales del exchange. Refrescá en unos minutos; no operes con esta señal.',
+      operations: []
+    };
+  }
 
   // Sin cash suficiente = esperar siempre
   if (cashPercent < 10) {
