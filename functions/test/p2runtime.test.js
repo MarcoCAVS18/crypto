@@ -203,3 +203,38 @@ test('determineGoldMarketMode muestra la advertencia de desacople pero no cambia
   assert.ok(b.reasons.some(r => /desacoplado/.test(r)));
   assert.ok(!a.reasons.some(r => /desacoplado/.test(r)));
 });
+
+// ── COT: pedido liviano con reintento ───────────────────────────────────────
+import { getCOTData, cotUrl } from '../src/services/macroService.js';
+
+test('cotUrl pide solo las columnas necesarias y ordena por fecha del reporte', () => {
+  const u = cotUrl(160);
+  assert.match(u, /\$select=as_of_date_in_form_yymmdd,report_date_as_yyyy_mm_dd,noncomm_positions_long_all,noncomm_positions_short_all,open_interest_all/);
+  assert.match(u, /\$limit=160/);
+  assert.match(u, /GOLD%20-%20COMMODITY%20EXCHANGE%20INC\./);
+});
+
+test('getCOTData: si el pedido de 160 semanas falla, reintenta con 4 y devuelve la posición actual sin percentil', async () => {
+  const rows = [cotRow(200000, 50000, 'ahora'), cotRow(190000, 50000, 'ant'), cotRow(180000, 50000, 'a2'), cotRow(170000, 50000, 'a3')];
+  const seen = [];
+  const fetchImpl = async (url) => {
+    seen.push(url);
+    if (/limit=160/.test(url)) throw new Error('timeout');
+    return { ok: true, json: async () => rows };
+  };
+  const warn = console.warn; console.warn = () => {};
+  try {
+    const r = await getCOTData({ fetchImpl });
+    assert.equal(r.netSpec, 150000);
+    assert.equal(r.netSpecPercentile, null);
+    assert.equal(seen.length, 2);
+    assert.match(seen[1], /\$limit=4/);
+  } finally { console.warn = warn; }
+});
+
+test('getCOTData: si ambos fallan lanza (el modo degradado lo muestra); con HTTP 500 también reintenta', async () => {
+  const warn = console.warn; console.warn = () => {};
+  try {
+    await assert.rejects(() => getCOTData({ fetchImpl: async () => ({ ok: false, status: 500 }) }), /HTTP 500/);
+  } finally { console.warn = warn; }
+});

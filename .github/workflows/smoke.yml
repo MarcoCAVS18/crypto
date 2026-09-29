@@ -1,0 +1,70 @@
+name: Smoke test (sitio desplegado)
+
+# Verifica el sitio REAL de Firebase Hosting: la web carga, la API responde y qué le falta (clave de Groq, FRED, snapshots).
+# Solo lee (GET): no despliega nada. Se ejecuta solo después de cada deploy y a mano (Actions → Smoke test → Run workflow).
+on:
+  workflow_dispatch:
+  # Se ejecuta al empujar cambios de este archivo en la rama de la fase (así se puede probar antes de mergear)
+  push:
+    branches: [claude/firebase-deploy-functional]
+    paths: ['.github/workflows/smoke.yml']
+  workflow_run:
+    workflows: ['Deploy to Firebase']
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Probar el sitio y la API
+        env:
+          PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+        run: |
+          if [ -z "$PROJECT_ID" ]; then echo "::error::Falta el secreto FIREBASE_PROJECT_ID"; exit 1; fi
+          BASE="https://${PROJECT_ID}.web.app"
+          get() { curl -sS --retry 6 --retry-delay 10 --retry-all-errors -m 60 "$@"; }
+
+          {
+            echo "## Smoke test del sitio desplegado"
+            echo
+
+            # 1) La web carga (Firebase Hosting)
+            code=$(get -o /tmp/index.html -w '%{http_code}' "$BASE/" || echo 000)
+            if [ "$code" = "200" ] && grep -q 'id="root"' /tmp/index.html; then echo "- ✅ Web: HTTP 200 y la app está en el HTML"
+            else echo "- ❌ Web: HTTP $code o el HTML no contiene la app"; fi
+
+            # 2) La API responde JSON (rewrite /api/** → Cloud Function)
+            code=$(get -o /tmp/health.json -w '%{http_code}' "$BASE/api/health" || echo 000)
+            if [ "$code" = "200" ] && jq -e '.status == "ok"' /tmp/health.json >/dev/null 2>&1; then
+              echo "- ✅ API: /api/health OK"; jq -r '.warnings[]? | "  - ⚠ " + .' /tmp/health.json
+            else echo "- ❌ API: /api/health devolvió HTTP $code (¿el rewrite a la función o el deploy fallaron?)"; fi
+
+            # 3) Diagnóstico profundo (informativo)
+            code=$(get -o /tmp/deep.json -w '%{http_code}' "$BASE/api/health/deep" || echo 000)
+            if [ "$code" = "200" ] && jq -e . /tmp/deep.json >/dev/null 2>&1; then
+              echo "- $(jq -r 'if .status == "ok" then "✅" else "⚠️" end' /tmp/deep.json) Estado profundo: $(jq -r .status /tmp/deep.json)"
+              jq -r '"  - Claves: Groq=" + (.config.groqKey|tostring) + " · FRED=" + (.config.fredKey|tostring) + " · VAPID=" + (.config.vapidKeys|tostring) + " · modelo=" + .config.groqModel' /tmp/deep.json
+              jq -r '"  - Versiones: decisión " + .versions.decision + " · snapshot " + .versions.snapshot + " · DCA " + .versions.dcaPolicy' /tmp/deep.json 2>/dev/null || true
+              jq -r '.warnings[]? | "  - ⚠ " + .' /tmp/deep.json
+            else echo "- ⚠️ /api/health/deep: HTTP $code"; fi
+
+            # 4) Clave de Groq (sin gastar tokens; sin mostrar los últimos caracteres en un log público)
+            code=$(get -o /tmp/ai.json -w '%{http_code}' "$BASE/api/health/ai" || echo 000)
+            if [ "$code" = "200" ] && jq -e . /tmp/ai.json >/dev/null 2>&1; then
+              if jq -e '.ok == true' /tmp/ai.json >/dev/null; then echo "- ✅ Groq: la clave funciona · modelo disponible: $(jq -r .modelAvailable /tmp/ai.json)"
+              else echo "- ❌ Groq: $(jq -r .hint /tmp/ai.json) (parece: $(jq -r '.keyInfo.looksLike // "sin clave"' /tmp/ai.json), largo: $(jq -r '.keyInfo.length // 0' /tmp/ai.json))"; fi
+            else echo "- ⚠️ /api/health/ai: HTTP $code"; fi
+
+            # 5) Calendario y métricas (informativo)
+            code=$(get -o /dev/null -w '%{http_code}' "$BASE/api/calendar?days=30&symbol=PAXG" || echo 000); echo "- Calendario: HTTP $code"
+            code=$(get -o /tmp/metrics.json -w '%{http_code}' "$BASE/api/metrics/PAXG" || echo 000)
+            if [ "$code" = "200" ]; then echo "- Métricas PAXG: $(jq -r '"\(.records) señales etiquetadas (\(.complete) completas)"' /tmp/metrics.json)"; else echo "- Métricas PAXG: HTTP $code (¿todavía no se desplegó la fase 4?)"; fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+          # falla el job si la web o la API no responden (el resto es informativo)
+          if grep -q '❌ Web\|❌ API' "$GITHUB_STEP_SUMMARY"; then exit 1; fi
