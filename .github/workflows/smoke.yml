@@ -60,7 +60,14 @@ jobs:
               else echo "- ❌ Groq: $(jq -r .hint /tmp/ai.json) (parece: $(jq -r '.keyInfo.looksLike // "sin clave"' /tmp/ai.json), largo: $(jq -r '.keyInfo.length // 0' /tmp/ai.json))"; fi
             else echo "- ⚠️ /api/health/ai: HTTP $code"; fi
 
-            # 5) Calendario y métricas (informativo)
+            # 5) Noticias: cada feed probado DESDE la función (por qué faltan titulares)
+            code=$(get -o /tmp/news.json -w '%{http_code}' "$BASE/api/health/news" || echo 000)
+            if [ "$code" = "200" ] && jq -e . /tmp/news.json >/dev/null 2>&1; then
+              echo "- Noticias: $(jq -r '"\(.okFeeds)/\(.totalFeeds) feeds con titulares frescos desde la función"' /tmp/news.json)"
+              jq -r '(.gold + .btc)[] | "  - " + (if .ok then "✅" else "❌" end) + " " + .feed + " · HTTP " + ((.status // "—")|tostring) + " · items " + (.rawItems|tostring) + "/" + (.fresh|tostring) + " frescos" + (if .hint then " · " + .hint else "" end)' /tmp/news.json
+            else echo "- ⚠️ /api/health/news: HTTP $code (todavía no desplegado)"; fi
+
+            # 6) Calendario y métricas (informativo)
             code=$(get -o /dev/null -w '%{http_code}' "$BASE/api/calendar?days=30&symbol=PAXG" || echo 000); echo "- Calendario: HTTP $code"
             code=$(get -o /tmp/metrics.json -w '%{http_code}' "$BASE/api/metrics/PAXG" || echo 000)
             if [ "$code" = "200" ]; then echo "- Métricas PAXG: $(jq -r '"\(.records) señales etiquetadas (\(.complete) completas)"' /tmp/metrics.json)"; else echo "- Métricas PAXG: HTTP $code (¿todavía no se desplegó la fase 4?)"; fi

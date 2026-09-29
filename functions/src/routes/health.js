@@ -7,6 +7,7 @@ import { getGoldContextCache, getLatestSnapshots } from '../config/database.js';
 import { getCalendarCoverage } from '../data/macroCalendar.js';
 import { summarizeSources } from '../services/dataHealth.js';
 import { GROQ_MODEL, describeApiKey, probeGroqKey } from '../services/groqChat.js';
+import { diagnoseAllFeeds } from '../services/newsService.js';
 
 const router = express.Router();
 
@@ -103,6 +104,17 @@ export const aiHealthRouter = express.Router();
 aiHealthRouter.get('/', async (_req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json(await probeGroqKey());
+});
+
+// GET /api/health/news — prueba cada feed de noticias DESDE la función (estado HTTP, redirecciones, items) para saber por qué
+// faltan titulares. Resultado cacheado 60 s: es un diagnóstico, no debe poder usarse para castigar a los feeds.
+export const newsHealthRouter = express.Router();
+let newsDiag = { at: 0, value: null };
+newsHealthRouter.get('/', async (_req, res) => {
+  res.set('Cache-Control', 'no-store');
+  if (!newsDiag.value || Date.now() - newsDiag.at > 60000) newsDiag = { at: Date.now(), value: await diagnoseAllFeeds() };
+  const all = [...newsDiag.value.gold, ...newsDiag.value.btc];
+  res.json({ checkedAt: new Date(newsDiag.at).toISOString(), okFeeds: all.filter(f => f.ok).length, totalFeeds: all.length, ...newsDiag.value });
 });
 
 export default router;

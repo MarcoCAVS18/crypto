@@ -1,13 +1,14 @@
 # Despliegue (Firebase)
 
 **Todo corre en Firebase** — `https://pal-crypto.web.app` / `https://pal-crypto.firebaseapp.com`: Hosting sirve el frontend (`frontend/dist`) y reescribe `/api/**` a la Cloud Function `api` (`us-central1`).
-Netlify y Render **ya no se usan**: `backend/` (Render) está obsoleto y Netlify no tiene proxy a la API.
+Netlify y Render **ya no se usan** y se eliminaron del repo (incluido `backend/`). Si todavía tenés el sitio de Netlify o el servicio de Render, borralos desde sus paneles.
 
 ## Flujo
 | Qué | Cómo |
 |---|---|
 | Deploy normal | Push/merge a `main` → `.github/workflows/deploy.yml` (Hosting + Functions: `api`, `zoneWatcher`, `snapshotJob`, `outcomeJob`) |
 | Verificar | Corre solo `.github/workflows/smoke.yml` después de cada deploy: carga la web, llama a la API y resume en el job qué falta (Groq, FRED, versiones, alertas). También a mano: Actions → *Smoke test* → Run workflow |
+| Noticias | `.github/workflows/news-relay.yml` (cada 30 min y a mano) trae los feeds desde GitHub Actions y los guarda en Firestore (`_ai_cache/headlines_relay_*`). Motivo: los mismos feeds dan ~14 titulares desde Actions/Render y ~1 desde Cloud Functions (limitan IPs de Google Cloud). La API usa el relé cuando sus consultas devuelven menos de 3. Los cron de Actions solo corren desde `main`: la primera vez, correlo a mano (*Run workflow*) |
 | Cambiaste un secreto de Firebase | Actions → *Deploy to Firebase* → Run workflow (las funciones leen los secretos al iniciar) |
 | Publicar índices y reglas de Firestore | El mismo *Run workflow* con `deploy_firestore` activado. **Probá `firestore.rules` en el emulador antes** |
 
