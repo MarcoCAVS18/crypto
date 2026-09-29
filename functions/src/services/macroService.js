@@ -135,9 +135,10 @@ export async function getMacroData() {
  * @returns {{ netSpec, weekChange, sentiment, longs, shorts, reportDate }}
  */
 const COT_BASE = 'https://publicreporting.cftc.gov/resource/6dca-aqww.json';
-// Solo las columnas necesarias: la fila completa de Socrata tiene ~100 campos y 160 filas tardaban demasiado
-// desde las IPs de Cloud Functions (el pedido de 12 s se abortaba y "faltaba COT" en el modo degradado).
-const COT_SELECT = 'as_of_date_in_form_yymmdd,report_date_as_yyyy_mm_dd,noncomm_positions_long_all,noncomm_positions_short_all,open_interest_all';
+// Solo las columnas necesarias. OJO: el dataset 6dca-aqww (CFTC, Legacy Futures Only) YA NO tiene la columna
+// `as_of_date_in_form_yymmdd`: pedirla (en $select o $order) devuelve HTTP 400 "no-such-column" y era la causa real de
+// "Datos degradados: faltan COT". La fecha del reporte está en `report_date_as_yyyy_mm_dd`.
+const COT_SELECT = 'report_date_as_yyyy_mm_dd,noncomm_positions_long_all,noncomm_positions_short_all,open_interest_all';
 
 export function cotUrl(limit) {
   return `${COT_BASE}?market_and_exchange_names=${encodeURIComponent('GOLD - COMMODITY EXCHANGE INC.')}` +
@@ -174,6 +175,13 @@ export async function getCOTData(opts = {}) {
   }
 }
 
+/** 'YYMMDD' (formato que espera dataHealth.parseYymmdd) a partir de la fecha del reporte; tolera el nombre de columna anterior. */
+export function cotReportDate(row) {
+  if (row?.as_of_date_in_form_yymmdd) return String(row.as_of_date_in_form_yymmdd);
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(row?.report_date_as_yyyy_mm_dd ?? ''));
+  return m ? `${m[1].slice(2)}${m[2]}${m[3]}` : null;
+}
+
 const cotNet = (r) => parseInt(r.noncomm_positions_long_all || 0, 10) - parseInt(r.noncomm_positions_short_all || 0, 10);
 
 /**
@@ -202,7 +210,7 @@ export function parseCotHistory(data) {
     ? Math.round((nets.filter(v => v <= netSpec).length / nets.length) * 1000) / 10
     : null;
 
-  return { netSpec, weekChange, sentiment, longs, shorts, reportDate: latest.as_of_date_in_form_yymmdd, netSpecPercentile, historyWeeks: nets.length };
+  return { netSpec, weekChange, sentiment, longs, shorts, reportDate: cotReportDate(latest), netSpecPercentile, historyWeeks: nets.length };
 }
 
 /**
