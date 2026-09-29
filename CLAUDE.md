@@ -34,7 +34,7 @@ Los tests usan `node --test` (sin dependencias extra). CI: `.github/workflows/ci
 
 - Idioma de UI y mensajes: español rioplatense (vos/tenés).
 - Un PR por fase de la hoja de ruta; commits chicos con tests. Nunca pushear a `main`.
-- Deploy: push a `main` → `.github/workflows/deploy.yml` (hosting + functions; **no** índices ni reglas de Firestore).
+- Deploy: todo corre en Firebase (`pal-crypto.web.app`); push a `main` → `deploy.yml` (hosting + functions; índices/reglas de Firestore **solo** con el redeploy manual y `deploy_firestore`); `smoke.yml` verifica el sitio real. Netlify/Render no se usan. Ver `docs/DEPLOY.md`.
 - No datos sintéticos en decisiones; toda degradación de datos se muestra al usuario.
 - Los servicios de `functions/src/services` son módulos ESM puros y testeables; evitá importar `firebase-admin` en ellos (usá `config/database.js` solo desde rutas/jobs).
 - Egress de la sesión de desarrollo puede estar bloqueado (Coinbase, Yahoo, FRED, Groq): los tests no deben depender de red.
