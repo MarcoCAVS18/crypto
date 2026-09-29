@@ -63,3 +63,42 @@ test('diagnoseFeed: feed sano, limitado (429), bloqueado (403), consentimiento, 
   assert.match(down.hint, /ECONNRESET/);
   assert.ok(!good.feed.includes('q=gold'), 'no se expone la query completa');
 });
+
+// ── relé (GitHub Actions → Firestore) ───────────────────────────────────────
+import { runRelay } from '../src/services/newsRelay.js';
+import { relayKeyFor, isHealthySource } from '../src/services/resilientHeadlines.js';
+
+test('relé reciente: con feeds bloqueados la API usa el relé y lo trata como fuente sana', async () => {
+  const c = memCache();
+  c.m.set(relayKeyFor('headlines_last_paxg'), { headlines: [h('r1', 2), h('r2', 3), h('r3', 4)], savedAt: NOW - 20 * 60e3, via: 'relay' });
+  const r = await withLastGood({ key: 'headlines_last_paxg', fresh: [h('uno', 1)], ...c, now: NOW });
+  assert.equal(r.source, 'live+relay');
+  assert.deepEqual(r.headlines.map(x => x.title), ['uno', 'r1', 'r2', 'r3']);
+  const solo = await withLastGood({ key: 'headlines_last_paxg', fresh: [], ...c, now: NOW });
+  assert.equal(solo.source, 'relay'); assert.ok(isHealthySource(solo.source));
+  assert.ok(!isHealthySource('saved') && !isHealthySource('none'));
+});
+
+test('relé viejo (>2 h) se usa pero como "guardado" (degradado), y el guardado propio no se pierde', async () => {
+  const c = memCache();
+  c.m.set('headlines_relay_btc', { headlines: [h('r1', 10)], savedAt: NOW - 5 * 3600e3 });
+  c.m.set('headlines_last_btc', { headlines: [h('s1', 20)], savedAt: NOW - 20 * 3600e3 });
+  const r = await withLastGood({ key: 'headlines_last_btc', fresh: [], ...c, now: NOW });
+  assert.equal(r.source, 'saved'); assert.deepEqual(r.headlines.map(x => x.title), ['r1', 's1']);
+});
+
+test('runRelay guarda solo con suficientes titulares, no pisa con pocos y sigue si un feed falla', async () => {
+  const c = memCache(); const logs = [];
+  const res = await runRelay({
+    now: NOW, log: (m) => logs.push(m), setCache: c.setCache,
+    targets: [
+      { key: 'headlines_last_paxg', fetch: async () => [h('a', 1), h('b', 1), h('c', 1)] },
+      { key: 'headlines_last_btc',  fetch: async () => [h('a', 1)] },
+      { key: 'headlines_last_eth',  fetch: async () => { throw new Error('boom'); } }
+    ]
+  });
+  assert.deepEqual(res.map(r => [r.key, r.count, r.saved]), [['headlines_relay_paxg', 3, true], ['headlines_relay_btc', 1, false], ['headlines_relay_eth', 0, false]]);
+  assert.equal(c.m.get('headlines_relay_paxg').via, 'relay'); assert.equal(c.m.get('headlines_relay_paxg').savedAt, NOW);
+  assert.ok(!c.m.has('headlines_relay_btc') && !c.m.has('headlines_relay_eth'));
+  assert.match(res[2].error, /boom/);
+});

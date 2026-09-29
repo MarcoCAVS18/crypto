@@ -14,7 +14,6 @@ Lee `docs/BACKTEST.md` antes de tocarlo (protocolo, hallazgos sobre ruido/sobrea
 
 - `functions/` — **API desplegada** (Firebase Functions v2, Express, Firestore). Fuente de verdad de la lógica de servidor.
 - `frontend/` — React + Vite + Zustand + Tailwind, desplegado en Firebase Hosting.
-- `backend/` — servidor **legacy** (Render + SQLite), duplica `functions/`. No recibe los arreglos de la hoja de ruta (ver auditoría D9).
 - `docs/` — documentación viva.
 
 ## Comandos
@@ -34,7 +33,7 @@ Los tests usan `node --test` (sin dependencias extra). CI: `.github/workflows/ci
 
 - Idioma de UI y mensajes: español rioplatense (vos/tenés).
 - Un PR por fase de la hoja de ruta; commits chicos con tests. Nunca pushear a `main`.
-- Deploy: todo corre en Firebase (`pal-crypto.web.app`); push a `main` → `deploy.yml` (hosting + functions; índices/reglas de Firestore **solo** con el redeploy manual y `deploy_firestore`); `smoke.yml` verifica el sitio real. Netlify/Render no se usan. Ver `docs/DEPLOY.md`.
+- Deploy: todo corre en Firebase (`pal-crypto.web.app`); push a `main` → `deploy.yml` (hosting + functions; índices/reglas de Firestore **solo** con el redeploy manual y `deploy_firestore`); `smoke.yml` verifica el sitio real. Netlify/Render se eliminaron (y `backend/`). Noticias: `news-relay.yml` (GitHub Actions, cada 30 min) las trae desde una IP no bloqueada y las guarda en Firestore; la API las usa cuando Cloud Functions recibe pocas. Ver `docs/DEPLOY.md`.
 - No datos sintéticos en decisiones; toda degradación de datos se muestra al usuario.
 - Los servicios de `functions/src/services` son módulos ESM puros y testeables; evitá importar `firebase-admin` en ellos (usá `config/database.js` solo desde rutas/jobs).
 - Egress de la sesión de desarrollo puede estar bloqueado (Coinbase, Yahoo, FRED, Groq): los tests no deben depender de red.

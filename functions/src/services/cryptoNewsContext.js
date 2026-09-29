@@ -4,7 +4,7 @@ import { getMacroData } from './macroService.js';
 import { getAssetHeadlines } from './newsService.js';
 import { analyzeAssetSentiment, translateHeadlines } from './groqAnalyzer.js';
 import { getAiCache, setAiCache } from '../config/database.js';
-import { withLastGood } from './resilientHeadlines.js';
+import { withLastGood, isHealthySource } from './resilientHeadlines.js';
 
 const CACHE_TTL_H = 2;
 const FAILED_TTL_H = 5 / 60;
@@ -96,7 +96,7 @@ export async function getCryptoNewsContext(symbol, forceRefresh = false) {
   // Un contexto sin titulares o con el análisis fallido se cachea poco: si fue un fallo pasajero de los feeds
   // o de Groq no debe faltar toda la ventana de 2 h. Se espera la escritura (en Cloud Functions el trabajo
   // posterior a la respuesta no está garantizado).
-  const ttl = analysisError || headlines.length === 0 ? FAILED_TTL_H : CACHE_TTL_H;
+  const ttl = analysisError || headlines.length === 0 || !isHealthySource(resilient.source) ? FAILED_TTL_H : CACHE_TTL_H;
   await setAiCache(cacheKey, ctx, ttl).catch(e =>
     console.warn(`[CryptoNews:${symbol}] Cache write failed:`, e.message)
   );
