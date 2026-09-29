@@ -15,6 +15,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/firebase-deploy-functional
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: getCOTData() REAL con el código corregido
+        working-directory: functions
+        run: |
+          node --input-type=module -e "
+            const { getCOTData } = await import('./src/services/macroService.js');
+            const r = await getCOTData();
+            console.log(JSON.stringify({ netSpec: r.netSpec, weekChange: r.weekChange, sentiment: r.sentiment, reportDate: r.reportDate, netSpecPercentile: r.netSpecPercentile, historyWeeks: r.historyWeeks }, null, 2));
+          " | tee -a "$GITHUB_STEP_SUMMARY"
       - name: CFTC y API real
         env:
           PID: ${{ secrets.FIREBASE_PROJECT_ID }}
