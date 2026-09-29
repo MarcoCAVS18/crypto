@@ -13,6 +13,7 @@ const fredApiKey    = defineSecret('FRED_API_KEY');   // series macro de FRED (g
 import app from './src/app.js';
 import { handler as zoneWatcherHandler } from './src/scheduled/zoneWatcher.js';
 import { handler as snapshotHandler } from './src/scheduled/snapshotJob.js';
+import { handler as outcomeHandler } from './src/scheduled/outcomeJob.js';
 
 // ── API HTTP ──────────────────────────────────────────────────────────────────
 export const api = onRequest(
@@ -47,4 +48,15 @@ export const snapshotJob = onSchedule(
     secrets:        [groqApiKey, fredApiKey]
   },
   snapshotHandler
+);
+
+// ── Scheduled: etiquetado diario de resultados de las señales (1/5/20/60 días) ─
+export const outcomeJob = onSchedule(
+  {
+    schedule:       'every 24 hours',
+    region:         'us-central1',
+    memory:         '512MiB',
+    timeoutSeconds: 120
+  },
+  outcomeHandler
 );

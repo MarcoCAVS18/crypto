@@ -10,6 +10,7 @@ import calendarRoutes    from './routes/calendar.js';
 import healthRoutes, { aiHealthRouter } from './routes/health.js';
 import { getCalendarCoverage } from './data/macroCalendar.js';
 import futuresRoutes     from './routes/futures.js';
+import metricsRoutes     from './routes/metrics.js';
 
 const app = express();
 
@@ -24,6 +25,7 @@ app.use('/api/gold-context',  goldContextRoutes);
 app.use('/api/push',          pushRoutes);
 app.use('/api/chat',          chatRoutes);
 app.use('/api/calendar',      calendarRoutes);
+app.use('/api/metrics',       metricsRoutes);
 app.use('/api/health/deep',  healthRoutes);
 app.use('/api/health/ai',    aiHealthRouter);
 

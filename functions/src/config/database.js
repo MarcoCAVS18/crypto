@@ -29,6 +29,7 @@ export async function saveDecision(record, now = Date.now()) {
   try {
     await db().collection('decisions').doc(id).create({
       ...record,
+      ts: now,                                  // ms explícitos: los resultados se miden desde este instante
       timestamp: FieldValue.serverTimestamp()
     });
     return true;
@@ -85,6 +86,33 @@ export async function getDecisionsBySymbol(symbol, limit = 10, { throwOnError = 
     if (throwOnError) throw err;
     return [];
   }
+}
+
+// ── Resultados de las señales (P4) ────────────────────────────────────────────
+
+/** Guarda/actualiza el resultado etiquetado de una decisión (mismo ID que la decisión). */
+export async function saveOutcome(id, data) {
+  await db().collection('outcomes').doc(id).set({ ...data, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+}
+
+/** Resultados de un símbolo (más nuevo primero), por rango de ID: sin índice compuesto. */
+export async function getOutcomes(symbol, limit = 300) {
+  const prefix = decisionIdPrefix(symbol);
+  const docId = FieldPath.documentId();
+  const snap = await db().collection('outcomes')
+    .where(docId, '>=', prefix).where(docId, '<', prefix + '\uf8ff')
+    .orderBy(docId, 'desc').limit(limit).get();
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+/** Operaciones registradas por el usuario para un símbolo (lectura con Admin SDK). `ts` en ms desde `date`. */
+export async function getOperationsForSymbol(symbol, userId = null, limit = 500) {
+  const snap = await db().collection('portfolio_operations').where('symbol', '==', String(symbol).toUpperCase()).limit(limit).get();
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(o => !userId || (o.userId ?? 'marco') === userId)
+    .map(o => ({ type: o.type, symbol: o.symbol, ts: Date.parse(`${String(o.date).slice(0, 10)}T12:00:00Z`) || null }))
+    .filter(o => o.ts);
 }
 
 // ── Snapshots horarios del mercado (features point-in-time) ───────────────────
