@@ -1,5 +1,6 @@
 // Cliente HTTP para comunicación con el backend
 import axios from 'axios';
+import { looksLikeHtml, describeApiError, HTML_INSTEAD_OF_API } from '../utils/apiErrors';
 
 const API_URL = import.meta.env.VITE_API_URL ||
   (import.meta.env.DEV ? 'http://localhost:3001/api' : '/api');
@@ -11,11 +12,15 @@ const api = axios.create({
 });
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Un 200 con HTML = el sitio no tiene proxy hacia la API (devuelve su index.html)
+    if (looksLikeHtml(response.data)) return Promise.reject(Object.assign(new Error(HTML_INSTEAD_OF_API), { response }));
+    return response;
+  },
   (error) => {
-    const message = error.response?.data?.message || error.message || 'Error de conexión';
+    const message = describeApiError(error);
     console.error('API Error:', message);
-    return Promise.reject(new Error(message));
+    return Promise.reject(Object.assign(new Error(message), { response: error.response, status: error.response?.status }));
   }
 );
 

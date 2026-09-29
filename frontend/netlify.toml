@@ -2,6 +2,15 @@
   command = "npm run build"
   publish = "dist"
 
+# La API NO vive en Netlify (está en Firebase Functions, detrás de Firebase Hosting). Sin esta regla, /api/** caía en la
+# regla de abajo y devolvía el index.html con status 200: los pedidos "andaban" pero sin datos y sin ningún error.
+# Si el build define VITE_API_URL=https://<proyecto>.web.app/api la app llama directo a Firebase y esta regla no se usa.
+[[redirects]]
+  from = "/api/*"
+  to = "/api-not-configured.json"
+  status = 404
+  force = true
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
