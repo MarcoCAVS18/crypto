@@ -7,10 +7,6 @@ on:
   schedule:
     - cron: '7,37 * * * *'
   workflow_dispatch:
-  # Para probarlo en la rama antes de mergear (los cron solo corren desde la rama por defecto)
-  push:
-    branches: [claude/news-gcp-resilience]
-    paths: ['.github/workflows/news-relay.yml', 'functions/scripts/newsRelay.mjs', 'functions/src/services/newsRelay.js']
 
 permissions:
   contents: read
