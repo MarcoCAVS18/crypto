@@ -177,7 +177,7 @@ Cada fase = un PR. Marcar `[x]` al mergear.
 - [x] README reescrito (arquitectura real, jobs, secretos, diagnóstico).
 - [x] **Rate-limit** por IP (`middleware/rateLimit.js`): general 240/min, IA 20/min, refrescos 6/min, `/api/health/ai` 6/min; cabeceras de seguridad; `CORS_ORIGINS` opcional. **En memoria y por instancia** (Cloud Functions no comparte estado entre instancias): frena ráfagas, no es una defensa completa.
 - [x] Reglas de Firestore (`firestore.rules`): validación de esquema en `portfolio_operations` (crear/leer/borrar; sin edición) y `user_profiles` (crear una vez; solo se puede cambiar `cryptos`; sin borrar). **No autentican.**
-- [ ] **Autenticación real** (Firebase Auth) y **App Check**: no implementados. La app usa PIN + Firestore desde el cliente; el hash de un PIN corto es débil y cualquiera con la configuración web puede leer/borrar operaciones. Requiere migrar el acceso a Firestore a Auth (p. ej. anónima + reclamos personalizados) y activar App Check en la consola: no se puede hacer/probar sin acceso a tu proyecto y rompería el acceso actual si sale mal.
+- [x] **Autenticación por PIN en el servidor** (`routes/auth.js`, `services/pinAuth.js`, `middleware/session.js`): el navegador ya no toca Firestore. PIN de 4–8 dígitos verificado con scrypt (los PIN viejos, SHA-256 del cliente, se aceptan y se migran al iniciar sesión), bloqueo de 15 min tras 5 intentos fallidos por perfil, límite por IP en `/api/auth/*`, sesiones de 30 días (token aleatorio; solo se guarda su SHA-256), y portfolio por API que solo devuelve/borra lo del usuario autenticado (el `userId` sale de la sesión). `firestore.rules` pasa a **denegar todo** al cliente. Limitación: sigue siendo un PIN (un PIN corto con bloqueo aguanta mucho mejor que antes, pero no es Firebase Auth con email/proveedor). **App Check** sigue sin activarse (requiere la consola).
 - [ ] Núcleo puro compartido front/back: descartado por ahora (la lógica de decisión vive solo en `functions/`; el frontend solo duplica `portfolioMath`, con tests propios).
 
 ## 6. Decisiones abiertas / supuestos
@@ -289,3 +289,8 @@ Sin contrastar (`verified: false`, "fecha por confirmar"): PCE sep (30-oct), NFP
 ### Nota — exchange del usuario: Binance
 - Costos por defecto ajustados a Binance spot (0.10 % por orden). La operación registrada guarda `exchange` (por defecto "Binance") y `fee`.
 - **Datos de mercado siguen viniendo de Coinbase** a propósito: la API pública de Binance rechaza IPs de EE. UU. (HTTP 451) y las Cloud Functions corren en `us-central1`. PAXG cotiza casi igual en ambos (diferencia de centésimas de %), pero el precio de ejecución real en Binance puede diferir un poco del que muestra el dashboard.
+
+### Auth por PIN en el servidor (rama `claude/pin-auth-server-side`)
+- Diagnóstico previo (workflow *Firebase check* contra el proyecto real): el bundle publicado trae la configuración de Firebase y Firestore respondía 200 con la clave web; o sea que el fallo no era de configuración ni de reglas sino del acceso directo del navegador a Firestore (redes/bloqueadores que rompen su canal, o una PWA vieja cacheada), sin timeout en `hasProfile`. Ahora todo va por `/api` (mismo origen).
+- **Orden de despliegue:** (1) mergear y desplegar; (2) probar el login de cada perfil; (3) recién entonces `firebase deploy --only firestore:rules` (deploy manual con `deploy_firestore` si #53 está mergeado). Las sesiones anteriores (sin token) piden el PIN una vez.
+- Las operaciones existentes no se migran: se leen de la misma colección (`userId` o, para Marco, sin `userId`).

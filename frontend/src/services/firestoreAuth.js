@@ -1,62 +1,55 @@
-// Autenticación por PIN usando Firestore + Web Crypto API (sin librerías externas)
-import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../config/firebase';
+// Autenticación por PIN. Nombre histórico: YA NO usa Firestore desde el navegador. Todo pasa por la API (/api/auth/*):
+// el servidor guarda y verifica el PIN (scrypt), limita los intentos y entrega un token de sesión. Así la app no depende
+// de que el navegador pueda hablar con Firestore (redes/bloqueadores que lo impedían) y las reglas quedan cerradas.
+import api from './api';
+import { setToken, clearToken } from './session';
 
-const COL = 'user_profiles';
+const TIMEOUT = 20000;
+const errorCode = (err) => err?.response?.data?.code ?? null;
 
-// ── Helper: hash SHA-256 con salt usando Web Crypto API ──────────────────────
-
-async function hashPin(pin, userId) {
-  const salt = `${pin}:${userId}:crypto-ctx-v1`;
-  const encoder = new TextEncoder();
-  const data = encoder.encode(salt);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-// ── Verifica si el perfil ya tiene PIN configurado ───────────────────────────
-
+/** ¿El perfil ya tiene PIN? */
 export async function hasProfile(userId) {
-  const ref = doc(db, COL, userId);
-  const snap = await getDoc(ref);
-  return snap.exists();
+  const { data } = await api.get(`/auth/status/${encodeURIComponent(userId)}`, { timeout: TIMEOUT });
+  return !!data.exists;
 }
 
-// ── Crea el documento con el hash del PIN ────────────────────────────────────
-
+/** Crea el PIN y deja la sesión iniciada. */
 export async function setupPin(userId, pin) {
-  const pinHash = await hashPin(pin, userId);
-  const ref = doc(db, COL, userId);
-  await setDoc(ref, {
-    pinHash,
-    createdAt: serverTimestamp(),
-  });
+  const { data } = await api.post('/auth/setup', { userId, pin }, { timeout: TIMEOUT });
+  setToken(data.token);
+  return data;
 }
 
-// ── Verifica el PIN comparando el hash ───────────────────────────────────────
-
+/**
+ * Verifica el PIN. true = correcto (sesión iniciada); false = incorrecto (`err.attemptsLeft` no aplica: se devuelve false y
+ * el mensaje del servidor queda en `lastVerifyMessage`). Lanza si está bloqueado o si el servidor no responde.
+ */
+export let lastVerifyMessage = '';
 export async function verifyPin(userId, pin) {
-  const ref = doc(db, COL, userId);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) return false;
-  const { pinHash } = snap.data();
-  const attemptHash = await hashPin(pin, userId);
-  return attemptHash === pinHash;
+  lastVerifyMessage = '';
+  try {
+    const { data } = await api.post('/auth/login', { userId, pin }, { timeout: TIMEOUT });
+    setToken(data.token);
+    return true;
+  } catch (err) {
+    if (errorCode(err) === 'BAD_PIN') { lastVerifyMessage = err.message; return false; }
+    throw err;                      // BLOQUEADO (429), red caída, etc.: el mensaje ya viene en español del servidor
+  }
 }
 
-// ── Guarda los coins elegidos por el usuario ──────────────────────────────────
+export const isLockedError = (err) => errorCode(err) === 'LOCKED';
 
-export async function saveUserCryptos(userId, cryptos) {
-  const ref = doc(db, COL, userId);
-  await updateDoc(ref, { cryptos });
+export async function logoutServer() {
+  try { await api.post('/auth/logout', {}, { timeout: 8000 }); } catch { /* igual se borra el token local */ }
+  clearToken();
 }
 
-// ── Carga los coins guardados en Firestore (null si no hay documento) ─────────
+/** Monedas guardadas del perfil (null si no hay). Requiere sesión. */
+export async function getUserCryptos() {
+  const { data } = await api.get('/auth/me', { timeout: TIMEOUT });
+  return data.cryptos ?? null;
+}
 
-export async function getUserCryptos(userId) {
-  const ref = doc(db, COL, userId);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) return null;
-  return snap.data().cryptos ?? null;
+export async function saveUserCryptos(_userId, cryptos) {
+  await api.put('/auth/cryptos', { cryptos }, { timeout: TIMEOUT });
 }

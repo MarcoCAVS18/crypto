@@ -37,6 +37,7 @@ export function clientKey(req) {
 export const LIMITS = {
   ai:      { max: 20,  windowMs: 60000, name: 'IA' },          // /api/chat, refrescos de contexto, decisiones (llaman a Groq)
   refresh: { max: 6,   windowMs: 60000, name: 'refresco' },
+  auth:    { max: 15,  windowMs: 60000, name: 'inicio de sesión' },  // /api/auth/*: además hay bloqueo por perfil tras 5 PIN erróneos
   probe:   { max: 6,   windowMs: 60000, name: 'diagnóstico' },  // /api/health/ai (llama a Groq)
   general: { max: 240, windowMs: 60000, name: 'general' }
 };

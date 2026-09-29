@@ -1,5 +1,8 @@
 // Cliente HTTP para comunicación con el backend
 import axios from 'axios';
+import { looksLikeHtml, describeApiError, HTML_INSTEAD_OF_API } from '../utils/apiErrors';
+import { getToken, clearToken } from './session';
+import { useAuthStore } from '../store/authStore';
 
 const API_URL = import.meta.env.VITE_API_URL ||
   (import.meta.env.DEV ? 'http://localhost:3001/api' : '/api');
@@ -10,12 +13,30 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' }
 });
 
+// Sesión: cada pedido lleva el token del servidor si hay uno
+api.interceptors.request.use((config) => {
+  const token = getToken();
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Un 200 con HTML = el sitio no tiene proxy hacia la API (devuelve su index.html)
+    if (looksLikeHtml(response.data)) return Promise.reject(Object.assign(new Error(HTML_INSTEAD_OF_API), { response }));
+    return response;
+  },
   (error) => {
-    const message = error.response?.data?.message || error.message || 'Error de conexión';
+    // Sesión vencida o revocada: se cierra la sesión local y la app vuelve a pedir el PIN
+    if (error.response?.status === 401 && error.response?.data?.code === 'SESSION') {
+      clearToken();
+      useAuthStore.getState().logout();
+    }
+    const message = describeApiError(error);
     console.error('API Error:', message);
-    return Promise.reject(new Error(message));
+    return Promise.reject(Object.assign(new Error(message), {
+      response: error.response, status: error.response?.status
+    }));
   }
 );
 

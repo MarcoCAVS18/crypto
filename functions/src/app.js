@@ -13,6 +13,7 @@ import { createRateLimiter, LIMITS } from './middleware/rateLimit.js';
 import { securityHeaders, corsOptions } from './middleware/security.js';
 import futuresRoutes     from './routes/futures.js';
 import metricsRoutes     from './routes/metrics.js';
+import authRoutes        from './routes/auth.js';
 
 const app = express();
 
@@ -27,6 +28,7 @@ const general = createRateLimiter(LIMITS.general);
 const ai      = createRateLimiter(LIMITS.ai);
 const refresh = createRateLimiter(LIMITS.refresh);
 const probe   = createRateLimiter(LIMITS.probe);
+const authLimit = createRateLimiter({ ...LIMITS.auth });
 app.use('/api', general);
 app.use('/api/chat', ai);
 app.post('/api/crypto/decision', ai);
@@ -34,10 +36,12 @@ app.post('/api/futures/:symbol', ai);
 app.use('/api/crypto/:symbol/news/refresh', refresh);
 app.use('/api/gold-context/refresh', refresh);
 app.use('/api/health/ai', probe);
+app.use('/api/auth', authLimit);
 
 app.use('/api/crypto',        cryptoRoutes);
 app.use('/api/futures',       futuresRoutes);
 app.use('/api',               historyRoutes);
+app.use('/api/auth',          authRoutes);
 app.use('/api/portfolio',     portfolioRoutes);
 app.use('/api/gold-context',  goldContextRoutes);
 app.use('/api/push',          pushRoutes);
