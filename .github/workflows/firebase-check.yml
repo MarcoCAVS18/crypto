@@ -1,0 +1,55 @@
+name: Firebase check
+
+# Diagnóstico de solo lectura del PROYECTO REAL: ¿el build del sitio trae la configuración de Firebase? ¿Firestore
+# está creado y las reglas dejan leer lo que la app necesita (perfiles/PIN, operaciones)? Usa la misma clave web que
+# cualquier visitante del sitio; no escribe nada.
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/pin-auth-diagnosis]
+    paths: ['.github/workflows/firebase-check.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Diagnóstico
+        env:
+          PID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+        run: |
+          BASE="https://${PID}.web.app"
+          {
+            echo "## Firebase check"
+            echo
+            # 1) ¿El bundle publicado trae la configuración? (no se imprimen los valores)
+            curl -sS -m 30 "$BASE/" -o /tmp/index.html
+            JS=$(grep -o 'assets/index-[A-Za-z0-9_-]*\.js' /tmp/index.html | head -1)
+            echo "- Bundle principal: \`${JS:-no encontrado}\`"
+            if [ -n "$JS" ]; then
+              curl -sS -m 60 "$BASE/$JS" -o /tmp/app.js
+              for v in PID API_KEY AUTH_DOMAIN APP_ID; do
+                if [ -z "${!v}" ]; then echo "- ❌ Secreto de GitHub vacío: $v"
+                elif grep -qF "${!v}" /tmp/app.js; then echo "- ✅ El bundle contiene $v"
+                else echo "- ❌ El bundle NO contiene $v (el build se hizo sin este secreto o con otro valor)"; fi
+              done
+            fi
+            echo
+
+            # 2) Firestore vía REST con la clave web (mismo acceso que la app)
+            probe() { # $1 = descripción, $2 = ruta
+              code=$(curl -sS -m 30 -o /tmp/r.json -w '%{http_code}' "https://firestore.googleapis.com/v1/projects/${PID}/databases/(default)/documents/$2?key=${API_KEY}&pageSize=1" || echo 000)
+              status=$(jq -r '.error.status // empty' /tmp/r.json 2>/dev/null)
+              msg=$(jq -r '.error.message // empty' /tmp/r.json 2>/dev/null | sed "s/${PID}/<proyecto>/g" | cut -c1-200)
+              echo "- $1: HTTP $code ${status:+($status)} ${msg:+— $msg}"
+            }
+            probe "Leer perfiles (user_profiles)" "user_profiles"
+            probe "Leer operaciones (portfolio_operations)" "portfolio_operations"
+            probe "Leer decisiones (decisions)" "decisions"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
