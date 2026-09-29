@@ -8,8 +8,9 @@ import { buildGoldSources } from './dataHealth.js';
 import { getDailyCandles } from './marketData.js';
 import { calculateAllIndicators } from './technicalAnalysis.js';
 import { getGoldHeadlines } from './newsService.js';
+import { withLastGood } from './resilientHeadlines.js';
 import { analyzeGoldSentiment, translateHeadlines } from './groqAnalyzer.js';
-import { getGoldContextCache, setGoldContextCache } from '../config/database.js';
+import { getGoldContextCache, setGoldContextCache, getAiCache, setAiCache } from '../config/database.js';
 
 // TTL del contexto de oro: 2 h si el análisis salió bien; 5 min si falló
 export const GOLD_CONTEXT_TTL_HOURS = 2;
@@ -119,7 +120,14 @@ export async function getGoldContext(forceRefresh = false) {
   // features normalizadas (cambio 20d, z-score, percentil, frescura) para P2 y los snapshots.
   const macro = { ...applyFredFallbacks(macroFromSources, fred), fred };
 
-  const headlines = headlinesResult.status === 'fulfilled' ? headlinesResult.value : [];
+  // Si los feeds devuelven poco (p. ej. bloqueo desde IPs de Google Cloud) se completa con los últimos titulares buenos guardados
+  const resilient = await withLastGood({
+    key: 'headlines_last_paxg',
+    fresh: headlinesResult.status === 'fulfilled' ? headlinesResult.value : [],
+    getCache: getAiCache, setCache: setAiCache
+  });
+  const headlines = resilient.headlines;
+  if (resilient.source !== 'live') console.warn(`[GoldContext] titulares: fuente ${resilient.source} (${headlines.length})`);
 
   if (macroResult.status        === 'rejected') console.warn('[GoldContext] Macro error:',        macroResult.reason?.message);
   if (cotResult.status          === 'rejected') console.warn('[GoldContext] COT error:',          cotResult.reason?.message);
@@ -158,6 +166,8 @@ export async function getGoldContext(forceRefresh = false) {
     fromCache:  false,
     macro,
     headlines:  translatedHeadlines,
+    headlinesSource: resilient.source,
+    headlinesSavedAt: resilient.savedAt,
     analysis,
     analysisError
   };
@@ -165,7 +175,7 @@ export async function getGoldContext(forceRefresh = false) {
   // Un análisis fallido no debe quedar cacheado tanto como uno bueno: antes el error de Groq
   // (p. ej. un modelo deprecado) seguía a la vista 2 h aun después de arreglarlo.
   // Sin titulares tampoco se cachea 2 h: si los feeds fallaron un momento, las noticias no deben faltar toda la ventana.
-  const ttlHours = analysisError || headlines.length === 0 ? FAILED_ANALYSIS_TTL_HOURS : GOLD_CONTEXT_TTL_HOURS;
+  const ttlHours = analysisError || headlines.length === 0 || resilient.source !== 'live' ? FAILED_ANALYSIS_TTL_HOURS : GOLD_CONTEXT_TTL_HOURS;
   await setGoldContextCache(context, ttlHours).catch(e =>
     console.warn('[GoldContext] No se pudo guardar caché:', e.message)
   );

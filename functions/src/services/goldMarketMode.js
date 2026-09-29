@@ -299,6 +299,7 @@ export function determineGoldMarketMode(currentPrice, indicators, volumeAnalysis
       reasoning:     analysis?.reasoning ?? '',
       keyFactors:    analysis?.keyFactors ?? [],
       headlines:     goldContext.headlines ?? [],
+      headlinesSource: goldContext.headlinesSource ?? null,
       fetchedAt:     goldContext.fetchedAt,
       fromCache:     goldContext.fromCache ?? false,
       analysisError: goldContext.analysisError ?? null,
