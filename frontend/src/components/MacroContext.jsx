@@ -230,7 +230,7 @@ function CryptoNewsContext({ context: initialContext, symbol }) {
   if (initialContext !== context && !refreshing) setContext(initialContext);
   if (!context) return null;
 
-  const { sentiment, reasoning, keyFactors = [], headlines = [],
+  const { sentiment, reasoning, keyFactors = [], headlines = [], headlinesSource,
           fetchedAt, fromCache, analysisError } = context;
   const s = SENTIMENT[sentiment] ?? SENTIMENT.neutral;
   const SentIcon = s.Icon;
@@ -332,6 +332,11 @@ function CryptoNewsContext({ context: initialContext, symbol }) {
               <Newspaper className="w-3 h-3 text-slate-600" />
               <p className="text-[10px] text-slate-600 uppercase tracking-widest">Últimas noticias</p>
             </div>
+              {(headlinesSource === 'saved' || headlinesSource === 'live+saved') && (
+                <p className="text-[10px] text-amber-400/70 mb-2">
+                  {headlinesSource === 'saved' ? 'Las fuentes no respondieron ahora: se muestran las últimas noticias guardadas.' : 'Algunas noticias son de una consulta anterior (las fuentes respondieron poco ahora).'}
+                </p>
+              )}
             <ul className="space-y-2.5">
               {headlines.slice(0, 6).map((h, i) => {
                 const isObj  = h && typeof h === 'object';
@@ -387,7 +392,7 @@ export function MacroContext({ goldContext: initialContext }) {
 
   if (!context) return null;
 
-  const { macro, sentiment, reasoning, keyFactors = [], headlines = [], fetchedAt, fromCache, analysisError,
+  const { macro, sentiment, reasoning, keyFactors = [], headlines = [], headlinesSource, fetchedAt, fromCache, analysisError,
           cot, realYield, gvz, goldSilverRatio, dailyBias, premium, dataHealth } = context;
   const s = SENTIMENT[sentiment] ?? SENTIMENT.neutral;
   const SentIcon = s.Icon;
@@ -556,6 +561,11 @@ export function MacroContext({ goldContext: initialContext }) {
               <Newspaper className="w-3 h-3 text-slate-600" />
               <p className="text-[10px] text-slate-600 uppercase tracking-widest">Últimas noticias</p>
             </div>
+              {(headlinesSource === 'saved' || headlinesSource === 'live+saved') && (
+                <p className="text-[10px] text-amber-400/70 mb-2">
+                  {headlinesSource === 'saved' ? 'Las fuentes no respondieron ahora: se muestran las últimas noticias guardadas.' : 'Algunas noticias son de una consulta anterior (las fuentes respondieron poco ahora).'}
+                </p>
+              )}
             <ul className="space-y-2.5">
               {headlines.slice(0, 6).map((h, i) => {
                 const isObj  = h && typeof h === 'object';

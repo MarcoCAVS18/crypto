@@ -211,3 +211,48 @@ export async function getAssetHeadlines(symbol) {
   if (symbol === 'BTC')  return getBtcHeadlines();
   return getTokenHeadlines(symbol);
 }
+
+
+/**
+ * Diagnóstico de UN feed desde el entorno que corre (p. ej. Cloud Functions): estado HTTP, host final tras redirecciones,
+ * cuántos items trae y cuántos son frescos, con una pista si parece bloqueo. Sirve para saber POR QUÉ faltan titulares
+ * (desde GitHub Actions los mismos feeds andan; desde IPs de Google Cloud pueden devolver 429/403/consentimiento).
+ */
+export async function diagnoseFeed(url, { fetchImpl = fetch, now = Date.now(), timeoutMs = 10000 } = {}) {
+  const started = Date.now();
+  const u = new URL(url);
+  const label = `${u.host}${u.pathname === '/' ? '' : u.pathname.slice(0, 40)}${u.search ? '?…' : ''}`;
+  try {
+    const res = await fetchImpl(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; crypto-dashboard/1.0)', Accept: 'application/rss+xml, application/xml, text/xml, */*' },
+      redirect: 'follow', signal: AbortSignal.timeout(timeoutMs)
+    });
+    const body = await res.text();
+    const rawItems = (body.match(/<item[\s>]/g) ?? []).length;
+    const fresh = res.ok ? parseRssItems(body, now).length : 0;
+    let finalHost = null;
+    try { finalHost = new URL(res.url || url).host; } catch { /* sin url final */ }
+    let hint = null;
+    if (res.status === 429) hint = 'limitado (429): demasiados pedidos desde esta IP';
+    else if (res.status === 403) hint = 'bloqueado (403) para esta IP';
+    else if (!res.ok) hint = `HTTP ${res.status}`;
+    else if (/consent\./i.test(finalHost ?? '')) hint = 'redirigido a una página de consentimiento';
+    else if (rawItems === 0) hint = 'respuesta sin items: probablemente una página de bloqueo o un feed vacío';
+    else if (fresh === 0) hint = 'hay items pero ninguno de las últimas 72 h';
+    return {
+      feed: label, status: res.status, ok: res.ok && rawItems > 0 && fresh > 0, finalHost, bytes: body.length,
+      contentType: res.headers?.get?.('content-type') ?? null, rawItems, fresh, ms: Date.now() - started, hint,
+      snippet: rawItems === 0 ? body.replace(/\s+/g, ' ').slice(0, 120) : null
+    };
+  } catch (err) {
+    return { feed: label, status: null, ok: false, rawItems: 0, fresh: 0, ms: Date.now() - started, hint: `error de red: ${err.message}`, snippet: null };
+  }
+}
+
+export async function diagnoseAllFeeds(opts = {}) {
+  const [gold, btc] = await Promise.all([
+    Promise.all(RSS_FEEDS_GOLD.map(f => diagnoseFeed(f, opts))),
+    Promise.all(RSS_FEEDS_BTC.map(f => diagnoseFeed(f, opts)))
+  ]);
+  return { gold, btc };
+}
