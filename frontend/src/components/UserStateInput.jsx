@@ -168,14 +168,14 @@ export function UserStateInput({ onSubmit, initialCash = 50, initialMode = 'inve
         <label className="space-y-1.5">
           <span className="block text-[11px] text-slate-500 uppercase tracking-widest">Comisión por orden (%)</span>
           <input
-            type="text" inputMode="decimal" value={feeInput} placeholder="0.5 (supuesto)"
+            type="text" inputMode="decimal" value={feeInput} placeholder="0.1 (Binance spot)"
             onChange={e => setFeeInput(e.target.value.replace(/[^0-9.]/g, ''))}
             className="w-full bg-slate-800/60 border border-white/[0.08] rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500/60"
           />
         </label>
       </div>
       <p className="text-[11px] text-slate-600 -mt-3">
-        Con objetivo, el motor frena las compras si el oro pasa la banda (±5 pts) y acelera el DCA si está por debajo. La comisión se usa para estimar costos y descartar tramos ínfimos.
+        Con objetivo, el motor frena las compras si el oro pasa la banda (±5 pts) y acelera el DCA si está por debajo. La comisión (Binance spot: 0.1 %, 0.075 % pagando con BNB) se usa para estimar costos y descartar tramos ínfimos.
       </p>
 
       <Button onClick={() => onSubmit({

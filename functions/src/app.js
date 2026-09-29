@@ -9,13 +9,31 @@ import chatRoutes        from './routes/chat.js';
 import calendarRoutes    from './routes/calendar.js';
 import healthRoutes, { aiHealthRouter } from './routes/health.js';
 import { getCalendarCoverage } from './data/macroCalendar.js';
+import { createRateLimiter, LIMITS } from './middleware/rateLimit.js';
+import { securityHeaders, corsOptions } from './middleware/security.js';
 import futuresRoutes     from './routes/futures.js';
 import metricsRoutes     from './routes/metrics.js';
 
 const app = express();
 
-app.use(cors({ origin: true }));
+app.set('trust proxy', true);
+app.disable('x-powered-by');
+app.use(securityHeaders);
+app.use(cors(corsOptions()));
 app.use(express.json());
+
+// Límites por IP (en memoria, por instancia). Lo que llama a Groq o a servicios externos es lo más estricto.
+const general = createRateLimiter(LIMITS.general);
+const ai      = createRateLimiter(LIMITS.ai);
+const refresh = createRateLimiter(LIMITS.refresh);
+const probe   = createRateLimiter(LIMITS.probe);
+app.use('/api', general);
+app.use('/api/chat', ai);
+app.post('/api/crypto/decision', ai);
+app.post('/api/futures/:symbol', ai);
+app.use('/api/crypto/:symbol/news/refresh', refresh);
+app.use('/api/gold-context/refresh', refresh);
+app.use('/api/health/ai', probe);
 
 app.use('/api/crypto',        cryptoRoutes);
 app.use('/api/futures',       futuresRoutes);

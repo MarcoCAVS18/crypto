@@ -160,7 +160,7 @@ Cada fase = un PR. Marcar `[x]` al mergear.
 - [x] Volatilidad realizada como señal de tamaño: probada, sin efecto (±0.01 %) → **no se usa**. Caída desde el máximo de 1 año: no confirmada en el hold-out (p 0.35) → no se usa.
 - [x] Registro: cada decisión guarda `dcaPolicy` (versión, multiplicador, fracción); `modelVersion` de decisiones pasa a `p3`.
 - [x] Peso objetivo del oro con bandas (`portfolioPolicy.js`; opcional, campo en "Tu posición"): por debajo de la banda DCA ×1.25; por encima no se compra y, con ganancia, recorte de rebalanceo (≤ 30 %). Peso = costo de la posición / capital total (mismo criterio del motor). Escalones por cuantiles de retrocesos (`pullbacks.js`: mediana y P80 de la profundidad histórica del propio activo, acotados 0.4–8 %). Kelly fraccional: **no implementado** (sin evidencia ni estimación fiable de ventaja: el backtest no encontró señal predictiva).
-- [x] Salidas por régimen (`exitPolicy.js`, solo PAXG con ganancia): tendencia larga bajista + macro adverso + ganancia ≥ 15 % ⇒ recorte 20 %; > 25 % sobre la EMA200 + RSI diario ≥ 70 + ganancia ≥ 25 % ⇒ recorte 15 %. **Sin backtest** (declarado). Costos (`costModel.js`): supuestos 0.5 % de comisión + 0.1 % de spread, editables en el perfil; se estima el costo por orden y se descartan tramos < $10 (si todos quedan bajo el mínimo ⇒ WAIT).
+- [x] Salidas por régimen (`exitPolicy.js`, solo PAXG con ganancia): tendencia larga bajista + macro adverso + ganancia ≥ 15 % ⇒ recorte 20 %; > 25 % sobre la EMA200 + RSI diario ≥ 70 + ganancia ≥ 25 % ⇒ recorte 15 %. **Sin backtest** (declarado). Costos (`costModel.js`): por defecto **Binance spot** (0.10 % de comisión por orden, 0.075 % con BNB; spread supuesto 0.05 % en PAXG/USDT), editables en el perfil; se estima el costo por orden y se descartan tramos < $10 (si todos quedan bajo el mínimo ⇒ WAIT).
 - [x] Eventos (`services/eventRisk.js`): riesgo de calendario **determinístico** (antes lo decidía Groq y cambiaba entre llamadas; guía del prompt pausaba compras con el FOMC "mañana o hoy"): pausa solo en ventana corta (crítico ≤ 3 h antes o ≤ 1 h después; alto: 50 % a ≤ 2 h), 75 %/90 % hasta 24 h antes, solo COMPRAS. **No respaldado por backtest** (no hay historia de calendario con horas): higiene de riesgo declarada. `analyzeCalendarRisk` eliminado.
 - [x] LLM como etiquetador estructurado: devuelve 4 etiquetas discretas (política monetaria, geopolítica, inflación, demanda de oro ∈ {−1,0,1}); el score sale de la media (regla fija), peso **±0.10** (antes 0.15), etiquetas guardadas en el snapshot. Explicador con paquete de decisión: pendiente (el insight actual ya recibe la decisión y el historial).
 
@@ -171,9 +171,14 @@ Cada fase = un PR. Marcar `[x]` al mergear.
 - [x] **Seguimiento**: `followStats` cruza señales con operaciones registradas (BUY/SELL del mismo símbolo dentro de 24 h) y compara el resultado de las seguidas vs no seguidas.
 - [x] **Alerta de fuente caída**: push (con antispam de 12 h) tras 3 ciclos horarios seguidos con degradación severa (`healthAlert.js`, dentro de `snapshotJob`).
 
-### P5 — Ingeniería y seguridad
-- [ ] Decidir/eliminar `backend/`; núcleo puro compartido; config versionada; README
-- [ ] Reglas de Firestore con auth real; rate-limit en `/api/chat` y `/refresh`; App Check
+### P5 — Ingeniería y seguridad  → implementado con alcance acotado (rama `claude/paxg-phase5-engineering`)
+- [x] `backend/` **deprecado** (`backend/DEPRECATED.md`, README): no se elimina en este PR porque no puedo confirmar que nada dependa de él en Render; recomendación: `git rm -r backend` cuando lo confirmes (D9).
+- [x] Config versionada: `config/versions.js` reúne versiones (decisión, snapshot, política de DCA, revisión) y parámetros vigentes; sale en `GET /api/health/deep` (`versions`).
+- [x] README reescrito (arquitectura real, jobs, secretos, diagnóstico).
+- [x] **Rate-limit** por IP (`middleware/rateLimit.js`): general 240/min, IA 20/min, refrescos 6/min, `/api/health/ai` 6/min; cabeceras de seguridad; `CORS_ORIGINS` opcional. **En memoria y por instancia** (Cloud Functions no comparte estado entre instancias): frena ráfagas, no es una defensa completa.
+- [x] Reglas de Firestore (`firestore.rules`): validación de esquema en `portfolio_operations` (crear/leer/borrar; sin edición) y `user_profiles` (crear una vez; solo se puede cambiar `cryptos`; sin borrar). **No autentican.**
+- [ ] **Autenticación real** (Firebase Auth) y **App Check**: no implementados. La app usa PIN + Firestore desde el cliente; el hash de un PIN corto es débil y cualquiera con la configuración web puede leer/borrar operaciones. Requiere migrar el acceso a Firestore a Auth (p. ej. anónima + reclamos personalizados) y activar App Check en la consola: no se puede hacer/probar sin acceso a tu proyecto y rompería el acceso actual si sale mal.
+- [ ] Núcleo puro compartido front/back: descartado por ahora (la lógica de decisión vive solo en `functions/`; el frontend solo duplica `portfolioMath`, con tests propios).
 
 ## 6. Decisiones abiertas / supuestos
 
@@ -275,3 +280,12 @@ Sin contrastar (`verified: false`, "fecha por confirmar"): PCE sep (30-oct), NFP
 - Nuevo job `outcomeJob` (cada 24 h; sin secretos) y colección `outcomes` (regla de solo servidor en `firestore.rules`: **hay que desplegarla** con `firebase deploy --only firestore:rules`; sin regla el cliente ya queda denegado por defecto).
 - Las decisiones nuevas guardan `ts` (ms) y `shadow`; las anteriores sin `ts` se etiquetan con su timestamp de servidor. Los primeros resultados de 20/60 días aparecerán recién cuando pasen esos días.
 - No verificado en vivo: primera corrida de `outcomeJob` (log `[Outcomes] {…}`), el endpoint con datos reales y la alerta de push.
+
+### P5 — Ingeniería y seguridad (rama `claude/paxg-phase5-engineering`)
+- Tests: `security.test.js` (limitador, CORS, cabeceras), smoke (429 en el 7.º pedido a `/api/health/ai`, cabeceras), `versions`.
+- **Reglas de Firestore sin probar** (no hay emulador en la sesión): revisá con `firebase emulators:start --only firestore` y ejercitá agregar/borrar operación y crear perfil antes de `firebase deploy --only firestore:rules`. Si algo falla, restaurar la versión anterior desde el historial de git.
+- Comportamiento que cambia: 429 ante ráfagas; cabeceras nuevas; `x-powered-by` eliminado.
+
+### Nota — exchange del usuario: Binance
+- Costos por defecto ajustados a Binance spot (0.10 % por orden). La operación registrada guarda `exchange` (por defecto "Binance") y `fee`.
+- **Datos de mercado siguen viniendo de Coinbase** a propósito: la API pública de Binance rechaza IPs de EE. UU. (HTTP 451) y las Cloud Functions corren en `us-central1`. PAXG cotiza casi igual en ambos (diferencia de centésimas de %), pero el precio de ejecución real en Binance puede diferir un poco del que muestra el dashboard.

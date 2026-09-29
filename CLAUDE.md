@@ -14,7 +14,7 @@ Lee `docs/BACKTEST.md` antes de tocarlo (protocolo, hallazgos sobre ruido/sobrea
 
 - `functions/` — **API desplegada** (Firebase Functions v2, Express, Firestore). Fuente de verdad de la lógica de servidor.
 - `frontend/` — React + Vite + Zustand + Tailwind, desplegado en Firebase Hosting.
-- `backend/` — servidor **legacy** (Render + SQLite), duplica `functions/`. No recibe los arreglos de la hoja de ruta (ver auditoría D9).
+- `backend/` — servidor **obsoleto** (Render + SQLite), ver `backend/DEPRECATED.md`. No lo toques ni lo uses como referencia: la lógica vigente está solo en `functions/`.
 - `docs/` — documentación viva.
 
 ## Comandos
@@ -29,6 +29,10 @@ cd frontend && npm ci && npm test && npm run build
 Backtest con datos reales: Actions → *Backtest* → Run workflow (reporte en el resumen del job y artefacto `backtest-report`).
 
 Los tests usan `node --test` (sin dependencias extra). CI: `.github/workflows/ci.yml` corre ambos en cada PR.
+
+## Seguridad y límites (`functions/src/middleware/`)
+
+Límites por IP en memoria (por instancia): general 240/min, IA 20/min, refrescos 6/min, `/api/health/ai` 6/min; cabeceras de seguridad y `CORS_ORIGINS` opcional. `firestore.rules` valida el esquema de lo que el cliente escribe, pero **no autentica** (la app usa PIN, no Firebase Auth): ver el riesgo residual en la auditoría (§P5). Las reglas no se despliegan solas.
 
 ## Convenciones
 

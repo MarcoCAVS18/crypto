@@ -1,49 +1,53 @@
 # Crypto Context Dashboard
 
-Sistema de análisis y decisión para trading de BTC y PAXG.
+Dashboard **personal** de contexto de mercado y decisión para BTC, ETH y PAXG (oro tokenizado) y futuros XAUUSDT.
+No es un bot: responde tres preguntas para evitar operaciones impulsivas.
 
-## Objetivo
+1. ¿Dónde estamos en el mercado? (Risk ON / neutral / Risk OFF, con los datos macro que lo explican)
+2. ¿Dónde está el precio respecto de las zonas de compra/venta?
+3. ¿Qué puedo hacer ahora con mi efectivo y mi posición? (tramos, tamaño, costo estimado)
 
-Herramienta de contexto que responde 3 preguntas:
-1. ¿Dónde estamos en el mercado? (Risk ON/OFF/Neutral)
-2. ¿Dónde está el precio respecto a zonas importantes?
-3. ¿Qué puedo hacer yo ahora, con mi cash y este contexto?
+> Las decisiones sobre PAXG están **calibradas con un backtest** (2001–2026) y medidas con resultados reales; ver
+> [`docs/BACKTEST.md`](docs/BACKTEST.md). El score de mercado **no predice** el precio: sirve como contexto, y la política
+> de DCA se apoya en lo que el backtest sí respaldó (no seguir al score, tilt acotado hacia la debilidad).
 
-**No es un bot de trading automático.** Es una herramienta para evitar operaciones impulsivas.
+## Arquitectura
 
-## Stack
+| Carpeta | Qué es |
+|---|---|
+| `functions/` | **API desplegada**: Firebase Functions v2 (Node 22, Express, Firestore). Motor de decisión, datos de mercado, jobs programados, backtester. |
+| `frontend/` | React + Vite + Zustand + Tailwind, en Firebase Hosting (`/api/**` se reescribe a la función `api`). |
+| `docs/` | `PAXG_AUDIT.md` (mapa, hallazgos, hoja de ruta y estado por fase) y `BACKTEST.md` (protocolo y resultados). |
+| `backend/` | **Obsoleto** (Render + SQLite). No se despliega ni recibe arreglos: ver `backend/DEPRECATED.md`. |
 
-- **Frontend:** React + Vite + TailwindCSS + Zustand
-- **Backend:** Node.js + Express + SQLite
-- **Data:** CoinGecko API
+Jobs programados (`functions/index.js`): `zoneWatcher` (push de zona de compra), `snapshotJob` (foto horaria del mercado, alerta de fuentes caídas) y `outcomeJob` (etiqueta resultados de las señales a 1/5/20/60 días).
 
-## Instalación Local
+Fuentes de datos: Coinbase (precios/velas), Yahoo Finance (DXY, GC=F, GVZ, plata), FRED (tasas, breakeven, dólar amplio, VIX), CFTC (COT), RSS de noticias y Groq (etiquetado de titulares y textos).
+
+## Desarrollo
 
 ```bash
-# Backend
-cd backend
-npm install
-npm run dev
-
-# Frontend (otra terminal)
-cd frontend
-npm install
-npm run dev
+# API (Node 22)
+cd functions && npm ci && npm test
+# Frontend
+cd frontend && npm ci && npm test && npm run build && npm run dev
 ```
 
-Abrir http://localhost:5173
+- Tests con `node --test` (sin dependencias extra); CI en cada PR (`.github/workflows/ci.yml`).
+- Backtest con datos reales: **Actions → Backtest → Run workflow** (el entorno de desarrollo puede no tener red).
+- Guía para agentes y convenciones: [`CLAUDE.md`](CLAUDE.md).
 
-## Deployment
+## Despliegue
 
-- **Backend:** Render (https://crypto-7fbc.onrender.com)
-- **Frontend:** Netlify
+Push a `main` → `.github/workflows/deploy.yml` (Hosting + Functions). **No** despliega reglas ni índices de Firestore: aplicarlos con
+`firebase deploy --only firestore:rules,firestore:indexes` (ver la nota de seguridad de la auditoría antes de hacerlo).
 
-## Endpoints API
+## Secretos y configuración
 
-- `GET /api/crypto/:symbol` - Datos de BTC o PAXG
-- `POST /api/crypto/decision` - Genera decisión basada en estado del usuario
-- `GET /api/history` - Historial de decisiones
+Secretos de Firebase (`firebase functions:secrets:set NOMBRE`, y **redesplegar** después): `GROQ_API_KEY`, `FRED_API_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`.
+Opcionales: `GROQ_MODEL`, `CORS_ORIGINS` (lista separada por comas; por defecto se refleja el origen).
 
-## Licencia
-
-MIT
+Diagnóstico en vivo:
+- `GET /api/health/deep` — configuración, frescura de cada insumo, último snapshot, versiones y parámetros vigentes, advertencias.
+- `GET /api/health/ai` — prueba la clave de Groq sin gastar tokens y explica por qué falla.
+- `GET /api/metrics/PAXG` — resultados reales de las señales contra la línea base.
