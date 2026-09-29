@@ -4,6 +4,7 @@ import { getMacroData } from './macroService.js';
 import { getAssetHeadlines } from './newsService.js';
 import { analyzeAssetSentiment, translateHeadlines } from './groqAnalyzer.js';
 import { getAiCache, setAiCache } from '../config/database.js';
+import { withLastGood } from './resilientHeadlines.js';
 
 const CACHE_TTL_H = 2;
 const FAILED_TTL_H = 5 / 60;
@@ -38,7 +39,12 @@ export async function getCryptoNewsContext(symbol, forceRefresh = false) {
     getMacroData(),
   ]);
 
-  const rawHeadlines = headlinesResult.status === 'fulfilled' ? headlinesResult.value : [];
+  const resilient = await withLastGood({
+    key: `headlines_last_${symbol.toLowerCase()}`,
+    fresh: headlinesResult.status === 'fulfilled' ? headlinesResult.value : [],
+    getCache: getAiCache, setCache: setAiCache
+  });
+  const rawHeadlines = resilient.headlines;
   const macro        = macroResult.status === 'fulfilled' ? macroResult.value : null;
 
   // Traducir titulares al español
@@ -80,6 +86,7 @@ export async function getCryptoNewsContext(symbol, forceRefresh = false) {
     reasoning,
     keyFactors,
     headlines,
+    headlinesSource: resilient.source,
     macro: macro ? { dxy: macro.dxy, tenYearYield: macro.tenYearYield } : null,
     fetchedAt: new Date().toISOString(),
     fromCache: false,
