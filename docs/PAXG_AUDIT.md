@@ -111,7 +111,7 @@ Estado: ⬜ pendiente · 🟡 implementado en el PR de su fase (pasa a ✅ al me
 - **D6** Sin costos: no compara edge esperado vs comisión + spread de PAXG.
 - **D7** Sin serie de oro spot (PAXG existe desde 2019; sin prima/descuento vs XAU) → backtest imposible con la data actual.
 - **D8** El LLM tiene el peso más alto (40 %) y es la señal menos reproducible y no backtesteable (no se loguea el input/salida por punto en el tiempo).
-- **D9** `backend/` duplicado y desincronizado del deploy real.
+- **D9** `backend/` duplicado y desincronizado del deploy real. → **Eliminado** (todo corre en Firebase).
 - **D10** `cashPercent`/`totalCapital` son manuales, desconectados del portfolio.
 
 ## 4. Principios de diseño (para no re-discutirlos)

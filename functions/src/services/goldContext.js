@@ -8,7 +8,7 @@ import { buildGoldSources } from './dataHealth.js';
 import { getDailyCandles } from './marketData.js';
 import { calculateAllIndicators } from './technicalAnalysis.js';
 import { getGoldHeadlines } from './newsService.js';
-import { withLastGood } from './resilientHeadlines.js';
+import { withLastGood, isHealthySource } from './resilientHeadlines.js';
 import { analyzeGoldSentiment, translateHeadlines } from './groqAnalyzer.js';
 import { getGoldContextCache, setGoldContextCache, getAiCache, setAiCache } from '../config/database.js';
 
@@ -127,7 +127,7 @@ export async function getGoldContext(forceRefresh = false) {
     getCache: getAiCache, setCache: setAiCache
   });
   const headlines = resilient.headlines;
-  if (resilient.source !== 'live') console.warn(`[GoldContext] titulares: fuente ${resilient.source} (${headlines.length})`);
+  if (!isHealthySource(resilient.source)) console.warn(`[GoldContext] titulares: fuente ${resilient.source} (${headlines.length})`);
 
   if (macroResult.status        === 'rejected') console.warn('[GoldContext] Macro error:',        macroResult.reason?.message);
   if (cotResult.status          === 'rejected') console.warn('[GoldContext] COT error:',          cotResult.reason?.message);
@@ -175,7 +175,7 @@ export async function getGoldContext(forceRefresh = false) {
   // Un análisis fallido no debe quedar cacheado tanto como uno bueno: antes el error de Groq
   // (p. ej. un modelo deprecado) seguía a la vista 2 h aun después de arreglarlo.
   // Sin titulares tampoco se cachea 2 h: si los feeds fallaron un momento, las noticias no deben faltar toda la ventana.
-  const ttlHours = analysisError || headlines.length === 0 || resilient.source !== 'live' ? FAILED_ANALYSIS_TTL_HOURS : GOLD_CONTEXT_TTL_HOURS;
+  const ttlHours = analysisError || headlines.length === 0 || !isHealthySource(resilient.source) ? FAILED_ANALYSIS_TTL_HOURS : GOLD_CONTEXT_TTL_HOURS;
   await setGoldContextCache(context, ttlHours).catch(e =>
     console.warn('[GoldContext] No se pudo guardar caché:', e.message)
   );

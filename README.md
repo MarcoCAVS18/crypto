@@ -14,20 +14,20 @@ Herramienta de contexto que responde 3 preguntas:
 ## Stack
 
 - **Frontend:** React + Vite + TailwindCSS + Zustand
-- **Backend:** Node.js + Express + SQLite
-- **Data:** CoinGecko API
+- **API:** Firebase Functions v2 (Node 22, Express, Firestore)
+- **Data:** Coinbase, Yahoo Finance, FRED, CFTC, feeds RSS
 
 ## Instalación Local
 
 ```bash
-# Backend
-cd backend
-npm install
-npm run dev
+# API
+cd functions
+npm ci
+npm test
 
-# Frontend (otra terminal)
+# Frontend
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
@@ -35,8 +35,7 @@ Abrir http://localhost:5173
 
 ## Deployment
 
-- **Backend:** Render (https://crypto-7fbc.onrender.com)
-- **Frontend:** Netlify
+Todo corre en **Firebase** (https://pal-crypto.web.app): Hosting + Functions + Firestore. Ver `docs/DEPLOY.md`.
 
 ## Endpoints API
 
