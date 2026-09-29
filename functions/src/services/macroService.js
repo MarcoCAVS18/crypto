@@ -134,28 +134,43 @@ export async function getMacroData() {
  * Sin API key. Devuelve posición neta especulativa y cambio semanal.
  * @returns {{ netSpec, weekChange, sentiment, longs, shorts, reportDate }}
  */
-export async function getCOTData() {
-  // ~3 años de reportes semanales: alcanza para el percentil del posicionamiento
-  const url =
-    'https://publicreporting.cftc.gov/resource/6dca-aqww.json' +
-    '?market_and_exchange_names=GOLD%20-%20COMMODITY%20EXCHANGE%20INC.' +
-    '&$limit=160&$order=as_of_date_in_form_yymmdd%20DESC';
+const COT_BASE = 'https://publicreporting.cftc.gov/resource/6dca-aqww.json';
+// Solo las columnas necesarias: la fila completa de Socrata tiene ~100 campos y 160 filas tardaban demasiado
+// desde las IPs de Cloud Functions (el pedido de 12 s se abortaba y "faltaba COT" en el modo degradado).
+const COT_SELECT = 'as_of_date_in_form_yymmdd,report_date_as_yyyy_mm_dd,noncomm_positions_long_all,noncomm_positions_short_all,open_interest_all';
 
+export function cotUrl(limit) {
+  return `${COT_BASE}?market_and_exchange_names=${encodeURIComponent('GOLD - COMMODITY EXCHANGE INC.')}` +
+    `&$select=${COT_SELECT}&$limit=${limit}&$order=report_date_as_yyyy_mm_dd%20DESC`;
+}
+
+async function fetchCotRows(limit, { fetchImpl = fetch, timeoutMs = 20000 } = {}) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 12000);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(url, {
-      headers: { Accept: 'application/json' },
-      signal: controller.signal
-    });
-    clearTimeout(timer);
+    const res = await fetchImpl(cotUrl(limit), { headers: { Accept: 'application/json' }, signal: controller.signal });
     if (!res.ok) throw new Error(`COT API HTTP ${res.status}`);
-
-    return parseCotHistory(await res.json());
-  } catch (err) {
+    return await res.json();
+  } finally {
     clearTimeout(timer);
-    console.warn('[MacroService] COT fetch failed:', err.message);
-    throw err;
+  }
+}
+
+/**
+ * Historia de ~3 años para el percentil; si falla (timeout, HTTP), reintenta con solo las últimas 4 semanas para no
+ * perder la posición actual (sin percentil). Solo lanza si ambos fallan.
+ */
+export async function getCOTData(opts = {}) {
+  try {
+    return parseCotHistory(await fetchCotRows(160, opts));
+  } catch (err) {
+    console.warn('[MacroService] COT (160 semanas) falló:', err.message, '— reintento con 4 semanas');
+    try {
+      return parseCotHistory(await fetchCotRows(4, opts));
+    } catch (err2) {
+      console.warn('[MacroService] COT fetch failed:', err2.message);
+      throw err2;
+    }
   }
 }
 
