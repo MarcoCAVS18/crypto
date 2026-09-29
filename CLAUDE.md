@@ -32,7 +32,7 @@ Los tests usan `node --test` (sin dependencias extra). CI: `.github/workflows/ci
 
 ## Seguridad y límites (`functions/src/middleware/`)
 
-Límites por IP en memoria (por instancia): general 240/min, IA 20/min, refrescos 6/min, `/api/health/ai` 6/min; cabeceras de seguridad y `CORS_ORIGINS` opcional. `firestore.rules` valida el esquema de lo que el cliente escribe, pero **no autentica** (la app usa PIN, no Firebase Auth): ver el riesgo residual en la auditoría (§P5). Las reglas no se despliegan solas.
+Límites por IP en memoria (por instancia): general 240/min, IA 20/min, refrescos 6/min, `/api/health/ai` 6/min; cabeceras de seguridad y `CORS_ORIGINS` opcional. **El navegador no habla con Firestore**: el login por PIN, las sesiones y el portfolio pasan por `/api/auth/*` y `/api/portfolio/*` (PIN con scrypt, bloqueo tras 5 intentos, token de sesión `Authorization: Bearer`, cada usuario solo ve lo suyo). `firestore.rules` deniega todo al cliente; las reglas no se despliegan solas y hay que publicarlas *después* de desplegar el sitio nuevo (ver la auditoría §P5).
 
 ## Convenciones
 
