@@ -161,7 +161,7 @@ Cada fase = un PR. Marcar `[x]` al mergear.
 - [x] Registro: cada decisión guarda `dcaPolicy` (versión, multiplicador, fracción); `modelVersion` de decisiones pasa a `p3`.
 - [ ] Peso objetivo del sleeve de oro + bandas; escalones por cuantiles de retrocesos; tamaño por volatilidad *de la posición* (Kelly fraccional acotado — sin evidencia aún)
 - [ ] Salidas por rotura de tendencia + macro adverso; recorte por sobre-extensión; costos (comisión + spread; el efecto medido del tilt, ~0.3 %, es menor que una comisión: hay que modelarlos antes de más sofisticación)
-- [ ] Eventos: multiplicador determinístico por horas-al-evento (ET), blackout, ventana post-evento
+- [x] Eventos (`services/eventRisk.js`): riesgo de calendario **determinístico** (antes lo decidía Groq y cambiaba entre llamadas; guía del prompt pausaba compras con el FOMC "mañana o hoy"): pausa solo en ventana corta (crítico ≤ 3 h antes o ≤ 1 h después; alto: 50 % a ≤ 2 h), 75 %/90 % hasta 24 h antes, solo COMPRAS. **No respaldado por backtest** (no hay historia de calendario con horas): higiene de riesgo declarada. `analyzeCalendarRisk` eliminado.
 - [ ] LLM como etiquetador estructurado (peso ±0.05–0.10, logueado) + explicador con paquete de decisión
 
 ### P4 — Aprendizaje continuo
@@ -256,3 +256,8 @@ Sin contrastar (`verified: false`, "fecha por confirmar"): PCE sep (30-oct), NFP
 - Tests: 274 en `functions/test`. Nuevos: `dcaPolicy.test.js` (mapeo idéntico al evaluado, monotonía, límites, score no finito), casos P3 en `decisionEngine.test.js` (acumula en risk_off, salvaguardas, el tamaño no sigue al score, BTC intacto), registro de política en `decisionLog.test.js`.
 - Backtest (run #6 de Actions): variantes de política pre-declaradas — ver `docs/BACKTEST.md`.
 - No verificado en vivo: cómo se ve la recomendación de BUY en risk_off en la UI real y la primera decisión guardada con `dcaPolicy`.
+
+### P3 (parte 2) — Riesgo de calendario determinístico (rama `claude/paxg-phase3b-event-risk`)
+- `eventRisk.js` + 9 tests (incluye el FOMC real del 2026-09-16 a distintas horas). El decision route ya no llama a Groq para el calendario: menos latencia/tokens y resultado reproducible; una falla de IA (p. ej. 401) ya no afecta a la decisión.
+- Comportamiento que cambia: la pausa por calendario ahora es corta (antes el LLM podía pausar/reducir hasta 7 días antes del evento).
+- Pendiente de P3: costos (necesito la tarifa real del exchange del usuario), peso objetivo del sleeve/bandas, salidas por régimen, LLM como etiquetador.

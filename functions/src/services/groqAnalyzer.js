@@ -1,7 +1,7 @@
 // Análisis con Groq (openai/gpt-oss-120b — modelo nativo Groq, activo 2026)
 // 1. analyzeGoldSentiment     — sentimiento macro para oro/PAXG (caché 2h)
 // 2. translateHeadlines       — traducción de titulares al español (caché 2h)
-// 3. analyzeCalendarRisk      — modulación de decisión por eventos macro (caché 4h)
+// (el riesgo de calendario ya no lo decide el LLM: ver services/eventRisk.js)
 // 4. generatePortfolioInsight — nota personalizada según posición del usuario (caché 1h)
 
 import { chatJson } from './groqChat.js';
@@ -91,70 +91,6 @@ ${numbered}`;
     ...h,
     title: typeof translated[i] === 'string' && translated[i].trim() ? translated[i].trim() : h.title
   }));
-}
-
-export async function analyzeCalendarRisk(asset, decision, upcomingEvents, marketCtx = {}) {
-
-  const assetDesc = asset === 'PAXG'
-    ? 'PAXG (oro tokenizado — sensible a tasas, dólar e inflación)'
-    : 'BTC (Bitcoin — sensible a liquidez global y risk-off)';
-
-  const whenText = (e) =>
-    e.phase === 'released' ? 'YA PUBLICADO hace pocas horas (volatilidad posible)'
-    : e.daysUntil === 0    ? `HOY (en ~${Math.max(1, Math.round(e.hoursUntil ?? 1))} h)`
-    : e.daysUntil === 1    ? 'MAÑANA'
-    :                        `en ${e.daysUntil} días`;
-
-  const eventsText = upcomingEvents
-    .map(e => `  • ${e.fullName} ${whenText(e)} (impacto: ${e.impact === 'critical' ? 'CRÍTICO' : 'ALTO'})`)
-    .join('\n');
-
-  const mktText = [
-    marketCtx.mode        && `Modo de mercado: ${marketCtx.mode}`,
-    marketCtx.currentZone && `Zona actual: ${marketCtx.currentZone}`,
-    marketCtx.rsi != null && `RSI: ${marketCtx.rsi.toFixed(1)}`,
-    marketCtx.goldSentiment && `Sentimiento IA sobre oro: ${marketCtx.goldSentiment}`
-  ].filter(Boolean).join(' | ');
-
-  const prompt = `Sos un gestor de riesgo especializado en inversiones en criptoactivos y oro tokenizado.
-
-ACTIVO: ${assetDesc}
-CONTEXTO DE MERCADO: ${mktText || 'No disponible'}
-SEÑAL TÉCNICA DEL SISTEMA: ${decision.action} (intensidad: ${decision.strength})
-MOTIVO DE LA SEÑAL: ${decision.reason}
-
-EVENTOS MACRO PRÓXIMOS (EE.UU.) QUE PODRÍAN AFECTAR ESTE ACTIVO:
-${eventsText}
-
-Teniendo en cuenta ÚNICAMENTE el riesgo que estos eventos representan para la ejecución de esta señal, respondé SOLO con JSON válido (sin markdown):
-{
-  "modulate": <true si recomendás cambiar algo, false si la señal está bien tal cual>,
-  "action": "${decision.action}",
-  "strength": "${decision.strength}",
-  "capitalFraction": <1.0 sin cambio, 0.5 para reducir a la mitad, 0.0 para no entrar>,
-  "reasoning": "<1 oración en español: por qué sí o por qué no modulás>",
-  "calendarNote": "<aviso concreto para el inversor, máx 90 caracteres, en español. Vacío si modulate=false>"
-}
-
-Guía de criterio:
-- FOMC mañana o hoy → modulate=true, capitalFraction=0.0 (WAIT total) o 0.3 (entrada mínima)
-- CPI/NFP en 1-2 días → modulate=true, capitalFraction=0.4-0.6
-- Cualquier evento en 3-5 días → modulate=true, capitalFraction=0.6-0.8 si la señal es fuerte
-- Eventos en 6-7 días con señal débil → modulate=true, capitalFraction=0.7
-- Sin eventos inminentes o señal débil existente → modulate=false`;
-
-  const p = await chatJson({ prompt, temperature: 0.15, maxTokens: 400, expect: 'object', label: 'calendarRisk' });
-  const validActions   = ['BUY', 'WAIT', 'SELL'];
-  const validStrengths = ['fuerte', 'moderado', 'débil'];
-
-  return {
-    modulate:        p.modulate === true,
-    action:          validActions.includes(p.action)     ? p.action    : decision.action,
-    strength:        validStrengths.includes(p.strength) ? p.strength  : decision.strength,
-    capitalFraction: typeof p.capitalFraction === 'number' ? Math.max(0, Math.min(1, p.capitalFraction)) : 1.0,
-    reasoning:    typeof p.reasoning    === 'string' ? p.reasoning    : '',
-    calendarNote: typeof p.calendarNote === 'string' ? p.calendarNote : ''
-  };
 }
 
 export async function generatePortfolioInsight(asset, currentPrice, indicators, portfolioCtx, userState, decision, recentDecisions = []) {
