@@ -1,6 +1,9 @@
 // Motor de decisión: cruza market mode, zonas, indicadores y perfil del usuario
 
-import { dcaCapFraction, tiltNote } from './dcaPolicy.js';
+import { dcaCapFraction, tiltNote, DCA_POLICY } from './dcaPolicy.js';
+import { applyCosts, costNote } from './costModel.js';
+import { weightState, trimPctToBand } from './portfolioPolicy.js';
+import { evaluateExit } from './exitPolicy.js';
 
 /**
  * @param {object} marketMode      - { mode: 'risk_on'|'neutral'|'risk_off', score, reasons }
@@ -48,7 +51,7 @@ export function makeDecision(marketMode, zones, currentPrice, userState, indicat
     // --- MODO TRADING: más agresivo, usa RSI como confirmación adicional ---
     ? decideTradingMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, portfolioContext, symbol)
     // --- MODO INVERSIÓN: conservador, largo plazo, usa P&L real del portfolio ---
-    : decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, portfolioContext, indicators, symbol);
+    : decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, portfolioContext, indicators, symbol, { target: userState.target ?? null, pullback: meta?.pullback ?? null });
 
   // Sin cash suficiente no se COMPRA (y el motivo relevante es ese). Las ventas siempre se
   // permiten (liberan cash): antes este gate bloqueaba también las salidas.
@@ -63,6 +66,20 @@ export function makeDecision(marketMode, zones, currentPrice, userState, indicat
   }
 
   const { action, strength, reason, recommendation, operations, policy } = result;
+
+  // Costos: se anota el costo estimado de cada orden y se descartan tramos que no llegan al mínimo.
+  if ((action === 'BUY' || action === 'SELL') && operations?.length) {
+    const costed = applyCosts(operations, userState.costs);
+    if (costed.operations.length === 0) {
+      return {
+        action: 'WAIT', strength: 'débil',
+        reason: 'Monto demasiado chico para cubrir costos',
+        recommendation: `Todos los tramos quedarían por debajo del mínimo de $${userState.costs?.minOrderUsd ?? 10}: la comisión se comería el beneficio. Esperá a juntar más efectivo.`,
+        operations: []
+      };
+    }
+    return { action, strength, reason, recommendation: recommendation + costNote(costed, userState.costs), operations: costed.operations, ...(policy ? { policy } : {}) };
+  }
   return { action, strength, reason, recommendation, operations, ...(policy ? { policy } : {}) };
 }
 
@@ -89,7 +106,7 @@ function riskOffWait(marketMode) {
 //   ≥ 25%      → ganancia significativa + zona de venta → toma parcial de ganancias
 //   ≥ 40%      → ganancia fuerte + zona de venta → toma parcial más agresiva
 
-function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, portfolioCtx = null, indicators = {}, symbol = '') {
+function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, portfolioCtx = null, indicators = {}, symbol = '', ext = {}) {
   const currentZone = zones.currentZone;
   const isPaxg = symbol === 'PAXG';
 
@@ -164,8 +181,13 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
   // el backtest mostró que eso encarece el costo promedio, y esas señales ya forman parte del score (doble conteo).
   // Ahora: base fija con un tilt acotado a comprar más en la debilidad.
   const dcaPolicy = isPaxg ? dcaCapFraction(goldScore) : null;
-  const paxgCapFraction = dcaPolicy ? dcaPolicy.capFraction : 1.0;
-  const policyNote = dcaPolicy ? tiltNote(dcaPolicy) : '';
+  // Peso objetivo (opcional, solo PAXG): por debajo de la banda se acelera el DCA (×1.25, tope 100 %); por encima se frena (abajo)
+  const weight = isPaxg ? weightState(allocationPercent ?? (totalCapital > 0 ? 0 : NaN), ext.target) : null;
+  const bandBoost = weight?.state === 'below' ? 1.25 : 1;
+  const paxgCapFraction = dcaPolicy ? Math.min(DCA_POLICY.maxFraction, dcaPolicy.capFraction * bandBoost) : 1.0;
+  const bandNote = weight?.state === 'below'
+    ? ` Peso del oro ${weight.allocationPercent.toFixed(0)} % por debajo de tu banda objetivo (${weight.target.lower.toFixed(0)}–${weight.target.upper.toFixed(0)} %): DCA acelerado ×1.25.` : '';
+  const policyNote = (dcaPolicy ? tiltNote(dcaPolicy) : '') + bandNote;
 
   // ── PAXG: línea de contexto macro para recomendaciones ─────────────────────
   let macroLine = '';
@@ -192,6 +214,36 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
     : '';
 
 
+  // ── Peso objetivo: por encima de la banda no se compra más y se rebalancea (solo con ganancia) ─────────
+  if (weight?.state === 'above') {
+    const trimPct = trimPctToBand(weight.allocationPercent, weight.target);
+    if (pnlPercent !== null && pnlPercent >= 0 && trimPct > 0) {
+      return {
+        action: 'SELL', strength: 'moderado',
+        reason: `Rebalanceo: el oro pesa ${weight.allocationPercent.toFixed(0)} % de tu capital, sobre la banda objetivo (${weight.target.lower.toFixed(0)}–${weight.target.upper.toFixed(0)} %)${pnlTag}`,
+        recommendation: `Recorte parcial de ${trimPct} % de la posición para volver hacia el ${weight.target.targetPercent.toFixed(0)} % objetivo. No es una señal de mercado: es disciplina de portafolio.${macroLine}`,
+        operations: generateSellOperations(currentPrice, zones, totalCapital, 'inversion', { pct: trimPct, keepCore: true })
+      };
+    }
+    return {
+      action: 'WAIT', strength: 'moderado',
+      reason: `El oro pesa ${weight.allocationPercent.toFixed(0)} % de tu capital, sobre la banda objetivo (${weight.target.lower.toFixed(0)}–${weight.target.upper.toFixed(0)} %)${pnlTag}`,
+      recommendation: 'No sumar más oro hasta volver a la banda. Con la posición en pérdida no se recorta solo por rebalancear.',
+      operations: []
+    };
+  }
+
+  // ── Salidas por régimen (PAXG): rotura de tendencia + macro adverso, o sobre-extensión ─────────────
+  const exit = isPaxg ? evaluateExit({ pnlPercent, score: goldScore, dailyBias }) : null;
+  if (exit && !(currentZone === 'sell' && sellMakesSense)) {
+    return {
+      action: 'SELL', strength: exit.strength,
+      reason: `${exit.reason}${allocationLine}`,
+      recommendation: `Recorte parcial de ${exit.pct} % de la posición; se conserva el núcleo (el oro es reserva de valor).${macroLine}${rrLine}`,
+      operations: generateSellOperations(currentPrice, zones, totalCapital, 'inversion', { pct: exit.pct, keepCore: true })
+    };
+  }
+
   // ── Risk OFF (inversión): no se compra; se recorta solo si hay ganancia y zona de venta ──
   if (marketMode.mode === 'risk_off') {
     if (currentZone === 'sell' && sellMakesSense) {
@@ -211,7 +263,7 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
     // (y que comprar más en esos momentos lo abarató). Se sigue acumulando en zona de compra o bajo el promedio,
     // salvo posición ya concentrada; el tamaño lo fija la política de DCA (más peso a la debilidad, acotado).
     if (isPaxg && !isHighlyConcentrated && (currentZone === 'buy' || isBelowAvg) && cashPercent >= 30) {
-      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', paxgCapFraction, executedBuys, symbol);
+      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', paxgCapFraction, executedBuys, symbol, ext.pullback);
       if (ops.length > 0) {
         return {
           action: 'BUY',
@@ -238,7 +290,7 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
 
     if (macroFavorable && (isBelowAvg || currentZone === 'buy') && cashPercent >= 30) {
       const capFrac = paxgCapFraction * 0.60; // entrada conservadora en contexto mixto
-      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', capFrac, executedBuys, symbol);
+      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', capFrac, executedBuys, symbol, ext.pullback);
       return {
         action: 'BUY',
         strength: 'moderado',
@@ -257,7 +309,7 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
     const buyZoneOk      = currentZone === 'buy' && cashPercent >= 30;
 
     if (buyZoneOk || dcaOpportunity) {
-      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', paxgCapFraction, executedBuys, symbol);
+      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', paxgCapFraction, executedBuys, symbol, ext.pullback);
       const isDca = dcaOpportunity && !buyZoneOk;
       const concentrationNote = isHighlyConcentrated
         ? ' ⚠️ Posición ya concentrada (>70% del capital) — entrar con tramos pequeños.'
@@ -371,7 +423,7 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
     const normalBuy = currentZone === 'buy' && cashPercent >= 50;
 
     if (strongDca || normalBuy) {
-      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', isPaxg ? paxgCapFraction : 0.5, executedBuys, symbol);
+      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', isPaxg ? paxgCapFraction : 0.5, executedBuys, symbol, ext.pullback);
       return {
         action: 'BUY',
         strength: 'moderado',
@@ -496,7 +548,7 @@ function decideTradingMode(marketMode, zones, currentPrice, cashPercent, rsi, to
  * @param {number} capitalFraction - fracción del capital disponible a usar (0-1)
  * @param {Array}  executedBuys    - [{ price, amount_usd }] del portfolio
  */
-function generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, mode, capitalFraction = 1.0, executedBuys = [], symbol = '') {
+function generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, mode, capitalFraction = 1.0, executedBuys = [], symbol = '', pullback = null) {
   const capitalDisponible = totalCapital > 0 ? totalCapital * (cashPercent / 100) : 0;
   const capitalAUsar = capitalDisponible * capitalFraction;
   const hasCapital = capitalAUsar > 0;
@@ -504,10 +556,13 @@ function generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, m
   // PAXG se mueve menos que BTC/ETH: nivel 2 a -1.5% (no -2%)
   const isPaxg = symbol === 'PAXG';
   const level1Price = currentPrice;
-  const level2Price = currentPrice * (isPaxg ? 0.985 : 0.98);
+  // Si hay niveles de retroceso HISTÓRICOS del propio activo (pullbacks.js) se usan en vez de los porcentajes fijos
+  const level2Price = pullback ? currentPrice * (1 - pullback.l2Pct / 100) : currentPrice * (isPaxg ? 0.985 : 0.98);
   // El último tramo nunca puede quedar por encima del segundo: en zonas derivadas del ATR
   // buy.min queda a ~−0.3 % y el "mínimo de zona" resultaba más alto que el tramo −1.5 %.
-  const level3Price = Math.min(zones.buy.min, level2Price * (isPaxg ? 0.99 : 0.985));
+  const level3Price = pullback
+    ? Math.min(zones.buy.min, currentPrice * (1 - pullback.l3Pct / 100))
+    : Math.min(zones.buy.min, level2Price * (isPaxg ? 0.99 : 0.985));
 
   // Devuelve true si ya existe una compra registrada a ±1.5% del precio del tramo
   const alreadyDone = (tramoPx) =>

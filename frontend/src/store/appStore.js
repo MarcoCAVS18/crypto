@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { fetchCryptoData, requestDecision } from '../services/api';
 import { fsAddOperation, fsGetOperations, fsDeleteOperation } from '../services/firestorePortfolio';
+import { buildSettings } from '../utils/settings';
 import { computePortfolioSummary } from '../utils/portfolioMath';
 
 export const useAppStore = create(
@@ -22,7 +23,9 @@ export const useAppStore = create(
       userState: {
         cashPercent:  50,
         mode:         'inversion',
-        totalCapital: 0
+        totalCapital: 0,
+        targetPercent: null,   // peso objetivo del oro (%) — opcional
+        feePercent:    null    // comisión por orden (%) — opcional (por defecto 0.5)
       },
 
       // Decisión actual
@@ -135,7 +138,8 @@ export const useAppStore = create(
             userState.cashPercent,
             userState.mode,
             userState.totalCapital,
-            portfolioContext
+            portfolioContext,
+            buildSettings(userState)
           );
           set({
             currentDecision: data.decision,

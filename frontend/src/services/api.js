@@ -24,9 +24,9 @@ export async function fetchCryptoData(symbol, timeframe = '4h') {
   return response.data;
 }
 
-export async function requestDecision(symbol, cashPercent, mode, totalCapital = 0, portfolioContext = null) {
+export async function requestDecision(symbol, cashPercent, mode, totalCapital = 0, portfolioContext = null, settings = {}) {
   const response = await api.post('/crypto/decision', {
-    symbol, cashPercent, mode, totalCapital, portfolioContext
+    symbol, cashPercent, mode, totalCapital, portfolioContext, settings
   });
   return response.data;
 }
