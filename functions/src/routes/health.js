@@ -6,7 +6,7 @@ import express from 'express';
 import { getGoldContextCache, getLatestSnapshots } from '../config/database.js';
 import { getCalendarCoverage } from '../data/macroCalendar.js';
 import { summarizeSources } from '../services/dataHealth.js';
-import { GROQ_MODEL, describeApiKey } from '../services/groqChat.js';
+import { GROQ_MODEL, describeApiKey, probeGroqKey } from '../services/groqChat.js';
 
 const router = express.Router();
 
@@ -95,6 +95,14 @@ router.get('/', async (_req, res) => {
   }
   res.set('Cache-Control', 'no-store');
   res.json(report);
+});
+
+// GET /api/health/ai — prueba la clave de Groq en vivo (lista de modelos, sin gastar tokens) y explica el resultado.
+// Router aparte: el principal cuelga de /api/health/deep.
+export const aiHealthRouter = express.Router();
+aiHealthRouter.get('/', async (_req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(await probeGroqKey());
 });
 
 export default router;

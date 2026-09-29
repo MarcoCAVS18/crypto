@@ -202,7 +202,7 @@ test('normalizeApiKey: quita espacios, saltos de línea, comillas, "Bearer " y "
 
 test('describeApiKey: no expone la clave, solo formato, largo y últimos 4; avisa de basura alrededor', () => {
   const d = describeApiKey('gsk_secretsecretsecret1234\n');
-  assert.deepEqual(Object.keys(d).sort(), ['format', 'hadExtraWhitespaceOrQuotes', 'last4', 'length', 'present']);
+  assert.deepEqual(Object.keys(d).sort(), ['format', 'hadExtraWhitespaceOrQuotes', 'last4', 'length', 'looksLike', 'present']);
   assert.equal(d.last4, '1234');
   assert.equal(d.hadExtraWhitespaceOrQuotes, true);
   assert.ok(!JSON.stringify(d).includes('secretsecret'));
@@ -229,4 +229,37 @@ test('getGroqClient: se recrea si el secreto cambió y tolera espacios', () => {
   assert.notEqual(getGroqClient(), a);
   delete process.env.GROQ_API_KEY;
   assert.throws(() => getGroqClient(), /no configurada/);
+});
+
+import { probeGroqKey, guessKeyKind } from '../src/services/groqChat.js';
+
+const resp = (status, body = {}) => ({ status, ok: status >= 200 && status < 300, json: async () => body });
+
+test('guessKeyKind reconoce claves de otros servicios (secreto pisado)', () => {
+  assert.equal(guessKeyKind('gsk_abc'), 'groq');
+  assert.equal(guessKeyKind('sk-or-v1-abc'), 'openrouter');
+  assert.match(guessKeyKind('0123456789abcdef0123456789abcdef'), /fred/);
+});
+
+test('probeGroqKey: sin clave, 401 con clave de FRED, 401 con gsk_, ok con modelo, ok sin modelo, red caída', async () => {
+  assert.match((await probeGroqKey({ apiKey: '', fetchImpl: async () => { throw new Error('no debe llamar'); } })).hint, /No hay GROQ_API_KEY/);
+
+  const fred = await probeGroqKey({ apiKey: '0123456789abcdef0123456789abcdef\n', fetchImpl: async () => resp(401) });
+  assert.equal(fred.ok, false); assert.equal(fred.status, 401);
+  assert.match(fred.hint, /reemplazado por otra clave/);
+  assert.match(fred.hint, /fred/);
+  assert.ok(!JSON.stringify(fred).includes('0123456789abcdef0123456789abcdef'));       // nunca la clave completa
+
+  const revoked = await probeGroqKey({ apiKey: 'gsk_x'.padEnd(56, 'y'), fetchImpl: async () => resp(401) });
+  assert.match(revoked.hint, /revocada|vencida/);
+
+  let seenAuth;
+  const good = await probeGroqKey({ apiKey: ' gsk_ok ', model: 'm1', fetchImpl: async (_u, o) => { seenAuth = o.headers.Authorization; return resp(200, { data: [{ id: 'm1' }] }); } });
+  assert.equal(good.ok, true); assert.equal(good.modelAvailable, true); assert.equal(seenAuth, 'Bearer gsk_ok');
+
+  const noModel = await probeGroqKey({ apiKey: 'gsk_ok', model: 'zzz', fetchImpl: async () => resp(200, { data: [{ id: 'a' }, { id: 'b' }] }) });
+  assert.equal(noModel.ok, true); assert.equal(noModel.modelAvailable, false); assert.match(noModel.hint, /GROQ_MODEL/);
+
+  const down = await probeGroqKey({ apiKey: 'gsk_ok', fetchImpl: async () => { throw new Error('ECONNRESET'); } });
+  assert.equal(down.ok, false); assert.match(down.hint, /ECONNRESET/);
 });
