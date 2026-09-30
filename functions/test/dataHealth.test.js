@@ -241,3 +241,14 @@ test('health: avisa si la clave de Groq tiene formato raro o texto extra', async
   const ok = buildHealthReport({ config: { ...base, groqKeyInfo: { present: true, format: 'gsk_…', length: 56, last4: 'abcd', hadExtraWhitespaceOrQuotes: false } }, cachedContext: null, calendar: { verified: 1, total: 1 } });
   assert.ok(!ok.warnings.some(w => /GROQ/.test(w)));
 });
+
+test('versions: expone versiones y parámetros vigentes (coherentes con los módulos)', async () => {
+  const { getVersions } = await import('../src/config/versions.js');
+  const { DCA_POLICY } = await import('../src/services/dcaPolicy.js');
+  const v = getVersions();
+  assert.equal(v.dcaPolicy, DCA_POLICY.version);
+  assert.match(v.decision, /^p\d/); assert.match(v.snapshot, /^p\d/);
+  assert.equal(v.parameters.aiWeight, 0.10);
+  assert.ok(v.parameters.modeExit < v.parameters.modeEnter);
+  assert.equal(v.parameters.defaultCosts.feeBps, 10);   // Binance spot 0.10 %
+});

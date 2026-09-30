@@ -65,7 +65,7 @@ Pre-declaradas antes de correr; 8 comparaciones más (4 variantes × pre-hold-ou
 | Volatilidad realizada alta → más | 1.0001, p 0.86 | 1.0007 | sin efecto |
 | Volatilidad realizada alta → menos | 0.9999, p 0.16 | 0.9992 (p 0.003, −0.08 %) | efecto despreciable → no se usa |
 
-Conclusión: el único efecto consistente es *no seguir al score* (comprar más cuando es bajo); el mapeo acotado conserva ~la mitad del efecto del mapeo amplio (×0.25–×2: −0.80 %) con menos riesgo. El efecto (~0.3 %) es menor que una comisión típica: modelar costos es el siguiente paso antes de sofisticar.
+Conclusión: el único efecto consistente es *no seguir al score* (comprar más cuando es bajo); el mapeo acotado conserva ~la mitad del efecto del mapeo amplio (×0.25–×2: −0.80 %) con menos riesgo. El efecto (~0.3 %) equivale a ~3 comisiones de Binance spot (0.1 %) y es menor que una comisión de un exchange minorista (~0.5 %): con Binance el costo del DCA no se come el beneficio, pero conviene no multiplicar operaciones (por eso los tramos < $10 se descartan).
 
 ## Límites conocidos
 

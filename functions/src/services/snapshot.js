@@ -8,7 +8,7 @@
 
 import { hourBucket, nullify } from './decisionLog.js';
 
-export const SNAPSHOT_MODEL_VERSION = 'p2';
+export const SNAPSHOT_MODEL_VERSION = 'p3';
 
 /** `PAXG_2026092812`: una foto por símbolo y hora UTC (el orden del ID es cronológico). */
 export function snapshotDocId(symbol, ms) {
@@ -80,7 +80,7 @@ export function buildSnapshot({ symbol, marketData, indicators, volume, zones, m
     },
 
     gold: gc ? {
-      ai: { sentiment: gc.sentiment ?? null, score: r(gc.sentimentScore, 3), error: gc.analysisError ?? null },
+      ai: { sentiment: gc.sentiment ?? null, score: r(gc.sentimentScore, 3), labels: gc.aiLabels ?? null, error: gc.analysisError ?? null },
       dxy: macro?.dxy ? { value: r(macro.dxy.value), changePercent: r(macro.dxy.changePercent, 3) } : null,
       tenYear: macro?.tenYearYield ? { value: r(macro.tenYearYield.value, 3), source: macro.tenYearYield.source ?? 'yahoo' } : null,
       realYield: macro?.realYield ? {

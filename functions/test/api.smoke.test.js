@@ -94,3 +94,26 @@ test('GET /api/health/ai está montado en esa ruta (sin clave responde con el di
     assert.match(j.hint, /No hay GROQ_API_KEY/);
   } finally { if (saved !== undefined) process.env.GROQ_API_KEY = saved; }
 });
+
+test('GET /api/metrics/:symbol valida el símbolo', async () => {
+  const r = await fetch(`${base}/api/metrics/%3Cbad%3E`);
+  assert.equal(r.status, 400);
+});
+
+test('el diagnóstico /api/health/ai tiene su propio límite (6/min por IP): el 7.º pedido recibe 429', async () => {
+  const saved = process.env.GROQ_API_KEY; delete process.env.GROQ_API_KEY;
+  try {
+    const h = { 'x-forwarded-for': '203.0.113.77' };
+    const codes = [];
+    for (let i = 0; i < 7; i++) codes.push((await fetch(`${base}/api/health/ai`, { headers: h })).status);
+    assert.deepEqual(codes, [200, 200, 200, 200, 200, 200, 429]);
+    // otra IP no se ve afectada
+    assert.equal((await fetch(`${base}/api/health/ai`, { headers: { 'x-forwarded-for': '203.0.113.78' } })).status, 200);
+  } finally { if (saved !== undefined) process.env.GROQ_API_KEY = saved; }
+});
+
+test('las respuestas llevan cabeceras de seguridad y no anuncian Express', async () => {
+  const r = await fetch(`${base}/api/health`);
+  assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(r.headers.get('x-powered-by'), null);
+});

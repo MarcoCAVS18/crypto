@@ -2,40 +2,14 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Operaciones del portfolio — lectura/escritura desde el cliente React
-    match /portfolio_operations/{docId} {
-      allow read, write: if true;
-    }
-
-    // Perfiles de usuario (hash SHA-256 del PIN) — escritura solo al configurar
-    match /user_profiles/{userId} {
-      allow read, write: if true;
-    }
-
-    // Historial de decisiones — solo lectura pública (escritura solo desde Functions)
-    match /decisions/{docId} {
-      allow read:  if true;
-      allow write: if false;
-    }
-
-    // Snapshots horarios de mercado — solo el servidor (Admin SDK) escribe y lee.
-    // (Sin regla el cliente ya estaría denegado por defecto; se deja explícito. Las reglas no se
-    // despliegan desde deploy.yml: aplicar con `firebase deploy --only firestore:rules`.)
-    match /snapshots/{docId} {
-      allow read, write: if false;
-    }
-
-    // Cachés internas de la Function — solo acceso desde el servidor (Admin SDK)
-    match /_cache/{docId} {
-      allow read, write: if false;
-    }
-    match /_ai_cache/{docId} {
-      allow read, write: if false;
-    }
-    match /_zone_state/{docId} {
-      allow read, write: if false;
-    }
-    match /push_subscriptions/{docId} {
+    // ── Todo cerrado al cliente ────────────────────────────────────────────────
+    // Desde la migración del PIN al servidor (docs/PAXG_AUDIT.md §P5) el navegador NO habla con Firestore: perfiles,
+    // sesiones y portfolio pasan por la API (Admin SDK, que ignora estas reglas) con sesión y PIN verificado en el servidor.
+    // Cualquier acceso directo con la clave web queda denegado.
+    //
+    // ⚠️ Publicar estas reglas SOLO después de desplegar la versión nueva del sitio y de confirmar que el login por PIN
+    //    funciona; con el sitio viejo (que leía Firestore directo) dejarían la app sin acceso.
+    match /{document=**} {
       allow read, write: if false;
     }
   }

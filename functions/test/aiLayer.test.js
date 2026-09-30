@@ -263,3 +263,34 @@ test('probeGroqKey: sin clave, 401 con clave de FRED, 401 con gsk_, ok con model
   const down = await probeGroqKey({ apiKey: 'gsk_ok', fetchImpl: async () => { throw new Error('ECONNRESET'); } });
   assert.equal(down.ok, false); assert.match(down.hint, /ECONNRESET/);
 });
+
+// ── P3c: el LLM como etiquetador (score determinístico) ─────────────────────
+import { parseGoldSentiment, labelsToScore } from '../src/services/groqAnalyzer.js';
+
+test('labelsToScore: media de etiquetas válidas; sin etiquetas válidas ⇒ null', () => {
+  assert.equal(labelsToScore({ monetaryPolicy: 1, geopolitics: 1, inflation: 0, goldDemand: 0 }), 0.5);
+  assert.equal(labelsToScore({ monetaryPolicy: -1, geopolitics: -1, inflation: -1, goldDemand: -1 }), -1);
+  assert.equal(labelsToScore({ monetaryPolicy: 1, geopolitics: 7, inflation: 'x', goldDemand: null }), 1);   // solo cuenta lo válido
+  assert.equal(labelsToScore({}), null);
+  assert.equal(labelsToScore(undefined), null);
+});
+
+test('parseGoldSentiment: el score sale de las etiquetas (no del número que ponga el LLM) y el sentimiento se deriva', () => {
+  const r = parseGoldSentiment({ score: -0.9, sentiment: 'bearish', labels: { monetaryPolicy: 1, geopolitics: 1, inflation: 1, goldDemand: 0 }, reasoning: 'x', keyFactors: ['a', 'b', 'c', 'd'] });
+  assert.equal(r.score, 0.75);
+  assert.equal(r.sentiment, 'bullish');
+  assert.deepEqual(r.labels, { monetaryPolicy: 1, geopolitics: 1, inflation: 1, goldDemand: 0 });
+  assert.equal(r.keyFactors.length, 3);
+});
+
+test('parseGoldSentiment: sin etiquetas válidas cae al score numérico recortado; basura ⇒ neutral 0', () => {
+  const fb = parseGoldSentiment({ score: 5, sentiment: 'bullish' });
+  assert.equal(fb.score, 1); assert.equal(fb.labels, null); assert.equal(fb.sentiment, 'bullish');
+  const junk = parseGoldSentiment(undefined);
+  assert.equal(junk.score, 0); assert.equal(junk.sentiment, 'neutral');
+});
+
+test('el prompt pide etiquetas discretas, no un puntaje numérico libre', () => {
+  const p = buildGoldSentimentPrompt([{ title: 'Gold rises', pubDate: new Date().toISOString() }]);
+  assert.match(p, /"labels"/); assert.match(p, /monetaryPolicy/); assert.doesNotMatch(p, /"score":/);
+});

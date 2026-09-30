@@ -209,7 +209,8 @@ import { getCOTData, cotUrl } from '../src/services/macroService.js';
 
 test('cotUrl pide solo las columnas necesarias y ordena por fecha del reporte', () => {
   const u = cotUrl(160);
-  assert.match(u, /\$select=as_of_date_in_form_yymmdd,report_date_as_yyyy_mm_dd,noncomm_positions_long_all,noncomm_positions_short_all,open_interest_all/);
+  assert.match(u, /\$select=report_date_as_yyyy_mm_dd,noncomm_positions_long_all,noncomm_positions_short_all,open_interest_all/);
+  assert.ok(!u.includes('as_of_date_in_form_yymmdd'), 'esa columna ya no existe en el dataset (HTTP 400)');
   assert.match(u, /\$limit=160/);
   assert.match(u, /GOLD%20-%20COMMODITY%20EXCHANGE%20INC\./);
 });
@@ -237,4 +238,17 @@ test('getCOTData: si ambos fallan lanza (el modo degradado lo muestra); con HTTP
   try {
     await assert.rejects(() => getCOTData({ fetchImpl: async () => ({ ok: false, status: 500 }) }), /HTTP 500/);
   } finally { console.warn = warn; }
+});
+
+
+test('COT con la forma REAL del dataset actual (sin as_of_date_in_form_yymmdd): reportDate sale en YYMMDD y dataHealth la entiende', async () => {
+  const { cotReportDate } = await import('../src/services/macroService.js');
+  const { parseYymmdd } = await import('../src/services/dataHealth.js');
+  const real = (long, short, d) => ({ report_date_as_yyyy_mm_dd: `${d}T00:00:00.000`, noncomm_positions_long_all: String(long), noncomm_positions_short_all: String(short), open_interest_all: '500000' });
+  const r = parseCotHistory([real(200000, 50000, '2026-09-22'), real(190000, 50000, '2026-09-15')]);
+  assert.equal(r.reportDate, '260922');
+  assert.equal(r.netSpec, 150000);
+  assert.equal(parseYymmdd(r.reportDate), Date.UTC(2026, 8, 22));
+  assert.equal(cotReportDate({ as_of_date_in_form_yymmdd: '260101' }), '260101');   // formato anterior sigue valiendo
+  assert.equal(cotReportDate({}), null);
 });

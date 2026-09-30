@@ -104,6 +104,8 @@ export function DetailsSheet({
                     initialCash={userState.cashPercent}
                     initialMode={userState.mode}
                     initialCapital={userState.totalCapital}
+                    initialTarget={userState.targetPercent ?? ''}
+                    initialFee={userState.feePercent ?? ''}
                   />
                   {decisionLoading && <p className="text-xs text-slate-500 text-center mt-3">Analizando señal...</p>}
                 </div>
