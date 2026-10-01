@@ -29,6 +29,7 @@ export async function saveDecision(record, now = Date.now()) {
   try {
     await db().collection('decisions').doc(id).create({
       ...record,
+      ts: now,                                  // ms explícitos: los resultados se miden desde este instante
       timestamp: FieldValue.serverTimestamp()
     });
     return true;
@@ -85,6 +86,85 @@ export async function getDecisionsBySymbol(symbol, limit = 10, { throwOnError = 
     if (throwOnError) throw err;
     return [];
   }
+}
+
+// ── Perfiles, sesiones y portfolio (auth por PIN en el servidor) ───────────────
+
+export async function getProfile(userId) {
+  const doc = await db().collection('user_profiles').doc(userId).get();
+  return doc.exists ? doc.data() : null;
+}
+/** Crea el perfil; false si ya existía (nunca pisa un PIN). */
+export async function createProfile(userId, data) {
+  try {
+    await db().collection('user_profiles').doc(userId).create({ ...data, createdAt: FieldValue.serverTimestamp() });
+    return true;
+  } catch (err) {
+    if (err?.code === 6 || /ALREADY_EXISTS/i.test(err?.message ?? '')) return false;
+    throw err;
+  }
+}
+export async function updateProfile(userId, patch) {
+  await db().collection('user_profiles').doc(userId).set(patch, { merge: true });
+}
+export async function saveSession(id, data) { await db().collection('_sessions').doc(id).set(data); }
+export async function getSession(id) {
+  const doc = await db().collection('_sessions').doc(id).get();
+  return doc.exists ? doc.data() : null;
+}
+export async function deleteSession(id) { await db().collection('_sessions').doc(id).delete(); }
+
+const isOwn = (op, userId) => (userId === 'marco' ? (!op.userId || op.userId === 'marco') : op.userId === userId);
+
+/** Operaciones del usuario (las de Marco incluyen las viejas sin userId). Más nuevas primero. */
+export async function listUserOperations(userId, { symbol = null, limit = 500 } = {}) {
+  const col = db().collection('portfolio_operations');
+  const snap = userId === 'marco'
+    ? await col.orderBy('date', 'desc').limit(limit).get()
+    : await col.where('userId', '==', userId).limit(limit).get();
+  let ops = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(o => isOwn(o, userId));
+  if (symbol) ops = ops.filter(o => o.symbol === String(symbol).toUpperCase());
+  return ops.sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')));
+}
+export async function addUserOperation(op) {
+  const ref = await db().collection('portfolio_operations').add({ ...op, created_at: FieldValue.serverTimestamp() });
+  return ref.id;
+}
+/** Borra solo si la operación es del usuario. @returns {'deleted'|'not_found'|'forbidden'} */
+export async function deleteUserOperation(userId, id) {
+  const ref = db().collection('portfolio_operations').doc(id);
+  const doc = await ref.get();
+  if (!doc.exists) return 'not_found';
+  if (!isOwn(doc.data(), userId)) return 'forbidden';
+  await ref.delete();
+  return 'deleted';
+}
+
+// ── Resultados de las señales (P4) ────────────────────────────────────────────
+
+/** Guarda/actualiza el resultado etiquetado de una decisión (mismo ID que la decisión). */
+export async function saveOutcome(id, data) {
+  await db().collection('outcomes').doc(id).set({ ...data, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+}
+
+/** Resultados de un símbolo (más nuevo primero), por rango de ID: sin índice compuesto. */
+export async function getOutcomes(symbol, limit = 300) {
+  const prefix = decisionIdPrefix(symbol);
+  const docId = FieldPath.documentId();
+  const snap = await db().collection('outcomes')
+    .where(docId, '>=', prefix).where(docId, '<', prefix + '\uf8ff')
+    .orderBy(docId, 'desc').limit(limit).get();
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+/** Operaciones registradas por el usuario para un símbolo (lectura con Admin SDK). `ts` en ms desde `date`. */
+export async function getOperationsForSymbol(symbol, userId = null, limit = 500) {
+  const snap = await db().collection('portfolio_operations').where('symbol', '==', String(symbol).toUpperCase()).limit(limit).get();
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(o => !userId || (o.userId ?? 'marco') === userId)
+    .map(o => ({ type: o.type, symbol: o.symbol, ts: Date.parse(`${String(o.date).slice(0, 10)}T12:00:00Z`) || null }))
+    .filter(o => o.ts);
 }
 
 // ── Snapshots horarios del mercado (features point-in-time) ───────────────────

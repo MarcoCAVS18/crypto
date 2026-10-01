@@ -43,7 +43,7 @@ export function nullify(v) {
 /**
  * Snapshot de la decisión con las features que la produjeron.
  */
-export function buildDecisionRecord({ symbol, marketData, marketMode, zones, indicators, userState, decision }) {
+export function buildDecisionRecord({ symbol, marketData, marketMode, zones, indicators, userState, decision, shadow = null }) {
   const gc  = marketMode?.goldContext ?? null;
   const atr = indicators?.atr;
   const price = marketData?.price;
@@ -58,6 +58,7 @@ export function buildDecisionRecord({ symbol, marketData, marketMode, zones, ind
     strength:     decision?.strength ?? null,
     reason:       decision?.reason ?? null,
     opsCount:     decision?.operations?.length ?? 0,
+    shadow:       shadow,                 // qué habría hecho la política de referencia (modo sombra)
     dcaPolicy:    decision?.policy ? { version: decision.policy.version, multiplier: decision.policy.multiplier, capFraction: decision.policy.capFraction } : null,
     calendarModulated: !!decision?.calendarRisk,
     cashPercent:  Number(userState?.cashPercent),

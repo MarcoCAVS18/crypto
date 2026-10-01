@@ -224,3 +224,68 @@ test('neutral sin señal clara sigue en WAIT y sin operaciones', () => {
   assert.equal(d.action, 'WAIT');
   assert.deepEqual(d.operations, []);
 });
+
+
+// ── P3c: costos, peso objetivo, salidas por régimen, retrocesos históricos ─────
+
+const goldMode = (mode, score, dailyBias) => ({ mode, score, reasons: [], goldContext: { macro: { dailyBias } } });
+
+test('P3c costos: las operaciones llevan costo estimado y la recomendación lo aclara como supuesto', () => {
+  const price = 4000;
+  const d = makeDecision(on, atrZones(price, 'buy'), price, st(60), ind, 'PAXG', null);
+  assert.ok(d.operations.every(o => o.estCostUsd > 0));
+  assert.match(d.recommendation, /Costo estimado ≈ \$.*supuesto/);
+});
+
+test('P3c costos: si TODOS los tramos quedan bajo el mínimo ⇒ WAIT "monto demasiado chico"', () => {
+  const price = 4000;
+  const d = makeDecision(on, atrZones(price, 'buy'), price, { cashPercent: 60, mode: 'inversion', totalCapital: 30 }, ind, 'PAXG', null);
+  assert.equal(d.action, 'WAIT');
+  assert.match(d.reason, /demasiado chico/);
+});
+
+test('P3c costos: un mínimo configurado por el usuario se respeta', () => {
+  const price = 4000;
+  const d = makeDecision(on, atrZones(price, 'buy'), price, { ...st(60), costs: { minOrderUsd: 100000 } }, ind, 'PAXG', null);
+  assert.equal(d.action, 'WAIT');
+});
+
+test('P3c peso objetivo: sobre la banda con ganancia ⇒ rebalanceo (SELL parcial); en pérdida ⇒ WAIT sin comprar', () => {
+  const price = 4000;
+  const target = { targetPercent: 20 };                       // banda 15–25 %
+  const heavy = { costBasis: 6000, netInvested: 6000 };        // 30 % de 20000
+  const up = makeDecision(neutral, atrZones(price, 'neutral'), price, { ...st(60), target }, ind, 'PAXG', position(price, 10, heavy));
+  assert.equal(up.action, 'SELL');
+  assert.match(up.reason, /Rebalanceo/);
+  const down = makeDecision(on, atrZones(price, 'buy'), price, { ...st(60), target }, ind, 'PAXG', position(price, -5, heavy));
+  assert.equal(down.action, 'WAIT');
+  assert.match(down.reason, /sobre la banda objetivo/);
+});
+
+test('P3c peso objetivo: por debajo de la banda acelera el DCA (×1.25 sobre la fracción), dentro no cambia', () => {
+  const price = 4000;
+  const amount = (userState, pos) => makeDecision(on, atrZones(price, 'buy'), price, userState, ind, 'PAXG', pos).operations.reduce((a, o) => a + o.usdAmount, 0);
+  const base = amount(st(60), null);
+  const below = amount({ ...st(60), target: { targetPercent: 30 } }, null);    // sin posición ⇒ peso 0 %, por debajo de 25 %
+  assert.ok(below > base, `${below} vs ${base}`);
+  assert.ok(below <= 20000 * 0.6 + 1e-6);
+});
+
+test('P3c salidas: rotura de tendencia larga + macro adverso + ganancia ⇒ SELL 20 % sin necesidad de zona de venta', () => {
+  const price = 4000;
+  const bear = { longAlignment: 'bear', extension200Pct: -4, rsi: 38, alignment: 'bear' };
+  const d = makeDecision(goldMode('risk_off', -0.5, bear), atrZones(price, 'neutral'), price, st(60), ind, 'PAXG', position(price, 20));
+  assert.equal(d.action, 'SELL');
+  assert.match(d.reason, /Rotura de tendencia larga/);
+  // BTC no recibe esta regla
+  assert.doesNotMatch(makeDecision(goldMode('risk_off', -0.5, bear), atrZones(price, 'neutral'), price, st(60), ind, 'BTC', position(price, 20)).reason, /Rotura de tendencia larga/);
+});
+
+test('P3c retrocesos históricos: con niveles propios los tramos usan esas profundidades (2.º por debajo del 1.º, 3.º por debajo del 2.º)', () => {
+  const price = 4000;
+  const d = makeDecision(on, atrZones(price, 'buy'), price, st(60), ind, 'PAXG', null, { pullback: { l2Pct: 1.0, l3Pct: 2.5 } });
+  const px = d.operations.map(o => o.price);
+  assert.equal(px.length, 3);
+  assert.ok(Math.abs(px[1] - price * 0.99) < 1e-6);
+  assert.ok(px[2] <= price * (1 - 0.025) + 1e-6 && px[2] < px[1]);
+});

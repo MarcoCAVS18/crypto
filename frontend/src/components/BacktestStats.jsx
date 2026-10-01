@@ -2,7 +2,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TrendingUp, Clock, TrendingDown, Activity, AlertCircle, ChevronDown } from 'lucide-react';
-import { fetchDecisions } from '../services/api';
+import { fetchDecisions, fetchMetrics } from '../services/api';
+import { metricRows, pct, rate } from '../utils/metricsFormat';
 import { useAuthStore } from '../store/authStore';
 import { useAppStore } from '../store/appStore';
 
@@ -175,7 +176,7 @@ function TimelineRow({ entry, index, isLast, currentPrice }) {
 }
 
 /** Stats + timeline panel for one symbol */
-function SymbolStats({ decisions, currentPrice, error = null }) {
+function SymbolStats({ decisions, currentPrice, error = null, symbol = null }) {
   const [showAll, setShowAll] = useState(false);
 
   const stats = computeStats(decisions);
@@ -214,6 +215,10 @@ function SymbolStats({ decisions, currentPrice, error = null }) {
       {/* Divider */}
       <div className="border-t border-white/[0.04]" />
 
+      {symbol && <RealMetrics symbol={symbol} />}
+
+      {symbol && <div className="border-t border-white/[0.04]" />}
+
       {/* Mini timeline */}
       <div>
         <span className="text-[10px] uppercase tracking-widest text-slate-600 block mb-3">
@@ -250,6 +255,90 @@ function SymbolStats({ decisions, currentPrice, error = null }) {
           </motion.button>
         )}
       </div>
+    </div>
+  );
+}
+
+
+// ── Resultados reales de las señales (P4) ──────────────────────────────────────
+
+const HORIZONS = [5, 20, 60];
+
+/** Qué pasó DESPUÉS de cada señal, contra la línea base. Se calcula en el servidor (outcomeJob diario). */
+function RealMetrics({ symbol }) {
+  const [state, setState] = useState({ loading: true, data: null, error: null });
+  const [h, setH] = useState(20);
+
+  useEffect(() => {
+    let cancelled = false;
+    setState({ loading: true, data: null, error: null });
+    fetchMetrics(symbol)
+      .then(data => { if (!cancelled) setState({ loading: false, data, error: null }); })
+      .catch(err => { if (!cancelled) setState({ loading: false, data: null, error: err.response?.data?.error ?? err.message ?? 'error de red' }); });
+    return () => { cancelled = true; };
+  }, [symbol]);
+
+  if (state.loading) return <div className="h-16 rounded-xl bg-white/[0.03] animate-pulse" />;
+  if (state.error) return <p className="text-[11px] text-amber-400/80">No se pudieron leer los resultados reales ({state.error}).</p>;
+
+  const { data } = state;
+  const rows = metricRows(data.summary, h);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] uppercase tracking-widest text-slate-600">Resultados reales</span>
+        <div className="flex items-center gap-1">
+          {HORIZONS.map(x => (
+            <button key={x} onClick={() => setH(x)}
+              className={`px-2 py-0.5 rounded-md text-[10px] font-semibold tabular ${h === x ? 'bg-violet-500/20 text-violet-400' : 'text-slate-500 hover:text-slate-300'}`}>
+              {x} d
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {rows.length === 0 ? (
+        <p className="text-[11px] text-slate-600 leading-relaxed">
+          Todavía no hay señales con {h} días cumplidos. Cada señal se etiqueta a 1, 5, 20 y 60 días (job diario) y acá se compara con “operar cualquier día”.
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-[11px] tabular">
+            <thead>
+              <tr className="text-slate-600 text-left">
+                <th className="font-medium pb-1">Señal</th><th className="font-medium pb-1">N</th>
+                <th className="font-medium pb-1">Acierto</th><th className="font-medium pb-1">Azar</th>
+                <th className="font-medium pb-1">Ret. medio</th><th className="font-medium pb-1">Ventaja</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(r => (
+                <tr key={r.action} className="text-slate-300">
+                  <td className="py-0.5 font-semibold">{r.action}</td>
+                  <td className="py-0.5">{r.n}{r.lowSample ? <span title="Pocas señales: no concluyente" className="text-amber-400/70"> ⚠</span> : null}</td>
+                  <td className="py-0.5">{r.hit}</td><td className="py-0.5 text-slate-500">{r.base}</td>
+                  <td className="py-0.5">{r.ret}</td><td className="py-0.5">{r.edge}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="text-[10px] text-slate-600 mt-1">Acierto: BUY sube / SELL baja. “Azar”: cuánto acertaría operar cualquier día. Ventaja: retorno medio contra esa línea base. ⚠ = menos de 10 señales.</p>
+        </div>
+      )}
+
+      {data.follow?.signals > 0 && (
+        <p className="text-[11px] text-slate-500">
+          Seguiste <span className="text-slate-300 font-semibold">{rate(data.follow.followRate)}</span> de las señales de compra/venta
+          {Number.isFinite(data.follow.meanRetFollowed) && Number.isFinite(data.follow.meanRetNotFollowed)
+            ? ` · a 20 d: seguidas ${pct(data.follow.meanRetFollowed)} vs no seguidas ${pct(data.follow.meanRetNotFollowed)}` : ''}.
+        </p>
+      )}
+      {data.shadow?.n > 0 && (
+        <p className="text-[11px] text-slate-500">
+          Motor vs DCA fijo (a 20 d): compras del motor {pct(data.shadow.champion.meanRet)} ({data.shadow.champion.buys}) · DCA fijo {pct(data.shadow.shadow.meanRet)} ({data.shadow.shadow.buys}).
+        </p>
+      )}
     </div>
   );
 }
@@ -435,7 +524,7 @@ export function BacktestStats() {
           exit={{ opacity: 0, y: -4 }}
           transition={{ duration: 0.18, ease: 'easeOut' }}
         >
-          <SymbolStats decisions={currentDecisions} currentPrice={cryptoData[safeTab]?.price} error={errors[safeTab] ?? null} />
+          <SymbolStats decisions={currentDecisions} currentPrice={cryptoData[safeTab]?.price} error={errors[safeTab] ?? null} symbol={safeTab} />
         </motion.div>
       </AnimatePresence>
     </motion.div>

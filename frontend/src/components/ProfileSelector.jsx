@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
-import { hasProfile, setupPin, verifyPin, saveUserCryptos, getUserCryptos } from '../services/firestoreAuth';
+import { hasProfile, setupPin, verifyPin, saveUserCryptos, getUserCryptos, lastVerifyMessage } from '../services/firestoreAuth';
 import { useAuthStore } from '../store/authStore';
 import { PROFILE_LIST } from '../data/profiles';
 
@@ -72,7 +72,7 @@ export function ProfileSelector() {
       const exists = await hasProfile(profile.id);
       setStep(exists ? 'verify' : 'setup');
     } catch (err) {
-      setError('Error conectando con Firestore. Reintentá.');
+      setError(err?.message ? `No se pudo conectar con el servidor: ${err.message}` : 'No se pudo conectar con el servidor. Reintentá.');
       setStep('profiles');
     }
   };
@@ -121,7 +121,7 @@ export function ProfileSelector() {
             await setupPin(selectedProfile.id, pin);
             await afterPinSuccess(selectedProfile, null);
           } catch (err) {
-            triggerShake('Error guardando el PIN. Reintentá.');
+            triggerShake(err?.message || 'Error guardando el PIN. Reintentá.');
             setConfirmPin('');
           }
         } else {
@@ -140,14 +140,14 @@ export function ProfileSelector() {
         try {
           const ok = await verifyPin(selectedProfile.id, next);
           if (ok) {
-            const firestoreCoins = await getUserCryptos(selectedProfile.id);
+            const firestoreCoins = await getUserCryptos();
             await afterPinSuccess(selectedProfile, firestoreCoins);
           } else {
-            triggerShake('PIN incorrecto. Reintentá.');
+            triggerShake(lastVerifyMessage || 'PIN incorrecto. Reintentá.');
             setTimeout(() => setPin(''), 600);
           }
         } catch (err) {
-          triggerShake('Error verificando el PIN. Reintentá.');
+          triggerShake(err?.message || 'Error verificando el PIN. Reintentá.');
           setTimeout(() => setPin(''), 600);
         }
       }

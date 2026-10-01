@@ -11,6 +11,8 @@ import { getCryptoNewsContext } from '../services/cryptoNewsContext.js';
 import { makeDecision } from '../services/decisionEngine.js';
 import { generatePortfolioInsight } from '../services/groqAnalyzer.js';
 import { applyEventRisk } from '../services/eventRisk.js';
+import { pullbackLevels } from '../services/pullbacks.js';
+import { shadowFixedDca } from '../services/shadow.js';
 import { getUpcomingEvents } from '../data/macroCalendar.js';
 import { buildDecisionRecord } from '../services/decisionLog.js';
 import { insightCacheKey } from '../services/aiHelpers.js';
@@ -206,7 +208,10 @@ router.post('/decision', async (req, res) => {
     const userState = {
       cashPercent: cash,                 // número ya validado (0-100), no el valor crudo del body
       mode: mode || 'inversion',
-      totalCapital: parseFloat(totalCapital) || 0
+      totalCapital: parseFloat(totalCapital) || 0,
+      // Ajustes opcionales del perfil (se sanean en el motor): costos de operar y peso objetivo del oro con bandas
+      costs:  req.body.settings?.costs ?? undefined,
+      target: req.body.settings?.target ?? null
     };
 
     // Contexto del portfolio: prioridad al valor enviado por el frontend (Firestore)
@@ -222,7 +227,7 @@ router.post('/decision', async (req, res) => {
 
     let decision = makeDecision(
       marketMode, zones, marketData.price, userState, indicators, symbol.toUpperCase(), portfolioContext,
-      { candlesSource: marketData.candlesSource }
+      { candlesSource: marketData.candlesSource, pullback: symbol.toUpperCase() === 'PAXG' ? pullbackLevels(marketData.candles) : null }
     );
 
     // Con datos macro degradados (fuentes caídas/viejas) se advierte y una compra pierde intensidad
@@ -271,7 +276,8 @@ router.post('/decision', async (req, res) => {
     let savedToHistory = false;
     try {
       savedToHistory = await saveDecision(buildDecisionRecord({
-        symbol: symbol.toUpperCase(), marketData, marketMode, zones, indicators, userState, decision
+        symbol: symbol.toUpperCase(), marketData, marketMode, zones, indicators, userState, decision,
+        shadow: shadowFixedDca(userState)
       }));
     } catch (e) {
       console.error('Error guardando decisión:', e.message);

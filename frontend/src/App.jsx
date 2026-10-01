@@ -21,6 +21,8 @@ import { formatRelativeTime } from './utils/formatters';
 import { AUTO_REFRESH_INTERVAL } from './utils/constants';
 import { requestPermission, isSupported, getPermission } from './services/notifications';
 import { subscribeToPush } from './services/pushSubscription';
+import { getToken } from './services/session';
+import { logoutServer } from './services/firestoreAuth';
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -36,7 +38,12 @@ const tabVariants = {
 // ── Root ──────────────────────────────────────────────────────────────────────
 export default function App() {
   const currentUser = useAuthStore((s) => s.currentUser);
-  return currentUser ? <AuthenticatedApp /> : <ProfileSelector />;
+  // Sesiones guardadas por la versión anterior (sin token del servidor): se pide el PIN una vez para crear la sesión
+  const hasSession = !!getToken();
+  useEffect(() => {
+    if (currentUser && !hasSession) useAuthStore.getState().logout();
+  }, [currentUser, hasSession]);
+  return currentUser && hasSession ? <AuthenticatedApp /> : <ProfileSelector />;
 }
 
 // ── App autenticada ───────────────────────────────────────────────────────────
@@ -97,7 +104,7 @@ function AuthenticatedApp() {
     } catch (e) { console.warn('[Notifications] signal:', e.message); }
   }, [currentDecision, selectedCrypto, cryptoData]);
 
-  const handleLogout = () => { setUserId(null); logout(); };
+  const handleLogout = () => { setUserId(null); logoutServer(); logout(); };
 
   const handleRefresh = async () => {
     if (isSupported() && getPermission() === 'default') {
@@ -113,8 +120,8 @@ function AuthenticatedApp() {
     setActiveTab(id);
   };
 
-  const handleUserStateSubmit = ({ cashPercent, mode, totalCapital }) => {
-    updateUserState({ cashPercent, mode, totalCapital });
+  const handleUserStateSubmit = ({ cashPercent, mode, totalCapital, targetPercent = null, feePercent = null }) => {
+    updateUserState({ cashPercent, mode, totalCapital, targetPercent, feePercent });
     getDecision();
   };
 

@@ -15,7 +15,7 @@
 ## 1. Mapa del sistema
 
 **Deploy real:** Firebase (`functions/` = API, `frontend/` = hosting). `.github/workflows/deploy.yml` despliega solo `hosting,functions` en push a `main` (NO despliega `firestore:indexes` ni `firestore:rules`).
-**`backend/`** es el servidor legacy (Render + SQLite). Duplica los servicios de `functions/` y **no recibe los arreglos de esta hoja de ruta**. Decisión pendiente: eliminarlo (ver D9).
+**`backend/`** (servidor legacy de Render) **fue eliminado**: todo corre en Firebase (ver D9).
 
 Flujo de datos de PAXG:
 
@@ -159,18 +159,26 @@ Cada fase = un PR. Marcar `[x]` al mergear.
 - [x] **Gate de acumulación:** PAXG en `risk_off` ya no queda siempre en WAIT: sigue acumulando en zona de compra o bajo el promedio (tamaño por la política), salvo posición concentrada (>70 %), efectivo < 30 % o tramos ya ejecutados. Las ventas por macro adverso no cambian. BTC/ETH no cambian.
 - [x] Volatilidad realizada como señal de tamaño: probada, sin efecto (±0.01 %) → **no se usa**. Caída desde el máximo de 1 año: no confirmada en el hold-out (p 0.35) → no se usa.
 - [x] Registro: cada decisión guarda `dcaPolicy` (versión, multiplicador, fracción); `modelVersion` de decisiones pasa a `p3`.
-- [ ] Peso objetivo del sleeve de oro + bandas; escalones por cuantiles de retrocesos; tamaño por volatilidad *de la posición* (Kelly fraccional acotado — sin evidencia aún)
-- [ ] Salidas por rotura de tendencia + macro adverso; recorte por sobre-extensión; costos (comisión + spread; el efecto medido del tilt, ~0.3 %, es menor que una comisión: hay que modelarlos antes de más sofisticación)
+- [x] Peso objetivo del oro con bandas (`portfolioPolicy.js`; opcional, campo en "Tu posición"): por debajo de la banda DCA ×1.25; por encima no se compra y, con ganancia, recorte de rebalanceo (≤ 30 %). Peso = costo de la posición / capital total (mismo criterio del motor). Escalones por cuantiles de retrocesos (`pullbacks.js`: mediana y P80 de la profundidad histórica del propio activo, acotados 0.4–8 %). Kelly fraccional: **no implementado** (sin evidencia ni estimación fiable de ventaja: el backtest no encontró señal predictiva).
+- [x] Salidas por régimen (`exitPolicy.js`, solo PAXG con ganancia): tendencia larga bajista + macro adverso + ganancia ≥ 15 % ⇒ recorte 20 %; > 25 % sobre la EMA200 + RSI diario ≥ 70 + ganancia ≥ 25 % ⇒ recorte 15 %. **Sin backtest** (declarado). Costos (`costModel.js`): por defecto **Binance spot** (0.10 % de comisión por orden, 0.075 % con BNB; spread supuesto 0.05 % en PAXG/USDT), editables en el perfil; se estima el costo por orden y se descartan tramos < $10 (si todos quedan bajo el mínimo ⇒ WAIT).
 - [x] Eventos (`services/eventRisk.js`): riesgo de calendario **determinístico** (antes lo decidía Groq y cambiaba entre llamadas; guía del prompt pausaba compras con el FOMC "mañana o hoy"): pausa solo en ventana corta (crítico ≤ 3 h antes o ≤ 1 h después; alto: 50 % a ≤ 2 h), 75 %/90 % hasta 24 h antes, solo COMPRAS. **No respaldado por backtest** (no hay historia de calendario con horas): higiene de riesgo declarada. `analyzeCalendarRisk` eliminado.
-- [ ] LLM como etiquetador estructurado (peso ±0.05–0.10, logueado) + explicador con paquete de decisión
+- [x] LLM como etiquetador estructurado: devuelve 4 etiquetas discretas (política monetaria, geopolítica, inflación, demanda de oro ∈ {−1,0,1}); el score sale de la media (regla fija), peso **±0.10** (antes 0.15), etiquetas guardadas en el snapshot. Explicador con paquete de decisión: pendiente (el insight actual ya recibe la decisión y el historial).
 
-### P4 — Aprendizaje continuo
-- [ ] Jobs que etiquetan resultados a 1/5/20/60 días (retorno, MAE/MFE), hit rate, calibración/Brier, vs baselines
-- [ ] Reemplazar "AI Signal History" por métricas reales; modo sombra (champion/challenger); alertas de fuente caída; seguimiento de si seguiste la señal
+### P4 — Aprendizaje continuo  → implementado (rama `claude/paxg-phase4-learning`)
+- [x] **Etiquetado de resultados** (`outcomeJob`, diario; `services/outcomes.js`): cada decisión con id horario se etiqueta a 1/5/20/60 días con retorno, MAE y MFE respecto del precio de la señal, solo cuando el horizonte terminó (colección `outcomes`, mismo id que la decisión; solo servidor).
+- [x] **Métricas reales** (`GET /api/metrics/:symbol`, `services/metrics.js`): acierto por acción y horizonte **contra la línea base** ("operar cualquier día"), por intensidad, seguimiento y campeón vs sombra. Reemplaza el conteo de "AI Signal History": el panel del Portfolio muestra n, acierto, azar, retorno medio y ventaja, con ⚠ si hay < 10 señales. Calibración/Brier: **no aplica** (el motor no emite probabilidades).
+- [x] **Modo sombra** (`services/shadow.js`): cada decisión registra qué habría hecho un DCA fijo (challenger `fixed_dca`); `compareShadow` lo enfrenta a las compras del motor.
+- [x] **Seguimiento**: `followStats` cruza señales con operaciones registradas (BUY/SELL del mismo símbolo dentro de 24 h) y compara el resultado de las seguidas vs no seguidas.
+- [x] **Alerta de fuente caída**: push (con antispam de 12 h) tras 3 ciclos horarios seguidos con degradación severa (`healthAlert.js`, dentro de `snapshotJob`).
 
-### P5 — Ingeniería y seguridad
-- [ ] Decidir/eliminar `backend/`; núcleo puro compartido; config versionada; README
-- [ ] Reglas de Firestore con auth real; rate-limit en `/api/chat` y `/refresh`; App Check
+### P5 — Ingeniería y seguridad  → implementado con alcance acotado (rama `claude/paxg-phase5-engineering`)
+- [x] `backend/` **eliminado** (todo corre en Firebase; D9).
+- [x] Config versionada: `config/versions.js` reúne versiones (decisión, snapshot, política de DCA, revisión) y parámetros vigentes; sale en `GET /api/health/deep` (`versions`).
+- [x] README reescrito (arquitectura real, jobs, secretos, diagnóstico).
+- [x] **Rate-limit** por IP (`middleware/rateLimit.js`): general 240/min, IA 20/min, refrescos 6/min, `/api/health/ai` 6/min; cabeceras de seguridad; `CORS_ORIGINS` opcional. **En memoria y por instancia** (Cloud Functions no comparte estado entre instancias): frena ráfagas, no es una defensa completa.
+- [x] Reglas de Firestore (`firestore.rules`): validación de esquema en `portfolio_operations` (crear/leer/borrar; sin edición) y `user_profiles` (crear una vez; solo se puede cambiar `cryptos`; sin borrar). **No autentican.**
+- [x] **Autenticación por PIN en el servidor** (`routes/auth.js`, `services/pinAuth.js`, `middleware/session.js`): el navegador ya no toca Firestore. PIN de 4–8 dígitos verificado con scrypt (los PIN viejos, SHA-256 del cliente, se aceptan y se migran al iniciar sesión), bloqueo de 15 min tras 5 intentos fallidos por perfil, límite por IP en `/api/auth/*`, sesiones de 30 días (token aleatorio; solo se guarda su SHA-256), y portfolio por API que solo devuelve/borra lo del usuario autenticado (el `userId` sale de la sesión). `firestore.rules` pasa a **denegar todo** al cliente. Limitación: sigue siendo un PIN (un PIN corto con bloqueo aguanta mucho mejor que antes, pero no es Firebase Auth con email/proveedor). **App Check** sigue sin activarse (requiere la consola).
+- [ ] Núcleo puro compartido front/back: descartado por ahora (la lógica de decisión vive solo en `functions/`; el frontend solo duplica `portfolioMath`, con tests propios).
 
 ## 6. Decisiones abiertas / supuestos
 
@@ -261,3 +269,28 @@ Sin contrastar (`verified: false`, "fecha por confirmar"): PCE sep (30-oct), NFP
 - `eventRisk.js` + 9 tests (incluye el FOMC real del 2026-09-16 a distintas horas). El decision route ya no llama a Groq para el calendario: menos latencia/tokens y resultado reproducible; una falla de IA (p. ej. 401) ya no afecta a la decisión.
 - Comportamiento que cambia: la pausa por calendario ahora es corta (antes el LLM podía pausar/reducir hasta 7 días antes del evento).
 - Pendiente de P3: costos (necesito la tarifa real del exchange del usuario), peso objetivo del sleeve/bandas, salidas por régimen, LLM como etiquetador.
+
+### P3 (parte 3) — Resto de la política (rama `claude/paxg-phase3c-policy-rest`)
+- Tests: 309+ en `functions` (nuevos: `policyRest.test.js`, casos P3c del motor, etiquetador) y 17 en `frontend` (`utils/settings.test.js`).
+- Comportamiento que cambia: tramos de PAXG a profundidades históricas (si hay ≥ 60 velas de retrocesos); costo estimado en cada orden y descarte de tramos < $10; nuevas salidas/rebalanceo (solo con los campos opcionales o con ganancia y régimen adverso); peso de la IA en el score 0.15 → 0.10; snapshot `p3` con etiquetas.
+- No verificado en vivo: el prompt de etiquetas contra Groq (con el 401 actual no se pudo probar), y cómo se ven los nuevos textos en la UI real.
+
+### P4 — Aprendizaje continuo (rama `claude/paxg-phase4-learning`)
+- Tests: nuevos `outcomesMetrics.test.js`, `p4jobs.test.js`, smoke de `/api/metrics`, `frontend/utils/metricsFormat.test.js`.
+- Nuevo job `outcomeJob` (cada 24 h; sin secretos) y colección `outcomes` (regla de solo servidor en `firestore.rules`: **hay que desplegarla** con `firebase deploy --only firestore:rules`; sin regla el cliente ya queda denegado por defecto).
+- Las decisiones nuevas guardan `ts` (ms) y `shadow`; las anteriores sin `ts` se etiquetan con su timestamp de servidor. Los primeros resultados de 20/60 días aparecerán recién cuando pasen esos días.
+- No verificado en vivo: primera corrida de `outcomeJob` (log `[Outcomes] {…}`), el endpoint con datos reales y la alerta de push.
+
+### P5 — Ingeniería y seguridad (rama `claude/paxg-phase5-engineering`)
+- Tests: `security.test.js` (limitador, CORS, cabeceras), smoke (429 en el 7.º pedido a `/api/health/ai`, cabeceras), `versions`.
+- **Reglas de Firestore sin probar** (no hay emulador en la sesión): revisá con `firebase emulators:start --only firestore` y ejercitá agregar/borrar operación y crear perfil antes de `firebase deploy --only firestore:rules`. Si algo falla, restaurar la versión anterior desde el historial de git.
+- Comportamiento que cambia: 429 ante ráfagas; cabeceras nuevas; `x-powered-by` eliminado.
+
+### Nota — exchange del usuario: Binance
+- Costos por defecto ajustados a Binance spot (0.10 % por orden). La operación registrada guarda `exchange` (por defecto "Binance") y `fee`.
+- **Datos de mercado siguen viniendo de Coinbase** a propósito: la API pública de Binance rechaza IPs de EE. UU. (HTTP 451) y las Cloud Functions corren en `us-central1`. PAXG cotiza casi igual en ambos (diferencia de centésimas de %), pero el precio de ejecución real en Binance puede diferir un poco del que muestra el dashboard.
+
+### Auth por PIN en el servidor (rama `claude/pin-auth-server-side`)
+- Diagnóstico previo (workflow *Firebase check* contra el proyecto real): el bundle publicado trae la configuración de Firebase y Firestore respondía 200 con la clave web; o sea que el fallo no era de configuración ni de reglas sino del acceso directo del navegador a Firestore (redes/bloqueadores que rompen su canal, o una PWA vieja cacheada), sin timeout en `hasProfile`. Ahora todo va por `/api` (mismo origen).
+- **Orden de despliegue:** (1) mergear y desplegar; (2) probar el login de cada perfil; (3) recién entonces `firebase deploy --only firestore:rules` (deploy manual con `deploy_firestore` si #53 está mergeado). Las sesiones anteriores (sin token) piden el PIN una vez.
+- Las operaciones existentes no se migran: se leen de la misma colección (`userId` o, para Marco, sin `userId`).

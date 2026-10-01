@@ -29,6 +29,10 @@ Backtest con datos reales: Actions → *Backtest* → Run workflow (reporte en e
 
 Los tests usan `node --test` (sin dependencias extra). CI: `.github/workflows/ci.yml` corre ambos en cada PR.
 
+## Seguridad y límites (`functions/src/middleware/`)
+
+Límites por IP en memoria (por instancia): general 240/min, IA 20/min, refrescos 6/min, `/api/health/ai` 6/min; cabeceras de seguridad y `CORS_ORIGINS` opcional. **El navegador no habla con Firestore**: el login por PIN, las sesiones y el portfolio pasan por `/api/auth/*` y `/api/portfolio/*` (PIN con scrypt, bloqueo tras 5 intentos, token de sesión `Authorization: Bearer`, cada usuario solo ve lo suyo). `firestore.rules` deniega todo al cliente; las reglas no se despliegan solas y hay que publicarlas *después* de desplegar el sitio nuevo (ver la auditoría §P5).
+
 ## Convenciones
 
 - Idioma de UI y mensajes: español rioplatense (vos/tenés).

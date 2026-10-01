@@ -8,6 +8,7 @@ import { getCalendarCoverage } from '../data/macroCalendar.js';
 import { summarizeSources } from '../services/dataHealth.js';
 import { GROQ_MODEL, describeApiKey, probeGroqKey } from '../services/groqChat.js';
 import { diagnoseAllFeeds } from '../services/newsService.js';
+import { getVersions } from '../config/versions.js';
 
 const router = express.Router();
 
@@ -89,6 +90,7 @@ router.get('/', async (_req, res) => {
   try { lastSnapshot = (await getLatestSnapshots('PAXG', 1))[0] ?? null; } catch { lastSnapshot = undefined; }
 
   const report = buildHealthReport({ config, cachedContext, calendar: getCalendarCoverage(), lastSnapshot });
+  report.versions = getVersions();
   if (readError) {
     report.goldContext = { cached: false, error: readError };
     report.warnings.push(`No se pudo leer el caché del contexto de oro: ${readError}`);

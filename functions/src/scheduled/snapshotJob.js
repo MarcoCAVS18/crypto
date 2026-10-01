@@ -11,6 +11,7 @@ import { determineMarketMode } from '../services/marketMode.js';
 import { determineGoldMarketMode } from '../services/goldMarketMode.js';
 import { buildSnapshot } from '../services/snapshot.js';
 import { getPreviousMode } from '../services/previousMode.js';
+import { shouldAlertSourcesDown } from '../services/healthAlert.js';
 
 export const SNAPSHOT_SYMBOLS = ['PAXG', 'BTC'];
 
@@ -23,8 +24,37 @@ async function loadDefaultDeps() {
     getGoldContext: gold.getGoldContext,
     saveSnapshot: db.saveSnapshot,
     getPreviousMode,
+    getLatestSnapshots: db.getLatestSnapshots,
+    getZoneState: db.getZoneState, setZoneState: db.setZoneState,
+    getPushSubscriptions: db.getPushSubscriptions, deletePushSubscription: db.deletePushSubscription,
+    sendPush: (await import('../services/pushService.js')).sendPush,
     now: () => Date.now()
   };
+}
+
+/** Push (con antispam) cuando el contexto de oro lleva ≥ 3 ciclos seguidos con degradación severa. Nunca lanza. */
+async function maybeAlertSourcesDown(d, marketMode, now) {
+  if (!d.getLatestSnapshots || !d.getZoneState || !d.setZoneState || !d.sendPush || !d.getPushSubscriptions) return;
+  try {
+    const previousSnapshots = await d.getLatestSnapshots('PAXG', 2);
+    const state = await d.getZoneState('HEALTH_PAXG');
+    const verdict = shouldAlertSourcesDown({
+      currentLevel: marketMode?.goldContext?.dataHealth?.level ?? null, previousSnapshots, lastAlertAt: state?.lastAlertAt ?? null, now
+    });
+    if (!verdict.alert) return;
+    const subs = await d.getPushSubscriptions();
+    const dh = marketMode.goldContext.dataHealth;
+    if (subs.length) {
+      const valid = subs.map(s => s.subscription);
+      const kept = await d.sendPush(valid, 'PAXG — fuentes de datos caídas', `Llevan varias horas sin datos: ${(dh.missing ?? []).join(', ') || 'varios insumos'}. Las señales se calculan con datos degradados.`, { kind: 'sources-down' });
+      const expired = valid.filter(s => !kept.some(k => k.endpoint === s.endpoint)).map(s => s.endpoint);
+      if (d.deletePushSubscription) await Promise.all(expired.map(d.deletePushSubscription));
+    }
+    await d.setZoneState('HEALTH_PAXG', { lastAlertAt: now, level: 'severe' });
+    console.log('[Snapshot] alerta de fuentes caídas enviada');
+  } catch (err) {
+    console.warn('[Snapshot] alerta de fuentes falló:', err.message);
+  }
 }
 
 export async function handler() {
@@ -69,6 +99,8 @@ export async function run(d) {
       }
 
       const now = d.now();
+      // Alerta de fuentes caídas (solo PAXG): se evalúa ANTES de guardar el snapshot actual
+      if (symbol === 'PAXG') await maybeAlertSourcesDown(d, marketMode, now);
       const saved = await d.saveSnapshot(buildSnapshot({ symbol, marketData, indicators, volume, zones, marketMode, now }));
       results[symbol] = saved ? 'saved' : 'exists';
     } catch (err) {
