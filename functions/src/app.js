@@ -64,4 +64,14 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString(), calendar, warnings });
 });
 
+// Rutas inexistentes y errores no controlados bajo /api: JSON (Express responde HTML por defecto, y el frontend lo leería
+// como "el sitio no tiene API").
+app.use('/api', (req, res) => res.status(404).json({ error: `No existe ${req.method} ${req.path}` }));
+// eslint-disable-next-line no-unused-vars
+app.use((err, _req, res, _next) => {
+  console.error('[API] error no controlado:', err?.message);
+  if (res.headersSent) return;
+  res.status(err?.status || err?.statusCode || 500).json({ error: err?.expose ? err.message : 'Error interno del servidor' });
+});
+
 export default app;

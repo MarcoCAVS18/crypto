@@ -8,12 +8,24 @@ export function looksLikeHtml(data) {
   return typeof data === 'string' && /^\s*(<!doctype html|<html)/i.test(data);
 }
 
-export const HTML_INSTEAD_OF_API = 'La API no responde: el sitio devolvió una página web en lugar de datos. Revisá que VITE_API_URL apunte a tu backend (https://<proyecto>.web.app/api).';
+const isFirebaseHost = (h) => /(^|\.)(web\.app|firebaseapp\.com)$/.test(h) || h === 'localhost' || h === '127.0.0.1';
+
+/**
+ * Mensaje cuando /api devolvió una página web. La causa habitual es abrir el sitio desde una dirección que no tiene la API
+ * (Netlify, un deploy viejo): ahí se dice dónde estás y a dónde ir. En Firebase significa que la función no respondió bien.
+ */
+export function htmlInsteadOfApiMessage(host = (typeof location !== 'undefined' ? location.hostname : ''), projectId = import.meta.env?.VITE_FIREBASE_PROJECT_ID) {
+  if (host && !isFirebaseHost(host)) {
+    const target = projectId ? `https://${projectId}.web.app` : 'la dirección de Firebase (…web.app)';
+    return `Estás en ${host}, que no tiene la API de la app. Abrí ${target}.`;
+  }
+  return 'La API no respondió bien (devolvió una página web en lugar de datos). Recargá en un momento; si sigue, avisá.';
+}
 
 /** Mensaje para un error de axios. */
 export function describeApiError(error) {
   const data = error?.response?.data;
-  if (looksLikeHtml(data)) return HTML_INSTEAD_OF_API;
+  if (looksLikeHtml(data)) return htmlInsteadOfApiMessage();
   const fromBody = (data && typeof data === 'object') ? (data.error ?? data.message) : null;
   return (typeof fromBody === 'string' && fromBody) || error?.message || 'Error de conexión';
 }

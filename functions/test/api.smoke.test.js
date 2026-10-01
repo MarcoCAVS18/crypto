@@ -117,3 +117,10 @@ test('las respuestas llevan cabeceras de seguridad y no anuncian Express', async
   assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
   assert.equal(r.headers.get('x-powered-by'), null);
 });
+
+test('humo: una ruta inexistente de /api responde JSON 404 (no el HTML por defecto de Express)', async () => {
+  const r = await fetch(`${base}/api/no-existe`);
+  assert.equal(r.status, 404);
+  assert.match(r.headers.get('content-type'), /json/);
+  assert.match((await r.json()).error, /No existe GET \/no-existe/);
+});

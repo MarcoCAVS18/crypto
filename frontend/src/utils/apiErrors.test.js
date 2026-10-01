@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { looksLikeHtml, describeApiError, HTML_INSTEAD_OF_API } from './apiErrors.js';
+import { looksLikeHtml, describeApiError, htmlInsteadOfApiMessage } from './apiErrors.js';
 
 test('looksLikeHtml detecta el index.html devuelto en lugar de JSON', () => {
   assert.equal(looksLikeHtml('<!doctype html><html><head></head></html>'), true);
@@ -18,7 +18,15 @@ test('describeApiError prioriza el motivo del servidor ({error}) sobre el genér
   assert.equal(describeApiError({}), 'Error de conexión');
 });
 
-test('describeApiError explica el caso "el sitio devolvió HTML" (sin proxy a la API)', () => {
-  assert.equal(describeApiError({ message: 'x', response: { data: '<!doctype html><html></html>' } }), HTML_INSTEAD_OF_API);
-  assert.match(HTML_INSTEAD_OF_API, /VITE_API_URL/);
+test('si /api devuelve HTML en un sitio sin API (Netlify) dice dónde estás y a dónde ir', () => {
+  const m = htmlInsteadOfApiMessage('algo.netlify.app', 'pal-crypto');
+  assert.match(m, /algo\.netlify\.app/); assert.match(m, /https:\/\/pal-crypto\.web\.app/);
+  assert.match(htmlInsteadOfApiMessage('algo.netlify.app', undefined), /web\.app/);
+});
+
+test('en Firebase o local, el HTML significa que la función no respondió bien (no manda a otro sitio)', () => {
+  for (const h of ['pal-crypto.web.app', 'pal-crypto.firebaseapp.com', 'localhost']) {
+    const m = htmlInsteadOfApiMessage(h, 'pal-crypto');
+    assert.match(m, /no respondió bien/); assert.doesNotMatch(m, /Abrí/);
+  }
 });

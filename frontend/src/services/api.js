@@ -1,6 +1,6 @@
 // Cliente HTTP para comunicación con el backend
 import axios from 'axios';
-import { looksLikeHtml, describeApiError, HTML_INSTEAD_OF_API } from '../utils/apiErrors';
+import { looksLikeHtml, describeApiError, htmlInsteadOfApiMessage } from '../utils/apiErrors';
 import { getToken, clearToken } from './session';
 import { useAuthStore } from '../store/authStore';
 
@@ -23,7 +23,7 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => {
     // Un 200 con HTML = el sitio no tiene proxy hacia la API (devuelve su index.html)
-    if (looksLikeHtml(response.data)) return Promise.reject(Object.assign(new Error(HTML_INSTEAD_OF_API), { response }));
+    if (looksLikeHtml(response.data)) return Promise.reject(Object.assign(new Error(htmlInsteadOfApiMessage()), { response }));
     return response;
   },
   (error) => {
