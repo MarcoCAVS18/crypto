@@ -25,89 +25,41 @@ const MODE_CONFIG = {
   }
 };
 
-export function UserStateInput({ onSubmit, initialCash = 50, initialMode = 'inversion', initialCapital = 0, initialTarget = '', initialFee = '', symbol = 'PAXG' }) {
+export function UserStateInput({ onSubmit, initialMode = 'inversion', initialCashUsd = 0, initialTarget = '', initialFee = '', symbol = 'PAXG' }) {
   const isGold = symbol === 'PAXG';
-  const [cashPercent, setCashPercent] = useState(initialCash);
   const [mode, setMode] = useState(initialMode);
-  const [totalCapital, setTotalCapital] = useState(initialCapital);
-  const [capitalInput, setCapitalInput] = useState(initialCapital > 0 ? String(initialCapital) : '');
+  const [cashInput, setCashInput] = useState(initialCashUsd > 0 ? String(initialCashUsd) : '');
   const [showModeInfo, setShowModeInfo] = useState(false);
   const [targetInput, setTargetInput] = useState(initialTarget === null || initialTarget === undefined ? '' : String(initialTarget));
   const [feeInput, setFeeInput] = useState(initialFee === null || initialFee === undefined ? '' : String(initialFee));
 
-  const cashAmount = totalCapital > 0 ? (totalCapital * cashPercent / 100) : null;
   const activeMode = MODE_CONFIG[mode];
-
-  const cashLevel = cashPercent < 30 ? 'bajo' : cashPercent < 60 ? 'moderado' : 'alto';
-  const cashColor = { bajo: 'text-red-400', moderado: 'text-amber-400', alto: 'text-emerald-400' }[cashLevel];
-
-  const handleCapitalChange = (e) => {
-    const raw = sanitizeDecimal(e.target.value);
-    setCapitalInput(raw);
-    setTotalCapital(isNaN(parseFloat(raw)) ? 0 : parseFloat(raw));
-  };
+  const cashUsd = Number.isFinite(parseFloat(cashInput)) ? parseFloat(cashInput) : 0;
 
   return (
     <div className="space-y-6">
-      {/* Capital input */}
+      {/* USDT disponibles: un solo dato */}
       <div className="space-y-2">
         <label className="flex items-center gap-1.5 text-xs text-slate-500 uppercase tracking-widest">
           <DollarSign className="w-3.5 h-3.5" />
-          Capital total (USD)
+          USDT que tenés disponibles para invertir
         </label>
         <div className="relative">
           <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-medium pointer-events-none">$</span>
           <input
             type="text"
             inputMode="decimal"
-            value={capitalInput}
-            onChange={handleCapitalChange}
-            placeholder="Ej: 5000"
+            value={cashInput}
+            onChange={e => setCashInput(sanitizeDecimal(e.target.value))}
+            placeholder="Ej: 200"
             className="w-full bg-slate-800/60 border border-white/[0.08] rounded-xl pl-8 pr-4 py-3 text-white
                        focus:outline-none focus:border-blue-500/60 focus:bg-slate-800
                        placeholder-slate-600 transition-colors"
           />
         </div>
         <p className="text-[11px] text-slate-600">
-          Con 100 % de efectivo se entiende que este monto es solo el efectivo que querés invertir: el peso de tus posiciones se calcula aparte con lo que tenés en el Portfolio. Con menos de 100 %, cargá todo lo que tenés (efectivo + inversiones).
+          Solo el efectivo que te queda. El peso de cada posición se calcula solo con lo que cargaste en el Portfolio.
         </p>
-        {totalCapital > 0 && (
-          <p className="text-xs text-slate-600">
-            Capital registrado: <span className="text-slate-400 tabular font-medium">${totalCapital.toLocaleString('en-US')}</span>
-          </p>
-        )}
-      </div>
-
-      {/* Cash slider */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-slate-500 uppercase tracking-widest">% en efectivo disponible</span>
-          <div className="text-right">
-            <span className={`text-2xl font-bold tabular ${cashColor}`}>{cashPercent}%</span>
-            {cashAmount !== null && (
-              <p className="text-xs text-blue-400 tabular">≈ ${cashAmount.toLocaleString('en-US', { maximumFractionDigits: 0 })}</p>
-            )}
-          </div>
-        </div>
-
-        <input
-          type="range"
-          min="0" max="100" step="5"
-          value={cashPercent}
-          onChange={e => setCashPercent(parseInt(e.target.value))}
-          className="w-full"
-        />
-
-        {/* Cash level indicator */}
-        <div className="flex rounded-lg overflow-hidden border border-white/[0.05] text-xs">
-          {[
-            { label: '0–29% · Bajo',    range: [0, 29],  color: cashPercent < 30 ? 'bg-red-500/20 text-red-400' : 'bg-slate-800/40 text-slate-600' },
-            { label: '30–59% · Medio',  range: [30, 59], color: cashPercent >= 30 && cashPercent < 60 ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-800/40 text-slate-600' },
-            { label: '60–100% · Alto',  range: [60, 100],color: cashPercent >= 60 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800/40 text-slate-600' }
-          ].map((s, i) => (
-            <div key={i} className={`flex-1 text-center py-1.5 transition-colors ${s.color}`}>{s.label}</div>
-          ))}
-        </div>
       </div>
 
       {/* Mode selector */}
@@ -188,7 +140,7 @@ export function UserStateInput({ onSubmit, initialCash = 50, initialMode = 'inve
       <Button onClick={() => {
         const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
         onSubmit({
-          cashPercent, mode, totalCapital,
+          cashUsd, mode,
           // el peso objetivo solo se edita con el oro; en otros activos se conserva el valor del perfil
           targetPercent: isGold ? num(targetInput) : num(initialTarget),
           feePercent:    num(feeInput)

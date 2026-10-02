@@ -6,6 +6,7 @@ import { UserStateInput } from './UserStateInput';
 import { MarketModeIndicator } from './MarketModeIndicator';
 import { CollapsibleSection } from './CollapsibleSection';
 import { DecisionExplainer } from './DecisionExplainer';
+import { effectiveCashUsd } from '../utils/cash';
 
 export function DetailsSheet({
   open,
@@ -106,9 +107,8 @@ export function DetailsSheet({
                 <div className="pt-2">
                   <UserStateInput
                     onSubmit={(s) => { onUserStateSubmit(s); onClose(); }}
-                    initialCash={userState.cashPercent}
                     initialMode={userState.mode}
-                    initialCapital={userState.totalCapital}
+                    initialCashUsd={effectiveCashUsd(userState)}
                     initialTarget={userState.targetPercent ?? ''}
                     initialFee={userState.feePercent ?? ''}
                     symbol={symbol}

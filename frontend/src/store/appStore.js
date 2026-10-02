@@ -4,6 +4,7 @@ import { persist } from 'zustand/middleware';
 import { fetchCryptoData, requestDecision } from '../services/api';
 import { fsAddOperation, fsGetOperations, fsDeleteOperation } from '../services/firestorePortfolio';
 import { buildSettings } from '../utils/settings';
+import { effectiveCashUsd, engineCash } from '../utils/cash';
 import { computePortfolioSummary } from '../utils/portfolioMath';
 
 export const useAppStore = create(
@@ -21,9 +22,8 @@ export const useAppStore = create(
 
       // Estado del usuario
       userState: {
-        cashPercent:  50,
+        cashUsd:      null,    // USDT disponibles para invertir (un solo dato; antes: capital total × % de efectivo)
         mode:         'inversion',
-        totalCapital: 0,
         targetPercent: null,   // peso objetivo del oro (%) — opcional
         feePercent:    null    // comisión por orden (%) — opcional (por defecto 0.5)
       },
@@ -85,7 +85,7 @@ export const useAppStore = create(
             serverWaking: false,
             lastUpdate:   new Date()
           }));
-          if (get().userState.totalCapital > 0) {
+          if (effectiveCashUsd(get().userState) > 0) {
             get().getDecision();
           }
         } catch (error) {
@@ -139,11 +139,12 @@ export const useAppStore = create(
           : null;
 
         try {
+          const cash = engineCash(userState);
           const data = await requestDecision(
             selectedCrypto,
-            userState.cashPercent,
+            cash.cashPercent,
             userState.mode,
-            userState.totalCapital,
+            cash.totalCapital,
             portfolioContext,
             buildSettings(userState)
           );
