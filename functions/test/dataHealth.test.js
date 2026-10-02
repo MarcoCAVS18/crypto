@@ -252,3 +252,13 @@ test('versions: expone versiones y parámetros vigentes (coherentes con los mód
   assert.ok(v.parameters.modeExit < v.parameters.modeEnter);
   assert.equal(v.parameters.defaultCosts.feeBps, 10);   // Binance spot 0.10 %
 });
+
+test('COT: el reporte del martes no figura vencido justo antes de la publicación del viernes siguiente (~10 d), sí tras perder una', () => {
+  const at = (iso) => buildGoldSources({
+    macro: fullMacro(), dailyBias: null, headlines: [], analysisError: null, fred: null, results: okResults(), now: Date.parse(iso)
+  }).cot.status;
+  // reporte 22/9 (martes): viernes 2/10 antes de las 15:30 ET ≈ 10.x d → ok; feriado que atrasa la publicación (≈ 13 d) → ok
+  assert.equal(at('2026-10-02T20:00:00Z'), 'ok');
+  assert.equal(at('2026-10-05T12:00:00Z'), 'ok');
+  assert.equal(at('2026-10-07T12:00:00Z'), 'stale');   // 15 d: se perdió una publicación
+});

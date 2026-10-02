@@ -294,3 +294,10 @@ Sin contrastar (`verified: false`, "fecha por confirmar"): PCE sep (30-oct), NFP
 - Diagnóstico previo (workflow *Firebase check* contra el proyecto real): el bundle publicado trae la configuración de Firebase y Firestore respondía 200 con la clave web; o sea que el fallo no era de configuración ni de reglas sino del acceso directo del navegador a Firestore (redes/bloqueadores que rompen su canal, o una PWA vieja cacheada), sin timeout en `hasProfile`. Ahora todo va por `/api` (mismo origen).
 - **Orden de despliegue:** (1) mergear y desplegar; (2) probar el login de cada perfil; (3) recién entonces `firebase deploy --only firestore:rules` (deploy manual con `deploy_firestore` si #53 está mergeado). Las sesiones anteriores (sin token) piden el PIN una vez.
 - Las operaciones existentes no se migran: se leen de la misma colección (`userId` o, para Marco, sin `userId`).
+
+## Hallazgos de producción (smoke del sitio real)
+
+- **Índice de Firestore inexistente (HTTP 500 en `/api/metrics`).** Las consultas `where(id rango).orderBy(id, 'desc')` (decisiones, resultados, snapshots) exigen un índice que el deploy no crea; el Firestore falso de los tests no puede detectarlo. Probable causa también del historial de señales vacío y de que `outcomeJob` no etiquetara nada. Ahora se consulta en orden ascendente por ventana de tiempo (`newestByIdRange`, `database.js`) y hay un test con un Firestore estricto que rechaza el orden descendente.
+- **"Datos degradados: desactualizados COT" cada semana.** El reporte COT es del martes y se publica el viernes; justo antes de la siguiente publicación tiene ~10 d, el límite anterior. El límite pasa a 14 d (`dataHealth.js`).
+- **COT desde Cloud Functions:** el pedido a la CFTC funciona (391 ms, `/api/health/cot`); el aviso "faltan COT" venía de la columna removida y de un contexto cacheado.
+- **Noticias:** Google News respondió 503 a la función en dos smokes y 200 en el tercero (limitación intermitente de IPs de Google Cloud); el relé de Actions y los titulares guardados cubren esos huecos.
