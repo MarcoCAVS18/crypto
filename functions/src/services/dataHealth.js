@@ -16,8 +16,11 @@ export const INPUT_LABELS = {
   spot: 'Oro de referencia', headlines: 'Titulares', fred: 'FRED'
 };
 
-// Después de cuántos días sin dato nuevo cada insumo se considera vencido
-const MAX_AGE_DAYS = { realYield: 5, cot: 10, spot: 6 / 24 };
+// Después de cuántos días sin dato nuevo cada insumo se considera vencido.
+// COT: el dato es del MARTES y la CFTC lo publica el VIERNES (+3 d); el siguiente sale 7 días después. O sea que justo antes de
+// cada publicación el reporte tiene ~10 d aun estando todo bien (con 10 el aviso saltaba todas las semanas), y un feriado
+// atrasa la publicación hasta 3 días más. Vencido = se perdió una publicación entera: > 14 d.
+const MAX_AGE_DAYS = { realYield: 5, cot: 14, spot: 6 / 24 };
 
 const round = (x, d = 1) => Math.round(x * 10 ** d) / 10 ** d;
 

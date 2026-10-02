@@ -1,7 +1,7 @@
 // Reemplaza better-sqlite3 con Firestore Admin SDK.
 // Las funciones de caché son async; las demás mantienen la misma firma.
 import { getFirestore, FieldValue, FieldPath } from 'firebase-admin/firestore';
-import { decisionDocId, decisionIdPrefix, isHourlyDecisionId } from '../services/decisionLog.js';
+import { decisionDocId, decisionIdPrefix, isHourlyDecisionId, hourBucket } from '../services/decisionLog.js';
 
 let _db = null;
 const db = () => {
@@ -15,6 +15,29 @@ export function _setDbForTests(fake) { _db = fake; }
 // Sanitiza una clave arbitraria para usarla como ID de documento Firestore
 function toDocId(key) {
   return key.replace(/\//g, '_').slice(0, 1500);
+}
+
+
+// Las N más recientes de una colección cuyos IDs son `PREFIJO_YYYYMMDDHH`, de la más nueva a la más vieja.
+// OJO: `where(id rango).orderBy(id, 'desc')` exige un índice (en producción: 9 FAILED_PRECONDITION) que el deploy no crea y
+// que el Firestore falso de los tests no puede detectar. Se consulta en orden ASCENDENTE (no necesita índice) sobre una
+// ventana de tiempo reciente y se invierte acá; si la ventana trae menos de N, se agranda ×4 hasta ~1 año.
+const MAX_WINDOW_HOURS = 24 * 400;
+export async function newestByIdRange(collection, prefix, limit, now = Date.now()) {
+  const docId = FieldPath.documentId();
+  let hours = Math.max(limit * 2, 48);
+  let docs = [];
+  for (;;) {
+    const snap = await db().collection(collection)
+      .where(docId, '>=', prefix + hourBucket(now - hours * 3600 * 1000))
+      .where(docId, '<', prefix + '\uf8ff')
+      .orderBy(docId)
+      .get();
+    docs = snap.docs;
+    if (docs.length >= limit || hours >= MAX_WINDOW_HOURS) break;
+    hours *= 4;
+  }
+  return docs.slice(-limit).reverse().map(d => ({ id: d.id, ...d.data() }));
 }
 
 // ── Historial de decisiones ───────────────────────────────────────────────────
@@ -57,16 +80,7 @@ export async function getDecisions(limit = 20) {
 // llegaban como lista vacía y la UI mostraba "sin señales" sin decir que algo estaba roto).
 export async function getDecisionsBySymbol(symbol, limit = 10, { throwOnError = false } = {}) {
   try {
-    const prefix = decisionIdPrefix(symbol);
-    const docId = FieldPath.documentId();
-    const snap = await db()
-      .collection('decisions')
-      .where(docId, '>=', prefix)
-      .where(docId, '<', prefix + '\uf8ff')
-      .orderBy(docId, 'desc')
-      .limit(limit)
-      .get();
-    const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const fresh = await newestByIdRange('decisions', decisionIdPrefix(symbol), limit);
     if (fresh.length >= limit) return fresh;
 
     // Transición: completar con documentos legacy (IDs automáticos, muestra arbitraria).
@@ -147,14 +161,9 @@ export async function saveOutcome(id, data) {
   await db().collection('outcomes').doc(id).set({ ...data, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
 }
 
-/** Resultados de un símbolo (más nuevo primero), por rango de ID: sin índice compuesto. */
+/** Resultados de un símbolo (más nuevo primero), por rango de ID en orden ascendente: sin índice. */
 export async function getOutcomes(symbol, limit = 300) {
-  const prefix = decisionIdPrefix(symbol);
-  const docId = FieldPath.documentId();
-  const snap = await db().collection('outcomes')
-    .where(docId, '>=', prefix).where(docId, '<', prefix + '\uf8ff')
-    .orderBy(docId, 'desc').limit(limit).get();
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  return newestByIdRange('outcomes', decisionIdPrefix(symbol), limit);
 }
 
 /** Operaciones registradas por el usuario para un símbolo (lectura con Admin SDK). `ts` en ms desde `date`. */
@@ -186,16 +195,7 @@ export async function saveSnapshot(record) {
 
 /** Últimos N snapshots de un símbolo (más nuevo primero), por rango de ID: sin índice compuesto. */
 export async function getLatestSnapshots(symbol, limit = 1) {
-  const prefix = `${String(symbol).toUpperCase()}_`;
-  const docId = FieldPath.documentId();
-  const snap = await db()
-    .collection('snapshots')
-    .where(docId, '>=', prefix)
-    .where(docId, '<', prefix + '')
-    .orderBy(docId, 'desc')
-    .limit(limit)
-    .get();
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  return newestByIdRange('snapshots', `${String(symbol).toUpperCase()}_`, limit);
 }
 
 // ── Portfolio (stub — el frontend usa el cliente Firestore directamente) ──────
