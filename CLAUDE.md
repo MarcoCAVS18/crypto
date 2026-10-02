@@ -4,7 +4,7 @@ Dashboard personal de contexto de mercado y decisión (BTC, ETH, PAXG y futuros 
 
 ## Antes de trabajar en PAXG / motor de decisión
 
-**Leé `docs/PAXG_AUDIT.md` primero.** Tiene el mapa del sistema, los bugs verificados con `archivo:línea`, la hoja de ruta por fases y el estado de cada una. No hace falta releer todos los servicios. Al terminar una fase, actualizá su checklist y la tabla de hallazgos en ese documento.
+**Leé `docs/PAXG_AUDIT.md` primero.** Tiene el mapa del sistema, los bugs verificados con `archivo:línea`, la hoja de ruta por fases y el estado de cada una. El §8b lista el **estado final y los pendientes conocidos** (calendario 2027, reglas de Firestore, etc.). No hace falta releer todos los servicios. Al terminar una fase, actualizá su checklist y la tabla de hallazgos en ese documento.
 
 ## Backtester (`functions/src/backtest/`)
 

@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { TrendingUp, TrendingDown, Minus, RefreshCw, AlertTriangle, ChevronDown, ChevronUp, DollarSign } from 'lucide-react';
 import { fetchFuturesData } from '../services/api';
 import { useAppStore } from '../store/appStore';
+import { effectiveCashUsd } from '../utils/cash';
 
 const DIRECTION_CONFIG = {
   LONG:    { label: 'LONG',    bg: 'bg-emerald-500/15', border: 'border-emerald-500/30', text: 'text-emerald-400', icon: TrendingUp },
@@ -43,8 +44,8 @@ export function FuturesPanel() {
     const paxgEntry = portfolio?.summary?.find(s => s.symbol === 'PAXG');
     const paxgPrice = cryptoData?.PAXG?.price ?? 0;
     return {
-      totalCapital:    userState?.totalCapital ?? 0,
-      cashPercent:     userState?.cashPercent  ?? 100,
+      totalCapital:    effectiveCashUsd(userState),
+      cashPercent:     100,
       paxgUnits:       paxgEntry?.units        ?? 0,
       paxgAvgPrice:    paxgEntry?.avgBuyPrice  ?? 0,
       paxgCurrentPrice: paxgPrice,
@@ -75,7 +76,7 @@ export function FuturesPanel() {
 
   const handleApplyLeverage = () => load(leverage, false);
 
-  const availableCash = (userState?.totalCapital ?? 0) * ((userState?.cashPercent ?? 100) / 100);
+  const availableCash = effectiveCashUsd(userState);
 
   const dir = DIRECTION_CONFIG[data?.signal?.direction ?? 'NEUTRAL'];
   const DirIcon = dir.icon;
@@ -158,7 +159,7 @@ export function FuturesPanel() {
               </p>
               {availableCash > 0 && (
                 <p className="text-violet-400/60 text-xs mt-0.5">
-                  de ${fmt(availableCash)} disponibles ({userState?.cashPercent ?? 100}% de tu capital)
+                  de ${fmt(availableCash)} USDT disponibles
                 </p>
               )}
             </div>
