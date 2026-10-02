@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from './ui/Button';
 import { TrendingUp, Eye, DollarSign, Info } from 'lucide-react';
+import { sanitizeDecimal } from '../utils/decimalInput';
 
 const MODE_CONFIG = {
   inversion: {
@@ -24,7 +25,8 @@ const MODE_CONFIG = {
   }
 };
 
-export function UserStateInput({ onSubmit, initialCash = 50, initialMode = 'inversion', initialCapital = 0, initialTarget = '', initialFee = '' }) {
+export function UserStateInput({ onSubmit, initialCash = 50, initialMode = 'inversion', initialCapital = 0, initialTarget = '', initialFee = '', symbol = 'PAXG' }) {
+  const isGold = symbol === 'PAXG';
   const [cashPercent, setCashPercent] = useState(initialCash);
   const [mode, setMode] = useState(initialMode);
   const [totalCapital, setTotalCapital] = useState(initialCapital);
@@ -40,7 +42,7 @@ export function UserStateInput({ onSubmit, initialCash = 50, initialMode = 'inve
   const cashColor = { bajo: 'text-red-400', moderado: 'text-amber-400', alto: 'text-emerald-400' }[cashLevel];
 
   const handleCapitalChange = (e) => {
-    const raw = e.target.value.replace(/[^0-9.]/g, '');
+    const raw = sanitizeDecimal(e.target.value);
     setCapitalInput(raw);
     setTotalCapital(isNaN(parseFloat(raw)) ? 0 : parseFloat(raw));
   };
@@ -155,34 +157,40 @@ export function UserStateInput({ onSubmit, initialCash = 50, initialMode = 'inve
         </AnimatePresence>
       </div>
 
-      {/* Ajustes opcionales: peso objetivo del oro y costo de operar */}
-      <div className="grid grid-cols-2 gap-3">
+      {/* Ajustes opcionales: costo de operar (todos los activos) y peso objetivo (solo el oro: es el único con política de portafolio) */}
+      <div className={`grid gap-3 ${isGold ? 'grid-cols-2' : 'grid-cols-1'}`}>
+        {isGold && (
         <label className="space-y-1.5">
           <span className="block text-[11px] text-slate-500 uppercase tracking-widest">Peso objetivo del oro (%)</span>
           <input
             type="text" inputMode="decimal" value={targetInput} placeholder="Sin objetivo"
-            onChange={e => setTargetInput(e.target.value.replace(/[^0-9.]/g, ''))}
+            onChange={e => setTargetInput(sanitizeDecimal(e.target.value))}
             className="w-full bg-slate-800/60 border border-white/[0.08] rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500/60"
           />
         </label>
+        )}
         <label className="space-y-1.5">
           <span className="block text-[11px] text-slate-500 uppercase tracking-widest">Comisión por orden (%)</span>
           <input
             type="text" inputMode="decimal" value={feeInput} placeholder="0.1 (Binance spot)"
-            onChange={e => setFeeInput(e.target.value.replace(/[^0-9.]/g, ''))}
+            onChange={e => setFeeInput(sanitizeDecimal(e.target.value))}
             className="w-full bg-slate-800/60 border border-white/[0.08] rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500/60"
           />
         </label>
       </div>
       <p className="text-[11px] text-slate-600 -mt-3">
-        Con objetivo, el motor frena las compras si el oro pasa la banda (±5 pts) y acelera el DCA si está por debajo. La comisión (Binance spot: 0.1 %, 0.075 % pagando con BNB) se usa para estimar costos y descartar tramos ínfimos.
+        {isGold && 'Con objetivo, el motor frena las compras si el oro pasa la banda (±5 pts) y acelera el DCA si está por debajo. '}La comisión (Binance spot: 0.1 %, 0.075 % pagando con BNB) se usa para estimar costos y descartar tramos ínfimos.
       </p>
 
-      <Button onClick={() => onSubmit({
-        cashPercent, mode, totalCapital,
-        targetPercent: targetInput === '' ? null : parseFloat(targetInput),
-        feePercent:    feeInput === ''    ? null : parseFloat(feeInput)
-      })} className="w-full py-3">
+      <Button onClick={() => {
+        const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
+        onSubmit({
+          cashPercent, mode, totalCapital,
+          // el peso objetivo solo se edita con el oro; en otros activos se conserva el valor del perfil
+          targetPercent: isGold ? num(targetInput) : num(initialTarget),
+          feePercent:    num(feeInput)
+        });
+      }} className="w-full py-3">
         Actualizar señal
       </Button>
     </div>
