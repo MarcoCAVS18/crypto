@@ -130,9 +130,16 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
     ? ((currentPrice - avgBuyPrice) / avgBuyPrice) * 100
     : null;
 
-  // Peso de la posición sobre el capital total
-  const allocationPercent = hasPosition && totalCapital > 0 && netInvested > 0
-    ? Math.min((netInvested / totalCapital) * 100, 100)
+  // Peso de la posición sobre el capital total.
+  // Con 100 % de efectivo, el "capital total" cargado es SOLO el efectivo que se quiere invertir (p. ej. $200 de un portfolio de
+  // $13k): medir el peso contra eso daba 100 % y bloqueaba toda compra. Entonces se mide, a valor de mercado, contra ese
+  // efectivo + el valor de TODAS las posiciones (lo informa el cliente en `portfolioValueUsd`).
+  const cashOnly = cashPercent >= 100;
+  const allPositionsValue = Number(portfolioCtx?.portfolioValueUsd);
+  const positionValue = cashOnly && portfolioCtx?.units > 0 && currentPrice > 0 ? portfolioCtx.units * currentPrice : netInvested;
+  const capitalBase = cashOnly && allPositionsValue > 0 ? totalCapital + allPositionsValue : totalCapital;
+  const allocationPercent = hasPosition && capitalBase > 0 && positionValue > 0
+    ? Math.min((positionValue / capitalBase) * 100, 100)
     : null;
   const isHighlyConcentrated = allocationPercent !== null && allocationPercent > 70;
   const isLightlyExposed     = allocationPercent !== null && allocationPercent < 20;

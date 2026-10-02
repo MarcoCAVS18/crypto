@@ -51,3 +51,21 @@ test('BTC en Risk OFF no cambia: sigue el WAIT genérico (la acumulación contra
   assert.equal(d.action, 'WAIT');
   assert.match(d.reason, /^Mercado en Risk OFF/);
 });
+
+test('100 % de efectivo con $200: el capital es solo efectivo y el peso se mide contra TODAS las posiciones → COMPRA', () => {
+  // PAXG 1.7121 u × 4150 = $7,106 de un portfolio de $13,464 (PAXG + BTC) + $200 de efectivo ⇒ ~52 %, no 100 %
+  const d = decide({ cashPercent: 100, totalCapital: 200 }, pf({ portfolioValueUsd: 13464 }));
+  assert.equal(d.action, 'BUY');
+  assert.ok(d.operations.length >= 1 && d.operations.every(o => o.usdAmount >= 10 && o.usdAmount <= 200));
+  assert.match(d.reason, /52% de tu capital/);
+});
+
+test('100 % de efectivo pero PAXG es casi todo el portfolio: sigue frenando por concentración, con el peso real', () => {
+  const d = decide({ cashPercent: 100, totalCapital: 200 }, pf({ portfolioValueUsd: 7300 }));   // 7106 / (7300 + 200) = 95 %
+  assert.equal(d.action, 'WAIT');
+  assert.match(d.reason, /PAXG ya pesa 95 % de tu capital/);
+});
+
+test('sin portfolioValueUsd (cliente viejo) el cálculo no cambia respecto de antes', () => {
+  assert.match(decide({ cashPercent: 50, totalCapital: 10000 }).reason, /PAXG ya pesa 82 %/);
+});
