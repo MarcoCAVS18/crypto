@@ -358,6 +358,7 @@ function AuthenticatedApp() {
         userState={userState}
         onUserStateSubmit={handleUserStateSubmit}
         decisionLoading={decisionLoading}
+        symbol={selectedCrypto}
       />
 
       {/* ── Floating chat ─────────────────────────────────────────────────────── */}

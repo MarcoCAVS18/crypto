@@ -1,4 +1,5 @@
 // Sección de Portfolio personal: registro de operaciones e inversiones
+import { sanitizeDecimal } from '../utils/decimalInput';
 import { useState, useEffect, useRef } from 'react';
 import { Card } from './ui/Card';
 import { Button } from './ui/Button';
@@ -647,7 +648,7 @@ function NumericInput({ value, onChange, placeholder, prefix }) {
         type="text"
         inputMode="decimal"
         value={value}
-        onChange={e => onChange(e.target.value.replace(/[^0-9.]/g, ''))}
+        onChange={e => onChange(sanitizeDecimal(e.target.value))}
         placeholder={placeholder}
         className={`${inputClass} ${prefix ? 'pl-6' : ''}`}
       />

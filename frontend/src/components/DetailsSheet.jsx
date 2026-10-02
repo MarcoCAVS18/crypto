@@ -13,7 +13,8 @@ export function DetailsSheet({
   decision,
   userState,
   onUserStateSubmit,
-  decisionLoading
+  decisionLoading,
+  symbol
 }) {
   if (!marketData) return null;
 
@@ -106,6 +107,7 @@ export function DetailsSheet({
                     initialCapital={userState.totalCapital}
                     initialTarget={userState.targetPercent ?? ''}
                     initialFee={userState.feePercent ?? ''}
+                    symbol={symbol}
                   />
                   {decisionLoading && <p className="text-xs text-slate-500 text-center mt-3">Analizando señal...</p>}
                 </div>
