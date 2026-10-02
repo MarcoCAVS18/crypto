@@ -54,6 +54,29 @@ export function renderReport(res, { sources = null, generatedAt = null } = {}) {
     }
   }
 
+  if (res.extension?.variants?.length) {
+    const ex = res.extension;
+    L.push('\n## Fase 6 — ¿sumar insumos al score? (variantes pre-declaradas)\n');
+    L.push('Score actual + componente(s) con signo a priori y peso fijo ±0.10. **Regla de decisión (docs/BACKTEST.md):** entra al score solo con p < 0.01 y signo igual en el hold-out (IC), o mejor costo de DCA que la política actual en ambos tramos con p < 0.01. `ΔIC` = IC de la variante − IC del score actual (sin test propio).\n');
+    L.push('| Variante | Horizonte | IC walk-forward | p | ΔIC | IC hold-out | p hold-out | Veredicto |\n|---|---|---|---|---|---|---|---|');
+    for (const v of ex.variants) {
+      if (v.insufficient) { L.push(`| ${v.label} | — | datos insuficientes (cobertura ${Math.round(v.coverage * 100)} %) | | | | | |`); continue; }
+      const o = v.oos ?? {}, ho = v.holdout ?? {};
+      L.push(`| ${v.label} | ${v.horizon} d | ${f(o.ic)} | ${f(o.icPermP)} | ${f(v.dIC)} | ${ho.insufficient ? 'n/d' : f(ho.ic)} | ${ho.insufficient ? '—' : f(ho.icPermP)} | ${v.verdict} |`);
+    }
+    for (const [h, ics] of Object.entries(ex.extraICs ?? {})) {
+      L.push(`\nIC univariado de managed money (percentil 3 años, solo datos previos al hold-out), ${h} d: ${Object.entries(ics).map(([k, v]) => `${k} ${f(v.ic, 3)} (n ${v.n}, p ${f(v.pValue, 3)})`).join(' · ')}`);
+    }
+    L.push('\n### DCA con la política desplegada (inclinación contrarian ×0.5–1.5) usando cada variante\n');
+    L.push('| Variante | Tramo | Ventanas | Ratio medio | Gana en | Ventaja | p vs. placebo |\n|---|---|---|---|---|---|---|');
+    const pol = res.dca?.find(d => d.id === 'policy_score'), polH = res.dcaHoldout?.find(d => d.id === 'policy_score');
+    const rowD = (label, tramo, d) => (d.insufficient ? `| ${label} | ${tramo} | ${d.windows} | datos insuficientes | | | |`
+      : `| ${label} | ${tramo} | ${d.windows} | ${f(d.meanRatio, 4)} | ${pct(d.winRate, 0)} | ${f(d.avgAdvantagePct, 2)} % | ${f(d.pValue, 3)} |`);
+    if (pol) L.push(rowD('**Referencia: política actual**', 'hasta hold-out', pol));
+    if (polH) L.push(rowD('**Referencia: política actual**', 'hold-out', polH));
+    ex.dca.forEach((d, k) => { L.push(rowD(d.label, 'hasta hold-out', d)); if (ex.dcaHoldout[k]) L.push(rowD(d.label, 'hold-out', ex.dcaHoldout[k])); });
+  }
+
   L.push('\n## Cómo leer esto (límites)\n');
   L.push('- "Sin evidencia" **no** significa "no hay señal": con etiquetas solapadas y pocos años de OOS la potencia es baja (medido en datos sintéticos).');
   L.push('- Las ventanas de DCA se solapan mucho: las muestras independientes son bastante menos que "Ventanas".');

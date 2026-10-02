@@ -301,3 +301,10 @@ Sin contrastar (`verified: false`, "fecha por confirmar"): PCE sep (30-oct), NFP
 - **"Datos degradados: desactualizados COT" cada semana.** El reporte COT es del martes y se publica el viernes; justo antes de la siguiente publicación tiene ~10 d, el límite anterior. El límite pasa a 14 d (`dataHealth.js`).
 - **COT desde Cloud Functions:** el pedido a la CFTC funciona (391 ms, `/api/health/cot`); el aviso "faltan COT" venía de la columna removida y de un contexto cacheado.
 - **Noticias:** Google News respondió 503 a la función en dos smokes y 200 en el tercero (limitación intermitente de IPs de Google Cloud); el relé de Actions y los titulares guardados cubren esos huecos.
+
+### P6 — ¿Más insumos para el score del oro? (rama `claude/paxg-phase6-extended-score`)
+- Experimento **pre-declarado** (commit `645725e`, antes de correrlo) en `docs/BACKTEST.md`: 5 variantes del score actual con inflación implícita, dólar amplio, VIX y managed money (CFTC desagregado), signos a priori y peso ±0.10. 22 comparaciones nuevas.
+- Resultado (run #7 en Actions): **ninguna variante cruza p < 0.01 ni mejora el IC** (ΔIC entre −0.03 y +0.01); sumar las cuatro empeora el hold-out a 60 d. Managed money solo no tiene información (IC ≈ 0). En DCA las diferencias son de 0.01–0.12 pp, menores que el costo de operar.
+- **Decisión: no se agrega ningún componente al score en vivo.** Se documenta el defecto de la regla de decisión (b) (el p era contra el placebo de la variante, no contra la política actual).
+- Código nuevo solo en el backtester: `extendedScore.js`, `parseCotMmRows`, feature `mm_pct` (fuera de `FEATURE_NAMES` para no alterar los modelos anteriores), sección "Fase 6" del reporte. Sin cambios en el servidor ni en la app.
+

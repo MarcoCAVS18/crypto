@@ -80,6 +80,19 @@ export function parseCotRows(rows) {
   return out.sort((a, b) => (a.date < b.date ? -1 : 1));
 }
 
+/** Filas Socrata del COT DESAGREGADO (dataset 72hh-3qpy) → [{date, mmNet, openInterest}] ascendente. mmNet = managed money largos − cortos. */
+export function parseCotMmRows(rows) {
+  if (!Array.isArray(rows)) throw new Error('COT managed money: respuesta inesperada');
+  const out = [];
+  for (const r of rows) {
+    const d = String(r.report_date_as_yyyy_mm_dd ?? '').slice(0, 10);
+    const long = parseInt(r.m_money_positions_long_all, 10), short = parseInt(r.m_money_positions_short_all, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || !Number.isFinite(long) || !Number.isFinite(short)) continue;
+    out.push({ date: d, mmNet: long - short, openInterest: parseInt(r.open_interest_all, 10) || null });
+  }
+  return out.sort((a, b) => (a.date < b.date ? -1 : 1));
+}
+
 // ── red + caché ─────────────────────────────────────────────────────────────
 
 async function httpGet(url, { json = false, retries = 3 } = {}) {
@@ -149,5 +162,14 @@ export async function loadHistory({ cacheDir = null, log = () => {} } = {}) {
     return parseCotRows(rows);
   });
 
-  return { raw: { gold, silver, dxy, fred, cot }, sources };
+  // P6: COT desagregado (managed money). Falla sin romper el resto: las variantes que lo usan quedan como "datos insuficientes".
+  const cotMm = await step('cot_mm', 'cot_mm_gold', async () => {
+    const rows = await httpGet(
+      'https://publicreporting.cftc.gov/resource/72hh-3qpy.json' +
+      '?market_and_exchange_names=GOLD%20-%20COMMODITY%20EXCHANGE%20INC.&$limit=5000&$order=report_date_as_yyyy_mm_dd%20ASC' +
+      '&$select=report_date_as_yyyy_mm_dd,m_money_positions_long_all,m_money_positions_short_all,open_interest_all', { json: true });
+    return parseCotMmRows(rows);
+  });
+
+  return { raw: { gold, silver, dxy, fred, cot, cotMm }, sources };
 }

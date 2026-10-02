@@ -72,8 +72,17 @@ export function makeRaw({ seed = 1, n = 1800, beta = 0, dailyVol = 0.008, macro 
     return { date, netSpec: Math.round(net), openInterest: 450000 };
   });
 
+  // COT desagregado (managed money): generador APARTE, para no alterar las secuencias aleatorias de las demás series
+  const rngMm = mulberry32(seed + 777001);
+  let mm = 60000;
+  const cotMm = cotDates.filter(d => d <= dates[n - 1]).map(date => {
+    mm += 5000 * gaussian(rngMm);
+    return { date, mmNet: Math.round(mm), openInterest: 450000 };
+  });
+
   return {
     gold,
+    cotMm,
     silver: dates.map((date, i) => ({ date, close: closes[i] / (65 + 5 * Math.sin(i / 200)) })),
     fred: {
       realYield10: toObs(ry), yield10: toObs(y10), yield2: toObs(y2),

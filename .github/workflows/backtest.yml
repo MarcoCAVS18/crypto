@@ -14,7 +14,7 @@ on:
         description: 'Desplazamientos del test de permutación'
         default: '500'
   push:
-    branches: [claude/paxg-phase2-backtest]
+    branches: [claude/paxg-phase2-backtest, claude/paxg-phase6-extended-score]
     paths:
       - 'functions/src/backtest/**'
       - 'functions/scripts/backtest.mjs'

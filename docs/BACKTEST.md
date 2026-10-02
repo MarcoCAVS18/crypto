@@ -67,6 +67,54 @@ Pre-declaradas antes de correr; 8 comparaciones más (4 variantes × pre-hold-ou
 
 Conclusión: el único efecto consistente es *no seguir al score* (comprar más cuando es bajo); el mapeo acotado conserva ~la mitad del efecto del mapeo amplio (×0.25–×2: −0.80 %) con menos riesgo. El efecto (~0.3 %) equivale a ~3 comisiones de Binance spot (0.1 %) y es menor que una comisión de un exchange minorista (~0.5 %): con Binance el costo del DCA no se come el beneficio, pero conviene no multiplicar operaciones (por eso los tramos < $10 se descartan).
 
+## Fase 6 — ¿sumar más insumos al score? (PRE-DECLARADO antes de correr)
+
+Pregunta: ¿agregar al score actual algún insumo adicional mejora su valor predictivo o el costo promedio del DCA? **Se declara acá antes de ver resultados**; los signos salen de la economía, no de los datos, y los pesos son fijos (nada se ajusta).
+
+**Componentes candidatos** (cada uno aporta como máximo ±0.10, igual que la IA; dato faltante = 0, como en vivo):
+
+| Id | Componente | Signo a priori | Mapeo |
+|---|---|---|---|
+| `breakeven` | Cambio a 20 obs de la inflación implícita 10Y | **+** (más inflación esperada → oro) | `clamp(Δ / 0.25 pp, −1, 1)` |
+| `dollar` | Cambio a 20 obs (log) del dólar amplio | **−** | `clamp(−Δ / 3 %, −1, 1)` |
+| `vix` | VIX, z-score de 252 obs | **+** (demanda de refugio) | `clamp(z / 2, −1, 1)` |
+| `managedMoney` | Posición neta de *managed money* (CFTC desagregado, % del open interest), percentil de 3 años | **−** (contrarian, igual criterio que el COT actual) | `−(percentil − 50) / 50` |
+
+La pendiente 2Y–10Y (`curve_z`) **no entra**: su signo a priori es ambiguo y su IC univariado ya se vio en las corridas anteriores (elegirle signo ahora sería mirar los datos).
+
+**Variantes** (score = score actual + suma de componentes, acotado a ±1): `ext_be`, `ext_usd`, `ext_vix`, `ext_mm` (una cada una) y `ext_all` (las cuatro). **5 variantes.**
+
+**Mediciones** (mismo protocolo que el resto: walk-forward con embargo, hold-out intocable, permutación):
+1. IC a 20 y 60 días fuera de muestra y en el hold-out, junto con el ΔIC contra el score actual (10 comparaciones).
+2. DCA con la **política desplegada** (inclinación contrarian acotada ×0.5–1.5) usando el score de cada variante, antes del hold-out y en el hold-out (10 comparaciones).
+3. IC univariado de `mm_pct` (2 comparaciones, solo diagnóstico).
+
+**Regla de decisión (fijada ahora):** un componente entra al score en vivo **solo si** su variante individual (a) mejora el IC a 20 o 60 días con p < 0.01 y signo igual en el hold-out, **o** (b) mejora el ratio de costo del DCA frente a la política actual en ambos tramos con p < 0.01. Si no, queda como dato informativo en la tarjeta (sin puntaje) o se descarta. Con ~22 comparaciones nuevas se espera algún "significativo" por azar: por eso el umbral p < 0.01 y el hold-out.
+
+**Nota de potencia:** ~12 muestras independientes en 25 años; "no pasó el umbral" no prueba que no haya señal, solo que no hay evidencia suficiente para darle peso en el score.
+
+### Resultados de la Fase 6 (run #7, `4c7a3b3`, datos reales 2001-09 → 2026-10; hold-out desde 2024-10-01)
+
+**Veredicto: ningún componente entra al score en vivo.** Datos de managed money cargados (`mm_pct`: 4 084 filas previas al hold-out).
+
+**IC** (walk-forward / hold-out; entre paréntesis, p del walk-forward). Score actual: 20 d −0.100 (0.044) / −0.029 · 60 d −0.135 (0.032) / −0.116.
+
+| Variante | 20 d | 60 d | ΔIC vs actual (20 d / 60 d) |
+|---|---|---|---|
+| + inflación implícita | −0.103 (0.034) / −0.044 | −0.148 (0.020) / −0.149 | −0.003 / −0.014 |
+| + dólar amplio | −0.091 (0.082) / −0.019 | −0.127 (0.078) / −0.143 | +0.009 / +0.008 |
+| + VIX | −0.095 (0.064) / −0.054 | −0.144 (0.016) / −0.172 | +0.005 / −0.009 |
+| + managed money | −0.100 (0.052) / −0.043 | −0.147 (0.042) / −0.154 | −0.000 / −0.012 |
+| + las cuatro | −0.092 (0.120) / −0.070 | −0.163 (0.026) / **−0.261 (0.034)** | +0.008 / −0.028 |
+
+Ninguna cruza p < 0.01, todas "sin evidencia", y el ΔIC está entre −0.03 y +0.01 (ruido). Sumar las cuatro **empeora** el hold-out a 60 d. `mm_pct` solo: IC −0.014 (p 0.87) a 20 d y +0.028 (p 0.80) a 60 d → sin información.
+
+**DCA con la política desplegada** (ratio de costo vs DCA fijo; hasta el hold-out / hold-out): política actual 0.9966 / 0.9979 · + inflación 0.9962 / 0.9979 · + dólar 0.9962 / 0.9975 · + VIX 0.9967 / 0.9977 · + managed money 0.9971 / 0.9973 · + las cuatro 0.9964 / 0.9967. Las diferencias son de **0.01–0.12 puntos porcentuales**.
+
+**Defecto de la regla (b) pre-declarada, a la vista:** "mejora el ratio frente a la política actual en ambos tramos con p < 0.01" se escribió usando el p *contra el placebo de la propia variante*, que no prueba que sea mejor que la política actual (no hay test pareado, y las ventanas se solapan). Leída al pie de la letra, `+ dólar` y `+ las cuatro` la cumplen (mejoran el ratio en ambos tramos con p 0.003), pero por 0.04–0.12 pp, **menos que el costo de operar** (comisión 0.10 % + spread 0.05 %) y sin un test que distinga esa mejora del ruido. No se despliega nada por eso; para decidir algo con esas diferencias haría falta un test pareado declarado de antemano.
+
+**Lectura:** los insumos adicionales con signo económico a priori no mejoran lo que ya hace el score, ni en predicción ni (de forma distinguible del ruido) en el costo del DCA. Coherente con las fases anteriores: lo único que se sostuvo es *no seguir al score* (comprar más en la debilidad), y eso no depende de qué insumos tenga. `be_chg20` mostró signo **negativo** en el IC univariado (−0.11, p 0.047 a 60 d) contra el + económico declarado: una razón más para no elegir signos mirando los datos.
+
 ## Límites conocidos
 
 - GC=F ≠ PAXG (base de futuros, sesión de negociación distinta); el ratio oro/plata usa futuros.
