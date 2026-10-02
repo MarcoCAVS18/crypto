@@ -5,6 +5,7 @@ import { X, Activity, Settings2, Lightbulb, BrainCircuit } from 'lucide-react';
 import { UserStateInput } from './UserStateInput';
 import { MarketModeIndicator } from './MarketModeIndicator';
 import { CollapsibleSection } from './CollapsibleSection';
+import { DecisionExplainer } from './DecisionExplainer';
 
 export function DetailsSheet({
   open,
@@ -73,6 +74,9 @@ export function DetailsSheet({
                   <p className="text-sm text-slate-300 leading-relaxed">{decision.recommendation}</p>
                 </div>
               )}
+
+              {/* ¿Por qué esta señal? — qué pesó, cómo se decidió el tamaño y qué datos faltan */}
+              <DecisionExplainer decision={decision} marketMode={marketMode} symbol={symbol} />
 
               {/* Indicadores técnicos — colapsable */}
               {ta && (
