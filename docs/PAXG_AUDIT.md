@@ -305,3 +305,7 @@ Sin contrastar (`verified: false`, "fecha por confirmar"): PCE sep (30-oct), NFP
 ### Explicación de la señal en pantalla (rama `claude/decision-explainer`)
 - Nueva sección "¿Por qué esta señal?" en la hoja de detalles (`DecisionExplainer.jsx`, lógica pura en `utils/explainDecision.js` con tests): qué componentes pesaron en el score (aporte firmado de cada uno), cómo se decidió el tamaño (política de DCA, evento macro, costo estimado, bajada de fuerza por datos faltantes), qué datos faltan/están viejos/vienen de respaldo y la advertencia de que el score es contexto y no predicción (backtest).
 - Solo presenta lo que la API ya devuelve (`marketMode.components`, `decision.policy`, `calendarRisk`, `dataQuality`, `goldContext.sources`); sin cambios en el servidor. Para BTC/ETH muestra la cabecera, los motivos del modo y los datos.
+
+### PAXG en Risk OFF: el "Esperar" ahora dice por qué (rama `claude/paxg-wait-reasons`)
+- Caso reportado: promedio ~4,700, precio 4,150, "Esperar" durante mucho tiempo. Reproducido en el motor: con efectivo ≥ 30 %, posición no concentrada y tramos libres, **sí compra** en Risk OFF. Daba WAIT por cuatro motivos que se mostraban todos como "Mercado en Risk OFF: …": posición > 70 % del "Capital total" (si se carga solo el efectivo, el peso sale inflado), efectivo < 30 %, tramos del ciclo ya ejecutados (±1.5 % en 4 días) y precio sobre el promedio fuera de zona.
+- Ahora cada uno devuelve su propio motivo y qué hacer; la etiqueta de la app pasa a "Capital total (efectivo + inversiones)". BTC/ETH no cambian.

@@ -262,7 +262,27 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
     // PAXG (acumulación): el backtest mostró que NO comprar cuando el score es bajo encareció el costo promedio
     // (y que comprar más en esos momentos lo abarató). Se sigue acumulando en zona de compra o bajo el promedio,
     // salvo posición ya concentrada; el tamaño lo fija la política de DCA (más peso a la debilidad, acotado).
-    if (isPaxg && !isHighlyConcentrated && (currentZone === 'buy' || isBelowAvg) && cashPercent >= 30) {
+    if (isPaxg && (currentZone === 'buy' || isBelowAvg)) {
+      // Quiere acumular: si algo lo frena, se dice QUÉ (antes todo caía en un genérico "Mercado en Risk OFF" y no se
+      // entendía por qué no compraba aunque el precio estuviera bien por debajo del promedio).
+      const blocked = (why, tip) => ({
+        action: 'WAIT', strength: 'moderado',
+        reason: `${why}${pnlTag}`,
+        recommendation: `${tip}${macroLine}`,
+        operations: []
+      });
+      if (isHighlyConcentrated) {
+        return blocked(
+          `PAXG ya pesa ${allocationPercent.toFixed(0)} % de tu capital (más del 70 %): con el contexto en Risk OFF no se suma más`,
+          'El motor no sugiere cargar más una posición que ya es la mayor parte de tu capital. Revisá que "Capital total" incluya TODO lo que tenés (efectivo + inversiones), no solo el efectivo: si es solo el efectivo, el peso sale inflado. Si querés seguir promediando a la baja, es decisión tuya.'
+        );
+      }
+      if (cashPercent < 30) {
+        return blocked(
+          `Efectivo ${cashPercent} %: con el contexto en Risk OFF se pide al menos 30 % para seguir acumulando`,
+          'Si ese porcentaje no refleja tu efectivo real, ajustalo en "Tu posición".'
+        );
+      }
       const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', paxgCapFraction, executedBuys, symbol, ext.pullback);
       if (ops.length > 0) {
         return {
@@ -274,6 +294,16 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
           policy: dcaPolicy
         };
       }
+      return blocked(
+        'Ya registraste compras en los últimos 4 días a los niveles de los tramos de este ciclo (±1.5 %)',
+        'Esperá a que el precio baje a otro nivel o a que pasen unos días: promediar varias veces al mismo precio no mejora el costo base.'
+      );
+    }
+    if (isPaxg) {
+      return {
+        ...riskOffWait(marketMode),
+        reason: `Mercado en Risk OFF: ${(marketMode.reasons ?? []).join(', ')} · el precio está por encima de tu promedio y fuera de la zona de compra`
+      };
     }
     return riskOffWait(marketMode);
   }
