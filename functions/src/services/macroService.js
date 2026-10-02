@@ -145,7 +145,7 @@ export function cotUrl(limit) {
     `&$select=${COT_SELECT}&$limit=${limit}&$order=report_date_as_yyyy_mm_dd%20DESC`;
 }
 
-async function fetchCotRows(limit, { fetchImpl = fetch, timeoutMs = 20000 } = {}) {
+export async function fetchCotRows(limit, { fetchImpl = fetch, timeoutMs = 20000 } = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -172,6 +172,18 @@ export async function getCOTData(opts = {}) {
       console.warn('[MacroService] COT fetch failed:', err2.message);
       throw err2;
     }
+  }
+}
+
+/** Prueba el pedido a la CFTC tal como lo hace la función (4 semanas): sirve para ver POR QUÉ falla desde Cloud Functions. */
+export async function diagnoseCot({ fetchImpl = fetch, timeoutMs = 20000 } = {}) {
+  const started = Date.now();
+  try {
+    const rows = await fetchCotRows(4, { fetchImpl, timeoutMs });
+    const parsed = parseCotHistory(rows);
+    return { ok: true, ms: Date.now() - started, rows: rows.length, reportDate: parsed.reportDate, netSpec: parsed.netSpec };
+  } catch (e) {
+    return { ok: false, ms: Date.now() - started, error: String(e.message ?? e), name: e.name ?? null, cause: e.cause?.code ?? e.cause?.message ?? null };
   }
 }
 

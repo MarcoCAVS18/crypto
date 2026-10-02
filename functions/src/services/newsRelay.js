@@ -30,3 +30,17 @@ export async function runRelay({ targets, setCache, now = Date.now(), log = () =
   }
   return out;
 }
+
+/** COT: guarda las filas crudas de la CFTC (la función las usa si no puede pedirlas ella). `cot_relay` en `_ai_cache`. */
+export async function relayCot({ fetchRows, setCache, now = Date.now(), log = () => {} }) {
+  try {
+    const rows = await fetchRows(160);
+    const saved = Array.isArray(rows) && rows.length >= 4;
+    if (saved) await setCache('cot_relay', { rows, savedAt: now, via: 'relay' }, 24 * 14);   // el dato es semanal: 14 días
+    log(`cot_relay: ${rows?.length ?? 0} filas${saved ? ' (guardado)' : ' (muy pocas: no se guarda)'}`);
+    return { key: 'cot_relay', count: rows?.length ?? 0, saved };
+  } catch (e) {
+    log(`cot_relay: FALLÓ — ${e.message}`);
+    return { key: 'cot_relay', count: 0, saved: false, error: String(e.message ?? e) };
+  }
+}

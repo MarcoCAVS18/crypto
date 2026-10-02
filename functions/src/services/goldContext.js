@@ -1,10 +1,10 @@
 // Orquestador del contexto de oro (Firebase Functions — caché Firestore async)
 
-import { getMacroData, getCOTData, getRealYield, getGoldVolatilityData } from './macroService.js';
+import { getMacroData, getCOTData, parseCotHistory, getRealYield, getGoldVolatilityData } from './macroService.js';
 import { getFredMacro, applyFredFallbacks } from './fredService.js';
 import { getGoldSpotDaily, computeRegime } from './spotGold.js';
 import { decouplingStatus } from './decoupling.js';
-import { buildGoldSources } from './dataHealth.js';
+import { buildGoldSources, summarizeSources } from './dataHealth.js';
 import { getDailyCandles } from './marketData.js';
 import { calculateAllIndicators } from './technicalAnalysis.js';
 import { getGoldHeadlines } from './newsService.js';
@@ -47,6 +47,18 @@ function computeDailyBias(candles) {
   }
 }
 
+/** COT en vivo; si la CFTC no responde desde Cloud Functions, usa el último pedido que dejó el relé de Actions (news-relay.yml). */
+async function getCotWithRelay() {
+  try { return await getCOTData(); }
+  catch (e) {
+    let relay = null;
+    try { relay = await getAiCache('cot_relay'); } catch { /* sin relé */ }
+    if (!Array.isArray(relay?.rows)) throw e;
+    console.warn('[GoldContext] COT en vivo falló (' + e.message + '): se usa el relé');
+    return parseCotHistory(relay.rows);
+  }
+}
+
 export async function getGoldContext(forceRefresh = false) {
   if (!forceRefresh) {
     try {
@@ -74,7 +86,7 @@ export async function getGoldContext(forceRefresh = false) {
   ] = await Promise.allSettled([
     getMacroData(),
     getGoldHeadlines(),
-    getCOTData(),
+    getCotWithRelay(),
     getRealYield(),
     getGoldVolatilityData(),
     getDailyCandles('PAXG', 120),
@@ -174,8 +186,9 @@ export async function getGoldContext(forceRefresh = false) {
 
   // Un análisis fallido no debe quedar cacheado tanto como uno bueno: antes el error de Groq
   // (p. ej. un modelo deprecado) seguía a la vista 2 h aun después de arreglarlo.
+  // Con insumos que FALTAN (p. ej. COT) tampoco: se reintenta en 5 min en vez de mostrar el aviso 2 h.
   // Sin titulares tampoco se cachea 2 h: si los feeds fallaron un momento, las noticias no deben faltar toda la ventana.
-  const ttlHours = analysisError || headlines.length === 0 || !isHealthySource(resilient.source) ? FAILED_ANALYSIS_TTL_HOURS : GOLD_CONTEXT_TTL_HOURS;
+  const ttlHours = analysisError || headlines.length === 0 || !isHealthySource(resilient.source) || summarizeSources(sources)?.missing?.length ? FAILED_ANALYSIS_TTL_HOURS : GOLD_CONTEXT_TTL_HOURS;
   await setGoldContextCache(context, ttlHours).catch(e =>
     console.warn('[GoldContext] No se pudo guardar caché:', e.message)
   );

@@ -102,3 +102,27 @@ test('runRelay guarda solo con suficientes titulares, no pisa con pocos y sigue 
   assert.ok(!c.m.has('headlines_relay_btc') && !c.m.has('headlines_relay_eth'));
   assert.match(res[2].error, /boom/);
 });
+
+import { relayCot } from '../src/services/newsRelay.js';
+
+test('relayCot guarda las filas solo si hay suficientes y no rompe si la CFTC falla', async () => {
+  const c = memCache();
+  const rows = Array.from({ length: 160 }, (_, i) => ({ report_date_as_yyyy_mm_dd: `2026-01-${String(i % 28 + 1).padStart(2, '0')}`, noncomm_positions_long_all: '100', noncomm_positions_short_all: '50', open_interest_all: '1' }));
+  const ok = await relayCot({ fetchRows: async () => rows, setCache: c.setCache, now: NOW });
+  assert.equal(ok.saved, true); assert.equal(c.m.get('cot_relay').rows.length, 160);
+  const few = await relayCot({ fetchRows: async () => rows.slice(0, 2), setCache: memCache().setCache, now: NOW });
+  assert.equal(few.saved, false);
+  const bad = await relayCot({ fetchRows: async () => { throw new Error('HTTP 400'); }, setCache: c.setCache, now: NOW });
+  assert.equal(bad.saved, false); assert.match(bad.error, /400/);
+});
+
+import { diagnoseCot } from '../src/services/macroService.js';
+test('diagnoseCot dice qué pasó: ok, HTTP de error, y fallo de red con su causa', async () => {
+  const two = [{ report_date_as_yyyy_mm_dd: '2026-09-23', noncomm_positions_long_all: '200', noncomm_positions_short_all: '50', open_interest_all: '9' }, { report_date_as_yyyy_mm_dd: '2026-09-16', noncomm_positions_long_all: '180', noncomm_positions_short_all: '50', open_interest_all: '9' }];
+  const ok = await diagnoseCot({ fetchImpl: async () => ({ ok: true, status: 200, json: async () => two }) });
+  assert.equal(ok.ok, true); assert.equal(ok.rows, 2); assert.equal(ok.reportDate, '260923');
+  const http = await diagnoseCot({ fetchImpl: async () => ({ ok: false, status: 403, json: async () => ({}) }) });
+  assert.equal(http.ok, false); assert.match(http.error, /HTTP 403/);
+  const net = await diagnoseCot({ fetchImpl: async () => { throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'ETIMEDOUT' } }); } });
+  assert.equal(net.ok, false); assert.equal(net.cause, 'ETIMEDOUT');
+});

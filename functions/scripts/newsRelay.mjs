@@ -2,7 +2,8 @@
 import { initializeApp } from 'firebase-admin/app';
 import { setAiCache } from '../src/config/database.js';
 import { getGoldHeadlines, getBtcHeadlines, getEthHeadlines } from '../src/services/newsService.js';
-import { runRelay } from '../src/services/newsRelay.js';
+import { fetchCotRows } from '../src/services/macroService.js';
+import { runRelay, relayCot } from '../src/services/newsRelay.js';
 
 initializeApp({ projectId: process.env.FIREBASE_PROJECT_ID });
 
@@ -15,8 +16,9 @@ const results = await runRelay({
   setCache: setAiCache,
   log: (m) => console.log(m)
 });
+results.push(await relayCot({ fetchRows: (n) => fetchCotRows(n, { timeoutMs: 30000 }), setCache: setAiCache, log: (m) => console.log(m) }));
 
-const md = ['## Relé de noticias', '', '| Clave | Titulares | Guardado |', '|---|---|---|',
+const md = ['## Relé de noticias y COT', '', '| Clave | Titulares / filas | Guardado |', '|---|---|---|',
   ...results.map(r => `| ${r.key} | ${r.count} | ${r.saved ? 'sí' : `no${r.error ? ` (${r.error})` : ''}`} |`)].join('\n');
 console.log(md);
 if (process.env.GITHUB_STEP_SUMMARY) (await import('node:fs')).appendFileSync(process.env.GITHUB_STEP_SUMMARY, md + '\n');

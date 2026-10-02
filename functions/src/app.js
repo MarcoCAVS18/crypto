@@ -7,7 +7,7 @@ import goldContextRoutes from './routes/goldContext.js';
 import pushRoutes        from './routes/push.js';
 import chatRoutes        from './routes/chat.js';
 import calendarRoutes    from './routes/calendar.js';
-import healthRoutes, { aiHealthRouter, newsHealthRouter } from './routes/health.js';
+import healthRoutes, { aiHealthRouter, newsHealthRouter, cotHealthRouter } from './routes/health.js';
 import { getCalendarCoverage } from './data/macroCalendar.js';
 import { createRateLimiter, LIMITS } from './middleware/rateLimit.js';
 import { securityHeaders, corsOptions } from './middleware/security.js';
@@ -51,6 +51,7 @@ app.use('/api/metrics',       metricsRoutes);
 app.use('/api/health/deep',  healthRoutes);
 app.use('/api/health/ai',    aiHealthRouter);
 app.use('/api/health/news',  newsHealthRouter);
+app.use('/api/health/cot',   cotHealthRouter);
 
 app.get('/api/health', (_req, res) => {
   const calendar = getCalendarCoverage();
