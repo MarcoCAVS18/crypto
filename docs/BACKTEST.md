@@ -67,6 +67,32 @@ Pre-declaradas antes de correr; 8 comparaciones más (4 variantes × pre-hold-ou
 
 Conclusión: el único efecto consistente es *no seguir al score* (comprar más cuando es bajo); el mapeo acotado conserva ~la mitad del efecto del mapeo amplio (×0.25–×2: −0.80 %) con menos riesgo. El efecto (~0.3 %) equivale a ~3 comisiones de Binance spot (0.1 %) y es menor que una comisión de un exchange minorista (~0.5 %): con Binance el costo del DCA no se come el beneficio, pero conviene no multiplicar operaciones (por eso los tramos < $10 se descartan).
 
+## Fase 6 — ¿sumar más insumos al score? (PRE-DECLARADO antes de correr)
+
+Pregunta: ¿agregar al score actual algún insumo adicional mejora su valor predictivo o el costo promedio del DCA? **Se declara acá antes de ver resultados**; los signos salen de la economía, no de los datos, y los pesos son fijos (nada se ajusta).
+
+**Componentes candidatos** (cada uno aporta como máximo ±0.10, igual que la IA; dato faltante = 0, como en vivo):
+
+| Id | Componente | Signo a priori | Mapeo |
+|---|---|---|---|
+| `breakeven` | Cambio a 20 obs de la inflación implícita 10Y | **+** (más inflación esperada → oro) | `clamp(Δ / 0.25 pp, −1, 1)` |
+| `dollar` | Cambio a 20 obs (log) del dólar amplio | **−** | `clamp(−Δ / 3 %, −1, 1)` |
+| `vix` | VIX, z-score de 252 obs | **+** (demanda de refugio) | `clamp(z / 2, −1, 1)` |
+| `managedMoney` | Posición neta de *managed money* (CFTC desagregado, % del open interest), percentil de 3 años | **−** (contrarian, igual criterio que el COT actual) | `−(percentil − 50) / 50` |
+
+La pendiente 2Y–10Y (`curve_z`) **no entra**: su signo a priori es ambiguo y su IC univariado ya se vio en las corridas anteriores (elegirle signo ahora sería mirar los datos).
+
+**Variantes** (score = score actual + suma de componentes, acotado a ±1): `ext_be`, `ext_usd`, `ext_vix`, `ext_mm` (una cada una) y `ext_all` (las cuatro). **5 variantes.**
+
+**Mediciones** (mismo protocolo que el resto: walk-forward con embargo, hold-out intocable, permutación):
+1. IC a 20 y 60 días fuera de muestra y en el hold-out, junto con el ΔIC contra el score actual (10 comparaciones).
+2. DCA con la **política desplegada** (inclinación contrarian acotada ×0.5–1.5) usando el score de cada variante, antes del hold-out y en el hold-out (10 comparaciones).
+3. IC univariado de `mm_pct` (2 comparaciones, solo diagnóstico).
+
+**Regla de decisión (fijada ahora):** un componente entra al score en vivo **solo si** su variante individual (a) mejora el IC a 20 o 60 días con p < 0.01 y signo igual en el hold-out, **o** (b) mejora el ratio de costo del DCA frente a la política actual en ambos tramos con p < 0.01. Si no, queda como dato informativo en la tarjeta (sin puntaje) o se descarta. Con ~22 comparaciones nuevas se espera algún "significativo" por azar: por eso el umbral p < 0.01 y el hold-out.
+
+**Nota de potencia:** ~12 muestras independientes en 25 años; "no pasó el umbral" no prueba que no haya señal, solo que no hay evidencia suficiente para darle peso en el score.
+
 ## Límites conocidos
 
 - GC=F ≠ PAXG (base de futuros, sesión de negociación distinta); el ratio oro/plata usa futuros.
