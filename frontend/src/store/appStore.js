@@ -106,9 +106,15 @@ export const useAppStore = create(
         // Calcular contexto del portfolio para el símbolo seleccionado
         const allSummary      = computePortfolioSummary(portfolio.operations);
         const symbolSummary   = allSummary.find(s => s.symbol === selectedCrypto) || null;
+        // Valor de mercado de TODAS las posiciones (para medir el peso real de cada una cuando el capital cargado es solo efectivo)
+        const portfolioValueUsd = allSummary.reduce((sum, s) => {
+          const px = get().cryptoData[s.symbol]?.price ?? s.avgBuyPrice;
+          return sum + (s.units > 0 && px > 0 ? s.units * px : 0);
+        }, 0);
         const portfolioContext = symbolSummary
           ? {
               ...symbolSummary,
+              portfolioValueUsd,
               hasPosition: symbolSummary.units > 0 && symbolSummary.avgBuyPrice > 0,
               // Precio actual para cálculo de P&L en el backend
               currentPrice: get().cryptoData[selectedCrypto]?.price ?? null,

@@ -53,7 +53,7 @@ export function UserStateInput({ onSubmit, initialCash = 50, initialMode = 'inve
       <div className="space-y-2">
         <label className="flex items-center gap-1.5 text-xs text-slate-500 uppercase tracking-widest">
           <DollarSign className="w-3.5 h-3.5" />
-          Capital total disponible (USD)
+          Capital total (USD)
         </label>
         <div className="relative">
           <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-medium pointer-events-none">$</span>
@@ -68,6 +68,9 @@ export function UserStateInput({ onSubmit, initialCash = 50, initialMode = 'inve
                        placeholder-slate-600 transition-colors"
           />
         </div>
+        <p className="text-[11px] text-slate-600">
+          Con 100 % de efectivo se entiende que este monto es solo el efectivo que querés invertir: el peso de tus posiciones se calcula aparte con lo que tenés en el Portfolio. Con menos de 100 %, cargá todo lo que tenés (efectivo + inversiones).
+        </p>
         {totalCapital > 0 && (
           <p className="text-xs text-slate-600">
             Capital registrado: <span className="text-slate-400 tabular font-medium">${totalCapital.toLocaleString('en-US')}</span>
