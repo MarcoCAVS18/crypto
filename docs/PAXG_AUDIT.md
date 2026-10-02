@@ -301,3 +301,7 @@ Sin contrastar (`verified: false`, "fecha por confirmar"): PCE sep (30-oct), NFP
 - **"Datos degradados: desactualizados COT" cada semana.** El reporte COT es del martes y se publica el viernes; justo antes de la siguiente publicación tiene ~10 d, el límite anterior. El límite pasa a 14 d (`dataHealth.js`).
 - **COT desde Cloud Functions:** el pedido a la CFTC funciona (391 ms, `/api/health/cot`); el aviso "faltan COT" venía de la columna removida y de un contexto cacheado.
 - **Noticias:** Google News respondió 503 a la función en dos smokes y 200 en el tercero (limitación intermitente de IPs de Google Cloud); el relé de Actions y los titulares guardados cubren esos huecos.
+
+### Explicación de la señal en pantalla (rama `claude/decision-explainer`)
+- Nueva sección "¿Por qué esta señal?" en la hoja de detalles (`DecisionExplainer.jsx`, lógica pura en `utils/explainDecision.js` con tests): qué componentes pesaron en el score (aporte firmado de cada uno), cómo se decidió el tamaño (política de DCA, evento macro, costo estimado, bajada de fuerza por datos faltantes), qué datos faltan/están viejos/vienen de respaldo y la advertencia de que el score es contexto y no predicción (backtest).
+- Solo presenta lo que la API ya devuelve (`marketMode.components`, `decision.policy`, `calendarRisk`, `dataQuality`, `goldContext.sources`); sin cambios en el servidor. Para BTC/ETH muestra la cabecera, los motivos del modo y los datos.
