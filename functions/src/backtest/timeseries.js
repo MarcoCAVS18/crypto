@@ -18,6 +18,7 @@ export const AVAILABILITY_LAG_DAYS = {
   vix: 1,
   gvz: 1,
   dollarBroad: 7,   // DTWEXBGS se publica semanalmente (lunes, con datos hasta el viernes anterior)
+  cotMm: 4,         // COT desagregado: misma publicación que el COT
   cot: 4            // CFTC: dato al martes, se publica el viernes (+3); +1 de margen → visible desde el lunes
 };
 

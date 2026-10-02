@@ -8,13 +8,14 @@
 //  5. DCA: ¿modular con el score actual (a favor o en contra) o con el compuesto a priori abarata el costo promedio?
 //  6. Se cuenta cuántas comparaciones se hicieron (riesgo de falsos positivos).
 
-import { buildDataset, coverage, FEATURE_NAMES, MIN_HISTORY } from './features.js';
+import { buildDataset, coverage, FEATURE_NAMES, EXTRA_FEATURE_NAMES, MIN_HISTORY } from './features.js';
 import { walkForward, evaluateScore, featureICs } from './walkForward.js';
 import { MODEL_MENU, HORIZONS, verdict } from './candidates.js';
 import { ruleScoreOfRow } from './ruleScore.js';
 import { buildSchedule, compareDCA } from './dcaSim.js';
 import { addDays } from './timeseries.js';
 import { std } from './stats.js';
+import { EXT_VARIANTS, extendedScoreOfRow, partsCoverage } from './extendedScore.js';
 
 const slim = (m) => {
   if (!m) return m;
@@ -122,6 +123,45 @@ export function runBacktest(raw, { holdoutYears = 2, permB = 500, horizons = HOR
     out.dcaHoldout.push({ id: v.id, label: v.label, period: [holdRows[0]?.date, holdRows[holdRows.length - 1]?.date], ...rb });
     comparisons += 2;
     log(`dca ${v.id}: pre ${ra.meanRatio?.toFixed?.(4)} p=${ra.pValue?.toFixed?.(3)} · hold-out ${rb.meanRatio?.toFixed?.(4)} p=${rb.pValue?.toFixed?.(3)}`);
+  }
+
+  // P6 — insumos adicionales del score (pre-declarado en docs/BACKTEST.md): cada variante = score actual + componente(s) con
+  // signo a priori y peso fijo. Se mide el IC (walk-forward y hold-out) y el DCA con la política desplegada.
+  out.extension = { variants: [], dca: [], dcaHoldout: [], extraICs: {} };
+  for (const h of horizons) {
+    out.extension.extraICs[h] = featureICs(pre.filter(r => r.labelDate[h] !== null && r.labelDate[h] < holdoutStart), EXTRA_FEATURE_NAMES, h, { permB: 300 });
+    comparisons += EXTRA_FEATURE_NAMES.length;
+  }
+  const policyMod = { k: 0.5, min: 0.5, max: 1.5, dir: -1 };   // la política desplegada (dcaPolicy.js)
+  for (const v of EXT_VARIANTS) {
+    const sc = extendedScoreOfRow(v.parts);
+    const cov = partsCoverage(rows, v.parts);
+    if (cov < 0.3) {
+      out.extension.variants.push({ id: v.id, label: v.label, coverage: cov, insufficient: true });
+      log(`ext ${v.id}: datos insuficientes (cobertura ${(cov * 100).toFixed(0)} %)`);
+      continue;
+    }
+    for (const h of horizons) {
+      const firstOos = firstPred[h] ?? null;
+      const oos = evaluateScore(rows, sc, { horizon: h, from: firstOos, to: holdoutStart, permB });
+      const hold = evaluateScore(rows, sc, { horizon: h, from: holdoutStart, permB });
+      comparisons++;
+      const base = out.baseline.find(b => b.horizon === h);
+      out.extension.variants.push({
+        id: v.id, label: v.label, horizon: h, coverage: cov, oos, holdout: hold, verdict: verdict(oos, hold),
+        dIC: Number.isFinite(oos.ic) && Number.isFinite(base?.oos?.ic) ? oos.ic - base.oos.ic : NaN,
+        dICHoldout: Number.isFinite(hold.ic) && Number.isFinite(base?.holdout?.ic) ? hold.ic - base.holdout.ic : NaN
+      });
+      log(`ext ${v.id} h${h}: IC OOS ${oos.ic?.toFixed?.(3)} p=${oos.icPermP?.toFixed?.(3)} · hold-out ${hold.ic?.toFixed?.(3)}`);
+    }
+    const preSched = buildSchedule(pre, sc, { everyDays: 5, mod: policyMod });
+    const { perWindow: _p, ...ra } = compareDCA(preSched, { windowBuys: 104, stepBuys: 4, placebo: dcaPlacebo });
+    out.extension.dca.push({ id: v.id, label: v.label, period: [pre[0]?.date, pre[pre.length - 1]?.date], ...ra });
+    const holdSched = buildSchedule(holdRows, sc, { everyDays: 5, mod: policyMod });
+    const { perWindow: _h, ...rb } = compareDCA(holdSched, { windowBuys: 26, stepBuys: 2, placebo: dcaPlacebo });
+    out.extension.dcaHoldout.push({ id: v.id, label: v.label, period: [holdRows[0]?.date, holdRows[holdRows.length - 1]?.date], ...rb });
+    comparisons += 2;
+    log(`ext ${v.id} DCA: pre ${ra.meanRatio?.toFixed?.(4)} p=${ra.pValue?.toFixed?.(3)} · hold-out ${rb.meanRatio?.toFixed?.(4)} p=${rb.pValue?.toFixed?.(3)}`);
   }
 
   out.meta.comparisons = comparisons;

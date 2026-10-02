@@ -25,6 +25,10 @@ export const FEATURE_NAMES = [
   'cot_pct', 'cot_chg4', 'gs_z'
 ];
 
+// Variables adicionales (P6): se calculan en cada fila pero NO forman parte de FEATURE_NAMES, para no alterar los modelos
+// pre-declarados de las fases anteriores (el ridge de 19 variables, etc.).
+export const EXTRA_FEATURE_NAMES = ['mm_pct'];
+
 export const FORWARD_HORIZONS = [5, 20, 60];
 
 // Historia mínima de velas antes de emitir la primera fila (EMA200 + margen para z-scores de 252)
@@ -91,6 +95,11 @@ export function prepare(raw) {
     value: o.openInterest > 0 ? (o.netSpec / o.openInterest) * 100 : o.netSpec,
     netSpec: o.netSpec, openInterest: o.openInterest
   })));
+  // COT desagregado: managed money neto como % del open interest
+  prepared.cotMm = cleanSeries((raw.cotMm ?? []).map(o => ({
+    date: o.date,
+    value: o.openInterest > 0 ? (o.mmNet / o.openInterest) * 100 : o.mmNet
+  })));
   return prepared;
 }
 
@@ -112,7 +121,12 @@ export function featuresAt(P, i) {
   const cot_pct = cotWin.length >= 104 ? percentileRank(cotNow.value, cotWin.map(o => o.value), 104) : null;
   const cot_chg4 = cotWin.length >= 5 ? cotNow.value - cotWin[cotWin.length - 5].value : null;
 
+  // Managed money: percentil de 3 años del neto como % del open interest
+  const mmWin = visibleWindow(P.cotMm, date, lag('cotMm'), 156);
+  const mm_pct = mmWin.length >= 104 ? percentileRank(mmWin[mmWin.length - 1].value, mmWin.map(o => o.value), 104) : null;
+
   const x = {
+    mm_pct,
     mom20: mom(20), mom60: mom(60), mom120: mom(120),
     ext200: i >= 199 ? c[i] / P.ema200[i] - 1 : null,
     ma50_200: i >= 199 ? P.ema50[i] / P.ema200[i] - 1 : null,
