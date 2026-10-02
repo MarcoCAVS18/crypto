@@ -1,5 +1,6 @@
 // Sección de Portfolio personal: registro de operaciones e inversiones
 import { sanitizeDecimal } from '../utils/decimalInput';
+import { operationIssues, priceFarFromMarket } from '../utils/opChecks';
 import { useState, useEffect, useRef } from 'react';
 import { Card } from './ui/Card';
 import { Button } from './ui/Button';
@@ -221,6 +222,11 @@ export function PortfolioSection() {
       setError('Completa todos los campos requeridos');
       return;
     }
+    const issues = operationIssues({ amount_usd: form.amount_usd, price: form.price, units: form.units });
+    if (issues.length) { setError(`${issues[0]} Revisá los tres campos.`); return; }
+    const marketPrice = cryptoData?.[form.symbol]?.price;
+    if (priceFarFromMarket(form.price, marketPrice) &&
+        !window.confirm(`El precio que cargaste ($${parseFloat(form.price).toLocaleString('en-US')}) está muy lejos del precio actual de ${form.symbol} ($${Number(marketPrice).toLocaleString('en-US', { maximumFractionDigits: 2 })}). ¿Guardar igual?`)) return;
     setSaving(true);
     try {
       await addOperation({
@@ -258,6 +264,8 @@ export function PortfolioSection() {
   useEffect(() => {
     setVisibleCount(3);
   }, [filterSymbol]);
+
+  const badOps = operations.filter(o => operationIssues(o).length > 0);
 
   const currentPrices = {
     BTC: cryptoData.BTC?.price,
@@ -429,6 +437,15 @@ export function PortfolioSection() {
       {/* Lista de operaciones */}
       {operations.length > 0 && (
         <div className="space-y-3">
+          {badOps.length > 0 && (
+            <div className="flex items-start gap-2 text-amber-300 text-xs p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>
+                {badOps.length === 1 ? 'Hay 1 operación' : `Hay ${badOps.length} operaciones`} con datos que no cuadran (monto distinto de unidades × precio):{' '}
+                {badOps.slice(0, 3).map(o => `${o.symbol} ${o.date}`).join(', ')}{badOps.length > 3 ? '…' : ''}. Deforman el costo promedio y el P&L: abrila y eliminala si es un error.
+              </span>
+            </div>
+          )}
           {/* Filtro por símbolo */}
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs text-gray-500">Filtrar:</span>
@@ -573,6 +590,7 @@ function OperationRow({ op, expanded, onToggle, onDelete }) {
         <div className="flex-1 min-w-0">
           <span className="font-semibold text-white text-sm">{op.symbol}</span>
           <span className="text-gray-500 text-xs ml-1.5">{op.date}</span>
+          {operationIssues(op).length > 0 && <span className="ml-1.5 text-amber-400 text-xs" title={operationIssues(op)[0]}>⚠ no cuadra</span>}
         </div>
 
         {/* Monto + unidades */}
