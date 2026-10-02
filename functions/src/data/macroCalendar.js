@@ -18,18 +18,18 @@ export const MACRO_EVENTS = [
   { date: '2026-10-02', name: 'NFP',  fullName: 'Nóminas no agrícolas septiembre',    impact: 'high',     assets: ['BTC', 'PAXG'], verified: true  },
   { date: '2026-10-14', name: 'CPI',  fullName: 'IPC septiembre (inflación EE.UU.)',  impact: 'critical', assets: ['BTC', 'PAXG'], verified: true  },
   { date: '2026-10-28', name: 'FOMC', fullName: 'Decisión de tasas Fed',              impact: 'critical', assets: ['BTC', 'PAXG'], verified: true  },
-  { date: '2026-10-30', name: 'PCE',  fullName: 'PCE septiembre (inflación Fed)',     impact: 'high',     assets: ['PAXG'],        verified: false },
+  { date: '2026-10-29', name: 'PCE',  fullName: 'PCE septiembre (inflación Fed)',     impact: 'high',     assets: ['PAXG'],        verified: true  },
 
   // ── Noviembre 2026 ───────────────────────────────────────────
-  { date: '2026-11-06', name: 'NFP',  fullName: 'Nóminas no agrícolas octubre',       impact: 'high',     assets: ['BTC', 'PAXG'], verified: false },
-  { date: '2026-11-12', name: 'CPI',  fullName: 'IPC octubre (inflación EE.UU.)',     impact: 'critical', assets: ['BTC', 'PAXG'], verified: false },
-  { date: '2026-11-25', name: 'PCE',  fullName: 'PCE octubre (inflación Fed)',        impact: 'high',     assets: ['PAXG'],        verified: false },
+  { date: '2026-11-06', name: 'NFP',  fullName: 'Nóminas no agrícolas octubre',       impact: 'high',     assets: ['BTC', 'PAXG'], verified: true  },
+  { date: '2026-11-10', name: 'CPI',  fullName: 'IPC octubre (inflación EE.UU.)',     impact: 'critical', assets: ['BTC', 'PAXG'], verified: true  },
+  { date: '2026-11-25', name: 'PCE',  fullName: 'PCE octubre (inflación Fed)',        impact: 'high',     assets: ['PAXG'],        verified: true  },
 
   // ── Diciembre 2026 ───────────────────────────────────────────
   { date: '2026-12-04', name: 'NFP',  fullName: 'Nóminas no agrícolas noviembre',     impact: 'high',     assets: ['BTC', 'PAXG'], verified: true  },
-  { date: '2026-12-09', name: 'FOMC', fullName: 'Decisión de tasas Fed',              impact: 'critical', assets: ['BTC', 'PAXG'], verified: false },
-  { date: '2026-12-10', name: 'CPI',  fullName: 'IPC noviembre (inflación EE.UU.)',   impact: 'critical', assets: ['BTC', 'PAXG'], verified: false },
-  { date: '2026-12-18', name: 'PCE',  fullName: 'PCE noviembre (inflación Fed)',      impact: 'high',     assets: ['PAXG'],        verified: false },
+  { date: '2026-12-09', name: 'FOMC', fullName: 'Decisión de tasas Fed',              impact: 'critical', assets: ['BTC', 'PAXG'], verified: true  },
+  { date: '2026-12-10', name: 'CPI',  fullName: 'IPC noviembre (inflación EE.UU.)',   impact: 'critical', assets: ['BTC', 'PAXG'], verified: true  },
+  { date: '2026-12-23', name: 'PCE',  fullName: 'PCE noviembre (inflación Fed)',      impact: 'high',     assets: ['PAXG'],        verified: true  },
 ];
 
 const IMPACT_NOTE = {

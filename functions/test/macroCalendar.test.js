@@ -116,13 +116,22 @@ test('datos: correcciones verificadas contra fuentes oficiales', () => {
   assert.ok(has('2026-09-30', 'PCE'));   // BEA: PCE agosto → 30-sep (antes 25-sep)
   assert.ok(has('2026-09-16', 'FOMC'));
   assert.ok(has('2026-10-28', 'FOMC'));
+  // contrastadas en octubre (resumen del buscador que cita las páginas oficiales; no se pudo abrir la fuente desde el sandbox)
+  assert.ok(has('2026-10-29', 'PCE'));   // BEA: PCE septiembre → 29-oct (antes 30-oct)
+  assert.ok(has('2026-11-10', 'CPI'));   // BLS: IPC octubre → mar 10-nov (antes 12-nov)
+  assert.ok(has('2026-11-06', 'NFP'));   // BLS: empleo octubre → vie 6-nov
+  assert.ok(has('2026-11-25', 'PCE'));   // BEA: PCE octubre → 25-nov
+  assert.ok(has('2026-12-09', 'FOMC'));  // Fed: 8–9 dic, decisión el 9
+  assert.ok(has('2026-12-10', 'CPI'));   // BLS: IPC noviembre → jue 10-dic
+  assert.ok(has('2026-12-23', 'PCE'));   // BEA: PCE noviembre → 23-dic (antes 18-dic)
+  assert.ok(!MACRO_EVENTS.some(e => ['2026-10-30', '2026-11-12', '2026-12-18'].includes(e.date)), 'las fechas viejas ya no están');
 });
 
 test('cobertura: informa último evento, días restantes y no verificados', () => {
   const c = getCalendarCoverage(utc('2026-09-28T12:00:00Z'));
-  assert.equal(c.lastEventDate, '2026-12-18');
-  assert.ok(c.daysCovered >= 80 && c.daysCovered <= 82, `daysCovered=${c.daysCovered}`);
+  assert.equal(c.lastEventDate, '2026-12-23');
+  assert.ok(c.daysCovered >= 85 && c.daysCovered <= 87, `daysCovered=${c.daysCovered}`);
   assert.ok(c.upcomingCount > 0);
-  assert.ok(c.unverifiedUpcoming > 0);
+  assert.equal(c.unverifiedUpcoming, 0);   // las 7 fechas pendientes quedaron contrastadas
   assert.equal(getCalendarCoverage(utc('2027-01-15T00:00:00Z')).daysCovered, 0);
 });

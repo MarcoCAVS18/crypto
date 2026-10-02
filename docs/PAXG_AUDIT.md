@@ -141,20 +141,20 @@ Cada fase = un PR. Marcar `[x]` al mergear.
 - [x] B10 una señal por símbolo y hora (`create()`), lectura por rango de ID sin índice compuesto, snapshot básico de features. **Resto:** snapshots completos (P1), métricas (P4)
 - [x] B11 helper único de Groq (`reasoning_effort`, colchón de tokens, reintento), TTL corto de fallos, prompt/outcome/insight/cache/chat corregidos, `GROQ_MODEL` configurable · B18 escrituras esperadas antes de responder
 
-### P1 — Fundamentos de datos  → implementado (rama `claude/paxg-phase1-data`)
+### P1 — Fundamentos de datos  → ✅ mergeado y desplegado
 - [x] FRED API (`fredService.js`: DFII10, DGS10, DGS2, T10YIE, DTWEXBGS, VIXCLS, GVZCLS) con historia (~400 días), cambio 1/5/20, z-score y percentil a 1 año, frescura ok/stale/failed por serie; fallbacks a FRED para GVZ, 10Y y tasa real cuando falla la fuente principal. Secreto `FRED_API_KEY` declarado en `index.js`. **Las features todavía NO entran al score** (P2).
 - [x] Oro de referencia GC=F (`spotGold.js`): ~2 años de velas diarias → régimen con EMA200 real (`dailyBias.longAlignment`, `extension200Pct`, `atrPercent`); la regla `alignment` histórica se conserva (no cambia el score); respaldo: velas diarias de PAXG. Prima/descuento de PAXG vs GC=F (informativa, sesgada por la base de futuros; `stale` si la referencia tiene >6 h).
 - [x] Velas (B3a, B15): `candles.js` (agregado 1h→4h alineado a UTC, ventanas ≤300, merge); el análisis técnico usa **250 velas de 4h cerradas (~41 días)** en vez de 250 de 1h; VWAP de 24 h reales; `/candles` acepta `15m`/`1h`/`4h`/`6h`/`1d` y valida.
 - [x] Modo degradado (`dataHealth.js`): estado por insumo (`sources` en el contexto de oro), `dataHealth` en el modo de mercado, razón "Datos degradados…" primero, aviso en la tarjeta macro y, con degradación **severa**, una compra baja un escalón de intensidad. `GET /api/health/deep` (sin llamadas externas: lee el caché) con configuración, frescura, snapshots y advertencias.
 - [x] Snapshot horario (`snapshot.js` + `scheduled/snapshotJob.js`, colección `snapshots`, id `SYMBOL_YYYYMMDDHH`, `create()` idempotente): precio, técnicos, zona, score con **componentes** (`goldMarketMode` ahora devuelve `components`), macro completo, FRED, régimen, prima, `dataHealth` y estado de fuentes. Foto del **mercado** (sin datos de usuario). PAXG y BTC.
 
-### P2 — Backtester y recalibración  → implementado (rama `claude/paxg-phase2-backtest`)
+### P2 — Backtester y recalibración  → ✅ mergeado y desplegado
 - [x] Backtester point-in-time (`functions/src/backtest/`, ver `docs/BACKTEST.md`): GC=F + FRED + COT + GVZ desde 2000; features sin fuga (rezagos de publicación, test de propiedad), walk-forward con embargo por etiqueta, hold-out de 2 años aislado (también sus etiquetas), menú de modelos pre-declarado, test de permutación, conteo de comparaciones; simulador de DCA con gasto igualado, ventanas móviles y placebo por desplazamiento. Corre en GitHub Actions (`.github/workflows/backtest.yml`).
 - [x] **Resultado real (54 comparaciones): ningún modelo predice el retorno del oro a 20/60 días fuera de muestra; el score actual no tiene poder predictivo demostrable (IC −0.10/−0.13, signo levemente contrario).** Única señal consistente: en DCA, *comprar más cuando el score es bajo* abarata ~1 % el costo promedio (hold-out: 0.5 %) y *comprar menos* lo encarece; es hipótesis para P3, no regla.
 - [x] Runtime: ATR por percentil histórico (`atrPercentile`; reemplaza umbrales absolutos solo en el modo de oro) · histéresis del modo (entra ±0.25, sale ±0.15, modo previo del último snapshot < 6 h; `previousMode.js`) · percentil COT a ~3 años (informativo) · monitor de desacople oro↔tasa real (`decoupling.js`; advertencia en razones y snapshot, no reasigna pesos) · snapshot `p2` (atrPercentile, histéresis, percentil COT, desacople).
 - [ ] **Diferido a P3:** artefacto de modelo estimado en runtime (no hay modelo con evidencia que desplegar) y z-scores en el score en vivo (el backtest no respalda reemplazar los mapeos por niveles/cambios estimados).
 
-### P3 — Política, cartera y LLM  → parte 1 implementada (rama `claude/paxg-phase3-policy`); resto pendiente
+### P3 — Política, cartera y LLM  → ✅ mergeado y desplegado (#46, #48, #49)
 - [x] **Política de DCA de PAXG con evidencia** (`services/dcaPolicy.js`, evaluada en el backtest con el mismo mapeo): base fija (75 % del efectivo asignado) con un **tilt acotado ×0.5–×1.5 hacia comprar más cuando el score es bajo**. Reemplaza la fracción que *seguía* al score (0.65/0.80/1.0) y los recortes por COT/tasa real/GVZ/tendencia (doble conteo con el score; el backtest mostró que seguir al score encarece el costo promedio +0.5 %).
 - [x] **Gate de acumulación:** PAXG en `risk_off` ya no queda siempre en WAIT: sigue acumulando en zona de compra o bajo el promedio (tamaño por la política), salvo posición concentrada (>70 %), efectivo < 30 % o tramos ya ejecutados. Las ventas por macro adverso no cambian. BTC/ETH no cambian.
 - [x] Volatilidad realizada como señal de tamaño: probada, sin efecto (±0.01 %) → **no se usa**. Caída desde el máximo de 1 año: no confirmada en el hold-out (p 0.35) → no se usa.
@@ -164,14 +164,14 @@ Cada fase = un PR. Marcar `[x]` al mergear.
 - [x] Eventos (`services/eventRisk.js`): riesgo de calendario **determinístico** (antes lo decidía Groq y cambiaba entre llamadas; guía del prompt pausaba compras con el FOMC "mañana o hoy"): pausa solo en ventana corta (crítico ≤ 3 h antes o ≤ 1 h después; alto: 50 % a ≤ 2 h), 75 %/90 % hasta 24 h antes, solo COMPRAS. **No respaldado por backtest** (no hay historia de calendario con horas): higiene de riesgo declarada. `analyzeCalendarRisk` eliminado.
 - [x] LLM como etiquetador estructurado: devuelve 4 etiquetas discretas (política monetaria, geopolítica, inflación, demanda de oro ∈ {−1,0,1}); el score sale de la media (regla fija), peso **±0.10** (antes 0.15), etiquetas guardadas en el snapshot. Explicador con paquete de decisión: pendiente (el insight actual ya recibe la decisión y el historial).
 
-### P4 — Aprendizaje continuo  → implementado (rama `claude/paxg-phase4-learning`)
+### P4 — Aprendizaje continuo  → ✅ mergeado y desplegado (#50)
 - [x] **Etiquetado de resultados** (`outcomeJob`, diario; `services/outcomes.js`): cada decisión con id horario se etiqueta a 1/5/20/60 días con retorno, MAE y MFE respecto del precio de la señal, solo cuando el horizonte terminó (colección `outcomes`, mismo id que la decisión; solo servidor).
 - [x] **Métricas reales** (`GET /api/metrics/:symbol`, `services/metrics.js`): acierto por acción y horizonte **contra la línea base** ("operar cualquier día"), por intensidad, seguimiento y campeón vs sombra. Reemplaza el conteo de "AI Signal History": el panel del Portfolio muestra n, acierto, azar, retorno medio y ventaja, con ⚠ si hay < 10 señales. Calibración/Brier: **no aplica** (el motor no emite probabilidades).
 - [x] **Modo sombra** (`services/shadow.js`): cada decisión registra qué habría hecho un DCA fijo (challenger `fixed_dca`); `compareShadow` lo enfrenta a las compras del motor.
 - [x] **Seguimiento**: `followStats` cruza señales con operaciones registradas (BUY/SELL del mismo símbolo dentro de 24 h) y compara el resultado de las seguidas vs no seguidas.
 - [x] **Alerta de fuente caída**: push (con antispam de 12 h) tras 3 ciclos horarios seguidos con degradación severa (`healthAlert.js`, dentro de `snapshotJob`).
 
-### P5 — Ingeniería y seguridad  → implementado con alcance acotado (rama `claude/paxg-phase5-engineering`)
+### P5 — Ingeniería y seguridad  → ✅ mergeado y desplegado con alcance acotado (#51, #54)
 - [x] `backend/` **eliminado** (todo corre en Firebase; D9).
 - [x] Config versionada: `config/versions.js` reúne versiones (decisión, snapshot, política de DCA, revisión) y parámetros vigentes; sale en `GET /api/health/deep` (`versions`).
 - [x] README reescrito (arquitectura real, jobs, secretos, diagnóstico).
@@ -233,7 +233,29 @@ Verificadas (`verified: true` en `macroCalendar.js`):
 - BLS Empleo: ago → vie 4 sep · sep → vie 2 oct · nov → vie 4 dic. BLS CPI: ago → **vie 11 sep** · sep → **mié 14 oct**. (8:30 ET)
 - BEA PCE: jul → 26 ago · ago → **30 sep** (8:30 ET). El repo tenía 28-ago y 25-sep.
 
-Sin contrastar (`verified: false`, "fecha por confirmar"): PCE sep (30-oct), NFP oct (6-nov), CPI oct (12-nov), PCE oct (25-nov), FOMC dic (9-dic), CPI nov (10-dic), PCE nov (18-dic). Fuente para automatizar: FRED `release/dates` (CPI id 10, Empleo id 50, PCE id 54) y el calendario de la Fed.
+Contrastadas el 2026-10-02 (`verified: true`), **vía un buscador que cita las páginas oficiales de BLS, BEA y la Fed** (las páginas no se pudieron abrir desde el entorno de desarrollo: conviene revisarlas con acceso directo): FOMC dic **8–9** (decisión 9-dic) · BLS empleo oct → **vie 6-nov** · BLS CPI oct → **mar 10-nov** (el repo tenía 12-nov) y nov → jue 10-dic · BEA PCE sep → **29-oct** (el repo tenía 30-oct), oct → 25-nov, nov → **23-dic** (el repo tenía 18-dic). Sin fechas sin contrastar. Fuente para automatizar: FRED `release/dates`.
+
+## 8b. Estado final y pendientes conocidos
+
+**Verificado en el sitio real** (smoke del deploy `01d201d`, 2026-10-02): web y API ok · Groq, FRED y VAPID cargados · versiones `p3` / DCA `p3-1` · COT desde la función ok (reporte 29-sep) · contexto de oro sin insumos faltantes · noticias 9/9 feeds · `/api/metrics/PAXG` responde 200 (0 señales etiquetadas todavía: las de 20/60 días tardan en madurar). Único aviso restante: fechas del calendario (resuelto en el PR de cierre).
+
+**Pendientes, con quién y cuándo:**
+
+| # | Pendiente | Quién / cuándo |
+|---|---|---|
+| 1 | **Calendario macro termina el 2026-12-23**: cargar enero–marzo 2027 (FOMC, CPI, empleo, PCE) y revisar las fechas de este PR con acceso a las páginas oficiales | Antes de ~8-nov (el aviso de cobertura salta con < 45 días) |
+| 2 | **Reglas de Firestore (deny-all) sin publicar**: primero probar el login de cada perfil y agregar/borrar una operación; después *Deploy to Firebase* → Run workflow con `deploy_firestore` | Usuario, tras probar |
+| 3 | Sitio de **Netlify** y servicio de **Render**: borrarlos desde sus paneles | Usuario |
+| 4 | **Clave de Groq pegada en el chat**: revocarla si no se hizo | Usuario |
+| 5 | **Operación fantasma de BTC** (#62): borrar la marcada con "⚠ no cuadra" en el Portfolio | Usuario |
+| 6 | **Cron de GitHub Actions** (relé de noticias/COT): GitHub los desactiva tras 60 días sin actividad en el repo → si las noticias vuelven a faltar, revisar que *News relay* siga activo | Usuario |
+| 7 | App Check / Firebase Auth con proveedor: no hecho (PIN con scrypt, bloqueo y sesión) | Decisión futura |
+| 8 | `firebase-functions` desactualizado (advertencia en el deploy): subir de versión con prueba | Decisión futura |
+| 9 | Métricas reales y modo sombra: revisar `/api/metrics/PAXG` cuando haya señales de 20/60 días (~2 meses) | Usuario |
+| 10 | Kelly fraccional: no implementado (el backtest no encontró ventaja que dimensionar) | Descartado por ahora |
+| 11 | Limpieza de ramas remotas viejas y del PR #22 obsoleto | Usuario |
+
+**Decisiones de diseño vigentes (para no re-discutirlas):** el score es contexto, no predicción (ver `docs/BACKTEST.md`); el motor compra una base fija con inclinación acotada hacia la debilidad; "Tu posición" es un solo dato (USDT disponibles) y el peso de cada posición se mide contra el valor de todo el Portfolio.
 
 ## 9. Historial de fases
 

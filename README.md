@@ -26,6 +26,12 @@ Jobs programados (`functions/index.js`): `zoneWatcher` (push de zona de compra),
 
 Fuentes de datos: Coinbase (precios/velas), Yahoo Finance (DXY, GC=F, GVZ, plata), FRED (tasas, breakeven, dólar amplio, VIX), CFTC (COT), RSS de noticias y Groq (etiquetado de titulares y textos).
 
+## Cómo se usa
+1. **Portfolio:** cargá tus operaciones (monto, precio y unidades tienen que cuadrar; los decimales aceptan coma o punto).
+2. **Tu posición** (Detalles): un solo dato, los **USDT que tenés disponibles**. El peso de cada posición se calcula solo con el Portfolio.
+3. **Dashboard:** la señal (Comprar / Esperar / Vender) y, en "¿Por qué esta señal?", qué pesó en el score, cómo se decidió el tamaño y qué datos faltan.
+El score del oro es **contexto, no predicción**: en 25 años de datos no anticipó el precio (ver `docs/BACKTEST.md`). La estrategia de fondo es un DCA con una inclinación acotada hacia comprar la debilidad.
+
 ## Desarrollo
 
 ```bash
