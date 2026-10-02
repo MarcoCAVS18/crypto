@@ -141,7 +141,8 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
   const allocationPercent = hasPosition && capitalBase > 0 && positionValue > 0
     ? Math.min((positionValue / capitalBase) * 100, 100)
     : null;
-  const isHighlyConcentrated = allocationPercent !== null && allocationPercent > 70;
+  // Sin tope de concentración: el usuario decide cuánto de su capital va a cada activo (puede ser 100 % PAXG). El peso solo
+  // se informa; el único límite es el "peso objetivo" opcional que el propio usuario puede configurar (portfolioPolicy.js).
   const isLightlyExposed     = allocationPercent !== null && allocationPercent < 20;
 
   // R/R ratio usando ATR como medida de riesgo
@@ -268,7 +269,7 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
     }
     // PAXG (acumulación): el backtest mostró que NO comprar cuando el score es bajo encareció el costo promedio
     // (y que comprar más en esos momentos lo abarató). Se sigue acumulando en zona de compra o bajo el promedio,
-    // salvo posición ya concentrada; el tamaño lo fija la política de DCA (más peso a la debilidad, acotado).
+    // sin tope por concentración (decisión del usuario); el tamaño lo fija la política de DCA (más peso a la debilidad, acotado).
     if (isPaxg && (currentZone === 'buy' || isBelowAvg)) {
       // Quiere acumular: si algo lo frena, se dice QUÉ (antes todo caía en un genérico "Mercado en Risk OFF" y no se
       // entendía por qué no compraba aunque el precio estuviera bien por debajo del promedio).
@@ -278,12 +279,6 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
         recommendation: `${tip}${macroLine}`,
         operations: []
       });
-      if (isHighlyConcentrated) {
-        return blocked(
-          `PAXG ya pesa ${allocationPercent.toFixed(0)} % de tu capital (más del 70 %): con el contexto en Risk OFF no se suma más`,
-          'El motor no sugiere cargar más una posición que ya es la mayor parte de tu capital. Revisá que "Capital total" incluya TODO lo que tenés (efectivo + inversiones), no solo el efectivo: si es solo el efectivo, el peso sale inflado. Si querés seguir promediando a la baja, es decisión tuya.'
-        );
-      }
       if (cashPercent < 30) {
         return blocked(
           `Efectivo ${cashPercent} %: con el contexto en Risk OFF se pide al menos 30 % para seguir acumulando`,
@@ -348,9 +343,7 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
     if (buyZoneOk || dcaOpportunity) {
       const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', paxgCapFraction, executedBuys, symbol, ext.pullback);
       const isDca = dcaOpportunity && !buyZoneOk;
-      const concentrationNote = isHighlyConcentrated
-        ? ' ⚠️ Posición ya concentrada (>70% del capital) — entrar con tramos pequeños.'
-        : isLightlyExposed
+      const concentrationNote = isLightlyExposed
         ? ' Posición leve — buena oportunidad para construir posición.'
         : '';
 

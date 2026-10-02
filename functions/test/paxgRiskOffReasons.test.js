@@ -18,12 +18,11 @@ test('Risk OFF con el precio bajo tu promedio y efectivo suficiente: COMPRA (baj
   assert.ok(d.operations.length >= 1 && d.policy);
 });
 
-test('posición concentrada: WAIT que lo dice (peso y cómo revisar "Capital total"), no un genérico de Risk OFF', () => {
+test('posición que pesa 82 % del capital: COMPRA (sin tope de concentración: el usuario puede tener 100 % en PAXG)', () => {
   const d = decide({ cashPercent: 50, totalCapital: 10000 });
-  assert.equal(d.action, 'WAIT');
-  assert.match(d.reason, /PAXG ya pesa 82 % de tu capital/);
-  assert.doesNotMatch(d.reason, /^Mercado en Risk OFF/);
-  assert.match(d.recommendation, /Capital total.*TODO lo que tenés/);
+  assert.equal(d.action, 'BUY');
+  assert.ok(d.operations.length >= 1);
+  assert.doesNotMatch(d.reason, /70 %|concentrad/);
 });
 
 test('efectivo menor a 30 %: WAIT que dice el efectivo y dónde ajustarlo', () => {
@@ -60,12 +59,14 @@ test('100 % de efectivo con $200: el capital es solo efectivo y el peso se mide 
   assert.match(d.reason, /52% de tu capital/);
 });
 
-test('100 % de efectivo pero PAXG es casi todo el portfolio: sigue frenando por concentración, con el peso real', () => {
+test('100 % de efectivo y PAXG es casi todo el portfolio (95 %): COMPRA igual', () => {
   const d = decide({ cashPercent: 100, totalCapital: 200 }, pf({ portfolioValueUsd: 7300 }));   // 7106 / (7300 + 200) = 95 %
-  assert.equal(d.action, 'WAIT');
-  assert.match(d.reason, /PAXG ya pesa 95 % de tu capital/);
+  assert.equal(d.action, 'BUY');
+  assert.match(d.reason, /95% de tu capital/);   // el peso se sigue informando
 });
 
-test('sin portfolioValueUsd (cliente viejo) el cálculo no cambia respecto de antes', () => {
-  assert.match(decide({ cashPercent: 50, totalCapital: 10000 }).reason, /PAXG ya pesa 82 %/);
+test('sin portfolioValueUsd (cliente viejo) el peso se informa como antes y no frena', () => {
+  const d = decide({ cashPercent: 50, totalCapital: 10000 });
+  assert.equal(d.action, 'BUY');
+  assert.match(d.reason, /82% de tu capital/);
 });

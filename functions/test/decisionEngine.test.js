@@ -89,10 +89,10 @@ test('P3: en risk_off también acumula si el precio está bajo el promedio (aunq
   assert.equal(d.action, 'BUY');
 });
 
-test('P3: límites de seguridad en risk_off — posición concentrada (>70 %), poco efectivo o tramos ya ejecutados ⇒ WAIT', () => {
+test('P3: límites en risk_off — poco efectivo ⇒ WAIT; la concentración YA NO frena (decisión del usuario); vender sigue funcionando', () => {
   const price = 4000;
-  // concentrada: costo = 90 % del capital
-  assert.equal(makeDecision(off, atrZones(price, 'buy'), price, st(60, 'inversion', 20000), ind, 'PAXG', position(price, -5, { costBasis: 18000, netInvested: 18000 })).action, 'WAIT');
+  // posición enorme (costo = 90 % del capital): ya no hay tope de concentración, compra igual
+  assert.equal(makeDecision(off, atrZones(price, 'buy'), price, st(60, 'inversion', 20000), ind, 'PAXG', position(price, -5, { costBasis: 18000, netInvested: 18000 })).action, 'BUY');
   // efectivo insuficiente (<30 %)
   assert.equal(makeDecision(off, atrZones(price, 'buy'), price, st(25), ind, 'PAXG', null).action, 'WAIT');
   // vender sigue funcionando con macro adverso y ganancia
