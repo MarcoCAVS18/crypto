@@ -24,6 +24,12 @@ export function parseOperation(body, userId) {
     if (!Number.isFinite(v) || v < 0 || v > max) return { error: `Valor inválido en ${name}.` };
   }
   if (!(price > 0) || !(units > 0)) return { error: 'Precio y unidades deben ser mayores que 0.' };
+  // Coherencia: monto ≈ unidades × precio. Una operación que no cuadra deforma el costo promedio y el P&L de todo el activo.
+  const expected = units * price;
+  if (Math.abs(amount_usd - expected) > Math.max(1, expected * 0.05)) {
+    const f = (n) => `$${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+    return { error: `El monto (${f(amount_usd)}) no coincide con unidades × precio (${f(expected)}). Revisá los tres campos.` };
+  }
   const exchange = String(b.exchange ?? 'Binance').slice(0, 50);
   const notes = String(b.notes ?? '').slice(0, 500);
   return { op: { date: b.date.slice(0, 32), symbol, type, amount_usd, price, units, fee, exchange, notes, userId } };
