@@ -67,10 +67,18 @@ jobs:
               jq -r '(.gold + .btc)[] | "  - " + (if .ok then "✅" else "❌" end) + " " + .feed + " · HTTP " + ((.status // "—")|tostring) + " · items " + (.rawItems|tostring) + "/" + (.fresh|tostring) + " frescos" + (if .hint then " · " + .hint else "" end)' /tmp/news.json
             else echo "- ⚠️ /api/health/news: HTTP $code (todavía no desplegado)"; fi
 
-            # 6) Calendario y métricas (informativo)
+            # 5b) COT: pedido a la CFTC hecho DESDE la función (por qué falta, si falta) y edad del contexto de oro cacheado
+          code=$(get -o /tmp/cot.json -w '%{http_code}' "$BASE/api/health/cot" || echo 000)
+          if [ "$code" = "200" ] && jq -e . /tmp/cot.json >/dev/null 2>&1; then
+            if jq -e '.ok == true' /tmp/cot.json >/dev/null; then echo "- ✅ COT desde la función: ok · reporte $(jq -r .reportDate /tmp/cot.json) · $(jq -r .ms /tmp/cot.json) ms"
+            else echo "- ❌ COT desde la función: $(jq -r .error /tmp/cot.json) (causa: $(jq -r '.cause // "—"' /tmp/cot.json), $(jq -r .ms /tmp/cot.json) ms)"; fi
+          else echo "- ⚠️ /api/health/cot: HTTP $code"; fi
+          if [ -s /tmp/deep.json ]; then echo "  - Contexto de oro en caché: hace $(jq -r '.goldContext.ageMinutes // "—"' /tmp/deep.json) min · faltan: $(jq -r '(.goldContext.missing // []) | join(", ") | if . == "" then "nada" else . end' /tmp/deep.json)"; fi
+
+          # 6) Calendario y métricas (informativo)
             code=$(get -o /dev/null -w '%{http_code}' "$BASE/api/calendar?days=30&symbol=PAXG" || echo 000); echo "- Calendario: HTTP $code"
-            code=$(get -o /tmp/metrics.json -w '%{http_code}' "$BASE/api/metrics/PAXG" || echo 000)
-            if [ "$code" = "200" ]; then echo "- Métricas PAXG: $(jq -r '"\(.records) señales etiquetadas (\(.complete) completas)"' /tmp/metrics.json)"; else echo "- Métricas PAXG: HTTP $code (¿todavía no se desplegó la fase 4?)"; fi
+            code=$(curl -sS -m 30 -o /tmp/metrics.json -w '%{http_code}' "$BASE/api/metrics/PAXG" || echo 000)
+            if [ "$code" = "200" ]; then echo "- Métricas PAXG: $(jq -r '"\(.records) señales etiquetadas (\(.complete) completas)"' /tmp/metrics.json)"; else echo "- Métricas PAXG: HTTP $code · $(head -c 300 /tmp/metrics.json 2>/dev/null)"; fi
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
           # falla el job si la web o la API no responden (el resto es informativo)

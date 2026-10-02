@@ -8,6 +8,7 @@ import { getCalendarCoverage } from '../data/macroCalendar.js';
 import { summarizeSources } from '../services/dataHealth.js';
 import { GROQ_MODEL, describeApiKey, probeGroqKey } from '../services/groqChat.js';
 import { diagnoseAllFeeds } from '../services/newsService.js';
+import { diagnoseCot } from '../services/macroService.js';
 import { getVersions } from '../config/versions.js';
 
 const router = express.Router();
@@ -117,6 +118,15 @@ newsHealthRouter.get('/', async (_req, res) => {
   if (!newsDiag.value || Date.now() - newsDiag.at > 60000) newsDiag = { at: Date.now(), value: await diagnoseAllFeeds() };
   const all = [...newsDiag.value.gold, ...newsDiag.value.btc];
   res.json({ checkedAt: new Date(newsDiag.at).toISOString(), okFeeds: all.filter(f => f.ok).length, totalFeeds: all.length, ...newsDiag.value });
+});
+
+// GET /api/health/cot — pide a la CFTC desde la función y dice qué pasó (HTTP, timeout, red). Cacheado 60 s.
+export const cotHealthRouter = express.Router();
+let cotDiag = { at: 0, value: null };
+cotHealthRouter.get('/', async (_req, res) => {
+  res.set('Cache-Control', 'no-store');
+  if (!cotDiag.value || Date.now() - cotDiag.at > 60000) cotDiag = { at: Date.now(), value: await diagnoseCot() };
+  res.json({ checkedAt: new Date(cotDiag.at).toISOString(), ...cotDiag.value });
 });
 
 export default router;
