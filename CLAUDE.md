@@ -10,6 +10,10 @@ Dashboard personal de contexto de mercado y decisión (BTC, ETH, PAXG y futuros 
 
 Lee `docs/BACKTEST.md` antes de tocarlo (protocolo, hallazgos sobre ruido/sobreajuste, cómo correrlo). Corre con historia real **solo en GitHub Actions** (`.github/workflows/backtest.yml`, manual o push a la rama de la fase): el sandbox de desarrollo no tiene red. Localmente sus tests usan datos sintéticos (`functions/test/helpers/synth.js`). Reglas: modelos pre-declarados en `candidates.js`, nunca mirar el hold-out, exigir p < 0.01 + hold-out coherente.
 
+## Interfaz
+
+Leé `docs/UI.md` antes de tocar el frontend (sistema de diseño, pantallas, colores de datos validados y cómo probarlo con la API simulada `frontend/dev/mock-api.mjs`).
+
 ## Estructura
 
 - `functions/` — **API desplegada** (Firebase Functions v2, Express, Firestore). Fuente de verdad de la lógica de servidor.

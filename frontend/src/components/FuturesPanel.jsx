@@ -1,27 +1,28 @@
 // Panel de futuros perpetuos XAUUSDT — señal LONG/SHORT/NEUTRAL con leverage
 import { useState, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { TrendingUp, TrendingDown, Minus, RefreshCw, AlertTriangle, ChevronDown, ChevronUp, DollarSign } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
+import { Panel } from './ui/Panel';
+import { Row, Rows } from './ui/Row';
+import { Section } from './ui/Section';
+import { IconButton } from './ui/IconButton';
+import { RefreshCw } from 'lucide-react';
 import { fetchFuturesData } from '../services/api';
 import { useAppStore } from '../store/appStore';
 import { effectiveCashUsd } from '../utils/cash';
 
-const DIRECTION_CONFIG = {
-  LONG:    { label: 'LONG',    bg: 'bg-emerald-500/15', border: 'border-emerald-500/30', text: 'text-emerald-400', icon: TrendingUp },
-  SHORT:   { label: 'SHORT',   bg: 'bg-rose-500/15',    border: 'border-rose-500/30',    text: 'text-rose-400',    icon: TrendingDown },
-  NEUTRAL: { label: 'NEUTRAL', bg: 'bg-slate-700/40',   border: 'border-slate-600/40',   text: 'text-slate-400',   icon: Minus },
+const DIRECTION = {
+  LONG:    { word: 'Long',    gloss: 'Apostar a que sube',  text: 'text-accent' },
+  SHORT:   { word: 'Short',   gloss: 'Apostar a que baja',  text: 'text-pink' },
+  NEUTRAL: { word: 'Esperar', gloss: 'Sin señal clara',     text: 'text-warn' }
 };
-
-const CONFIDENCE_COLOR = {
-  high:   'bg-emerald-500',
-  medium: 'bg-amber-500',
-  low:    'bg-rose-500',
-};
+const CONFIDENCE = { high: 'alta', medium: 'media', low: 'baja' };
 
 function fmt(n, decimals = 2) {
   if (n == null) return '—';
   return n.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
+
+const usd = (n, d = 2) => (n == null ? '—' : `$${fmt(n, d)}`);
 
 function fmtPct(n, decimals = 4) {
   if (n == null) return '—';
@@ -78,281 +79,95 @@ export function FuturesPanel() {
 
   const availableCash = effectiveCashUsd(userState);
 
-  const dir = DIRECTION_CONFIG[data?.signal?.direction ?? 'NEUTRAL'];
-  const DirIcon = dir.icon;
+  const dir = DIRECTION[data?.signal?.direction ?? 'NEUTRAL'];
+  const sig = data?.signal;
+  const tech = data?.technicals;
 
   return (
-    <div className="space-y-4">
-
-      {/* Header card */}
-      <div className="rounded-2xl bg-slate-900/60 border border-white/[0.07] p-5">
-        <div className="flex items-start justify-between mb-4">
+    <div className="space-y-7">
+      <section>
+        <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-white font-bold text-lg">XAUT Perp</span>
-              <span className="text-xs text-slate-500 bg-slate-800/80 border border-white/[0.06] rounded-md px-2 py-0.5">
-                Gold Futures
-              </span>
-            </div>
-            {data && (
-              <p className="text-slate-500 text-xs">
-                Mark: <span className="text-slate-300 font-semibold">${fmt(data.market?.markPrice)}</span>
-                <span className="ml-2 text-slate-600">·</span>
-                <span className={`ml-2 ${(data.market?.change24h ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {fmtPct(data.market?.change24h, 2)} 24h
-                </span>
-              </p>
-            )}
+            <p className="text-sm text-muted">Oro · Futuros perpetuos</p>
+            {data && <p className="text-[40px] leading-none font-bold text-ink tracking-tight mt-1">{usd(data.market?.markPrice)}</p>}
+            {data && <p className={`text-sm font-semibold mt-2 num ${(data.market?.change24h ?? 0) >= 0 ? 'text-accent' : 'text-pink'}`}>{fmtPct(data.market?.change24h, 2)} <span className="text-muted font-normal">en 24 h</span></p>}
           </div>
-          <motion.button
-            onClick={() => load(leverage, true)}
-            disabled={loading}
-            whileTap={{ scale: 0.93 }}
-            className="w-8 h-8 rounded-lg bg-slate-800/50 border border-white/[0.06] flex items-center justify-center
-                       hover:bg-slate-700/60 transition-colors disabled:opacity-40"
-          >
-            <RefreshCw className={`w-4 h-4 text-slate-400 ${loading ? 'animate-spin' : ''}`} />
-          </motion.button>
+          <IconButton icon={RefreshCw} label="Actualizar" onClick={() => load(leverage, true)} spin={loading} disabled={loading} />
         </div>
+      </section>
 
-        {/* Direction badge */}
-        {loading && !data ? (
-          <div className="flex items-center justify-center py-8">
-            <div className="w-6 h-6 border-2 border-slate-700 border-t-slate-400 rounded-full animate-spin" />
-          </div>
-        ) : data ? (
-          <motion.div
-            key={data?.signal?.direction}
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className={`flex items-center gap-3 px-4 py-3.5 rounded-xl border ${dir.bg} ${dir.border}`}
-          >
-            <DirIcon className={`w-6 h-6 ${dir.text} shrink-0`} />
-            <div className="flex-1 min-w-0 overflow-hidden">
-              <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                <span className={`font-bold text-lg tracking-wide ${dir.text}`}>{dir.label}</span>
-                {data.signal?.confidence && (
-                  <span className="text-xs text-slate-500 capitalize">· confianza {data.signal.confidence}</span>
-                )}
-              </div>
-              {data.signal?.reasoning && (
-                <p className="text-xs text-slate-400 leading-relaxed line-clamp-2 break-words">{data.signal.reasoning}</p>
-              )}
-            </div>
-          </motion.div>
-        ) : null}
-
-        {/* Posición sugerida basada en portfolio */}
-        {data?.signal?.positionUsd != null && data.signal.direction !== 'NEUTRAL' && (
-          <motion.div
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mt-3 flex items-center gap-3 px-4 py-3 rounded-xl bg-violet-500/10 border border-violet-500/25"
-          >
-            <DollarSign className="w-5 h-5 text-violet-400 shrink-0" />
-            <div className="min-w-0">
-              <p className="text-violet-300 font-semibold text-sm">
-                Posición sugerida: <span className="text-white">${fmt(data.signal.positionUsd)}</span>
-                {data.signal.leverage > 1 && (
-                  <span className="ml-1 text-violet-400/70">× {data.signal.leverage}x = ${fmt(data.signal.positionUsd * data.signal.leverage)} nocional</span>
-                )}
-              </p>
-              {availableCash > 0 && (
-                <p className="text-violet-400/60 text-xs mt-0.5">
-                  de ${fmt(availableCash)} USDT disponibles
-                </p>
-              )}
-            </div>
-          </motion.div>
-        )}
-
-        {error && (
-          <div className="flex items-start gap-2 mt-3 p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl">
-            <AlertTriangle className="w-4 h-4 text-rose-400 mt-0.5 shrink-0" />
-            <p className="text-rose-400 text-xs">{error}</p>
-          </div>
-        )}
-      </div>
+      {loading && !data && <div className="flex justify-center py-16"><span className="w-7 h-7 border-2 border-line border-t-accent rounded-full animate-spin" /></div>}
+      {error && <div className="flex items-start gap-2.5 p-3.5 rounded-2xl bg-pink/10 text-pink text-sm"><AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />{error}</div>}
 
       {data && (
         <>
-          {/* Leverage control */}
-          <div className="rounded-2xl bg-slate-900/60 border border-white/[0.07] p-5">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-slate-300 text-sm font-medium">Apalancamiento</p>
-              <div className="flex items-center gap-2">
-                {aiLeverage && aiLeverage !== leverage && (
-                  <button
-                    onClick={() => { setLeverage(aiLeverage); load(aiLeverage); }}
-                    className="text-xs text-violet-400 hover:text-violet-300 transition-colors"
-                  >
-                    IA sugiere {aiLeverage}x
-                  </button>
-                )}
-                <span className="text-white font-bold text-base tabular-nums">{leverage}x</span>
+          <Panel className="space-y-3">
+            <p className="text-sm text-muted">Señal en futuros{sig?.confidence ? ` · confianza ${CONFIDENCE[sig.confidence] ?? sig.confidence}` : ''}</p>
+            <p className={`text-5xl font-bold tracking-tight ${dir.text}`}>{dir.word}</p>
+            <p className="text-sm text-muted">{dir.gloss}</p>
+            {sig?.reasoning && <p className="text-sm text-ink/90 leading-relaxed">{sig.reasoning}</p>}
+            {sig?.positionUsd != null && sig.direction !== 'NEUTRAL' && (
+              <div className="rounded-2xl bg-panel-2 px-4 py-3">
+                <p className="text-sm text-ink">Posición sugerida: <b className="num">{usd(sig.positionUsd)}</b>{sig.leverage > 1 && <span className="text-muted"> × {sig.leverage}x = {usd(sig.positionUsd * sig.leverage)} nocional</span>}</p>
+                {availableCash > 0 && <p className="text-xs text-muted mt-0.5">de {usd(availableCash)} USDT disponibles</p>}
               </div>
-            </div>
-            <input
-              type="range"
-              min="1" max="20" step="1"
-              value={leverage}
-              onChange={handleLeverageChange}
-              className="w-full h-1.5 bg-slate-700 rounded-full appearance-none cursor-pointer
-                         [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4
-                         [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full
-                         [&::-webkit-slider-thumb]:bg-violet-500 [&::-webkit-slider-thumb]:cursor-pointer"
-            />
-            <div className="flex justify-between text-[10px] text-slate-600 mt-1 px-0.5">
-              <span>1x</span><span>5x</span><span>10x</span><span>15x</span><span>20x</span>
-            </div>
-            {leverage !== (data.signal?.leverage ?? 10) && (
-              <motion.button
-                onClick={handleApplyLeverage}
-                disabled={loading}
-                whileTap={{ scale: 0.97 }}
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="w-full mt-3 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500
-                           text-white text-sm font-semibold transition-colors disabled:opacity-40"
-              >
-                {loading ? 'Recalculando…' : 'Recalcular con este leverage'}
-              </motion.button>
             )}
-          </div>
+          </Panel>
 
-          {/* Precios clave */}
-          <div className="rounded-2xl bg-slate-900/60 border border-white/[0.07] p-5 space-y-3">
-            <p className="text-slate-300 text-sm font-medium mb-1">Niveles clave ({leverage}x)</p>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-slate-800/50 rounded-xl p-3">
-                <p className="text-slate-500 text-xs mb-1">Zona de entrada</p>
-                <p className="text-slate-200 font-semibold text-sm">
-                  ${fmt(data.signal?.entryZone?.low)} – ${fmt(data.signal?.entryZone?.high)}
-                </p>
-              </div>
-              <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-3">
-                <p className="text-rose-400/70 text-xs mb-1">Stop loss</p>
-                <p className="text-rose-300 font-semibold text-sm">
-                  ${fmt(data.signal?.stopLossPrice)}
-                  {data.signal?.stopLossPercent && (
-                    <span className="text-xs font-normal ml-1 text-rose-400/60">
-                      ({data.signal.stopLossPercent}%)
-                    </span>
-                  )}
-                </p>
-              </div>
-              <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">
-                <p className="text-amber-400/70 text-xs mb-1">Liquidación est.</p>
-                <p className="text-amber-300 font-semibold text-sm">${fmt(data.signal?.liquidationPrice)}</p>
-              </div>
-              <div className="bg-slate-800/50 rounded-xl p-3">
-                <p className="text-slate-500 text-xs mb-1">Funding (8h)</p>
-                {data.market?.fundingRate != null ? (
-                  <p className={`font-semibold text-sm ${(data.market.fundingRate ?? 0) < 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {fmtPct(data.market.fundingRate, 4)}
-                    <span className="text-xs font-normal ml-1 text-slate-500">
-                      ({fmtPct(data.market.fundingRatePerDay, 3)}/día)
-                    </span>
-                  </p>
-                ) : (
-                  <p className="text-slate-500 text-sm">N/A</p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Indicadores técnicos */}
-          <div className="rounded-2xl bg-slate-900/60 border border-white/[0.07] p-5">
-            <p className="text-slate-300 text-sm font-medium mb-3">Técnicos (1h)</p>
-            <div className="grid grid-cols-3 gap-x-4 gap-y-2.5">
-              {[
-                { label: 'RSI',         value: data.technicals?.rsi != null ? `${data.technicals.rsi}` : '—' },
-                { label: 'Tendencia C', value: data.technicals?.trendShort ?? '—' },
-                { label: 'Tendencia L', value: data.technicals?.trendLong  ?? '—' },
-                { label: 'ATR',         value: data.technicals?.atr != null ? `$${fmt(data.technicals.atr)}` : '—' },
-                { label: 'ATR %',       value: data.technicals?.atrPercent != null ? `${data.technicals.atrPercent}%` : '—' },
-                { label: 'Volumen',     value: data.technicals?.volumeStatus ?? '—' },
-              ].map(({ label, value }) => (
-                <div key={label}>
-                  <p className="text-slate-600 text-[10px] mb-0.5">{label}</p>
-                  <p className="text-slate-200 text-xs font-semibold">{value}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Contexto macro / news */}
-          {data.goldContext && (
-            <div className="rounded-2xl bg-slate-900/60 border border-white/[0.07] p-5">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-slate-300 text-sm font-medium">Contexto oro</p>
-                <div className="flex items-center gap-2">
-                  <span className={`text-xs font-semibold capitalize ${
-                    data.goldContext.sentiment === 'bullish' ? 'text-emerald-400' :
-                    data.goldContext.sentiment === 'bearish' ? 'text-rose-400' : 'text-slate-400'
-                  }`}>{data.goldContext.sentiment}</span>
-                  {data.goldContext.score != null && (
-                    <span className="text-xs text-slate-600">({data.goldContext.score > 0 ? '+' : ''}{data.goldContext.score})</span>
-                  )}
-                </div>
-              </div>
-              {data.goldContext.headlines?.length > 0 && (
-                <ul className="space-y-1.5">
-                  {data.goldContext.headlines.slice(0, 4).map((h, i) => (
-                    <li key={i} className="text-slate-400 text-xs leading-relaxed break-words min-w-0">
-                      <span className="text-slate-600 mr-1.5">·</span>
-                      {h.url ? (
-                        <a href={h.url} target="_blank" rel="noopener noreferrer"
-                           className="hover:text-slate-200 transition-colors break-words">
-                          {h.title}
-                        </a>
-                      ) : h.title}
-                    </li>
-                  ))}
-                </ul>
+          <Section title="Apalancamiento" action={
+            <span className="flex items-center gap-3">
+              {aiLeverage && aiLeverage !== leverage && <button onClick={() => { setLeverage(aiLeverage); load(aiLeverage); }} className="text-xs font-semibold text-accent">Sugerido: {aiLeverage}x</button>}
+              <b className="text-lg text-ink num">{leverage}x</b>
+            </span>}>
+            <Panel className="space-y-3">
+              <input type="range" min="1" max="20" step="1" value={leverage} onChange={handleLeverageChange} className="w-full" aria-label="Apalancamiento" />
+              <div className="flex justify-between text-xs text-faint num"><span>1x</span><span>5x</span><span>10x</span><span>15x</span><span>20x</span></div>
+              {leverage !== (sig?.leverage ?? 10) && (
+                <button onClick={handleApplyLeverage} disabled={loading} className="w-full py-3.5 rounded-full bg-accent text-accent-ink font-bold disabled:opacity-40">{loading ? 'Recalculando…' : 'Recalcular con este apalancamiento'}</button>
               )}
-            </div>
+            </Panel>
+          </Section>
+
+          <Section title={`Niveles clave (${leverage}x)`}>
+            <Panel className="!py-1"><Rows>
+              <Row label="Zona de entrada" value={`${usd(sig?.entryZone?.low)} – ${usd(sig?.entryZone?.high)}`} />
+              <Row label="Stop loss" sub={sig?.stopLossPercent ? `${sig.stopLossPercent} % desde la entrada` : null} value={`${usd(sig?.stopLossPrice)}`} tone="pink" />
+              <Row label="Liquidación estimada" value={`${usd(sig?.liquidationPrice)}`} tone="warn" />
+              <Row label="Funding cada 8 h" sub={data.market?.fundingRate != null ? `${fmtPct(data.market.fundingRatePerDay, 3)} por día` : null}
+                value={data.market?.fundingRate != null ? fmtPct(data.market.fundingRate, 4) : 'N/D'} tone={(data.market?.fundingRate ?? 0) < 0 ? 'accent' : 'ink'} />
+            </Rows></Panel>
+          </Section>
+
+          <Section title="Indicadores (1 h)">
+            <Panel className="!py-1"><Rows>
+              <Row label="RSI" value={tech?.rsi != null ? `${tech.rsi}` : '—'} />
+              <Row label="Tendencia" sub="Corto plazo · largo plazo" value={`${tech?.trendShort ?? '—'} · ${tech?.trendLong ?? '—'}`} />
+              <Row label="Volatilidad (ATR)" value={tech?.atr != null ? `${usd(tech.atr)}${tech.atrPercent != null ? ` · ${tech.atrPercent} %` : ''}` : '—'} />
+              <Row label="Volumen" value={tech?.volumeStatus ?? '—'} />
+            </Rows></Panel>
+          </Section>
+
+          {data.goldContext?.headlines?.length > 0 && (
+            <Section title="Noticias del oro">
+              <Panel className="!py-1"><Rows>
+                {data.goldContext.headlines.slice(0, 4).map((h, i) => (
+                  <div key={i} className="py-3.5 text-sm text-ink leading-snug break-words">
+                    {h.url ? <a href={h.url} target="_blank" rel="noopener noreferrer" className="hover:text-accent">{h.title}</a> : h.title}
+                  </div>
+                ))}
+              </Rows></Panel>
+            </Section>
           )}
 
-          {/* Riesgos clave */}
-          {data.signal?.keyRisks?.length > 0 && (
-            <div className="rounded-2xl bg-slate-900/60 border border-white/[0.07] overflow-hidden">
-              <button
-                onClick={() => setShowRisks(v => !v)}
-                className="w-full flex items-center justify-between px-5 py-4 text-left"
-              >
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-amber-400" />
-                  <span className="text-slate-300 text-sm font-medium">Riesgos clave</span>
-                  <span className="text-xs text-slate-600">({data.signal.keyRisks.length})</span>
-                </div>
-                {showRisks ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
-              </button>
-              <AnimatePresence>
-                {showRisks && (
-                  <motion.div
-                    initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }}
-                    className="overflow-hidden"
-                  >
-                    <ul className="px-5 pb-4 space-y-1.5">
-                      {data.signal.keyRisks.map((risk, i) => (
-                        <li key={i} className="flex items-start gap-2 text-xs text-slate-400 break-words min-w-0">
-                          <span className="text-amber-400 mt-0.5 shrink-0">·</span>
-                          <span className="min-w-0 break-words">{risk}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+          {sig?.keyRisks?.length > 0 && (
+            <Section title="Riesgos clave">
+              <Panel className="space-y-2.5">
+                {sig.keyRisks.map((risk, i) => <p key={i} className="flex gap-2.5 text-sm text-muted leading-relaxed"><AlertTriangle className="w-4 h-4 text-warn shrink-0 mt-0.5" /><span className="min-w-0 break-words">{risk}</span></p>)}
+              </Panel>
+            </Section>
           )}
 
-          {/* Disclaimer */}
-          <p className="text-center text-slate-700 text-[10px] px-4 pb-2">
-            Información educativa. No es asesoramiento financiero. Los futuros con apalancamiento conllevan riesgo de liquidación total.
-          </p>
+          <p className="text-center text-faint text-xs px-4">Información educativa, no es asesoramiento financiero. Los futuros con apalancamiento pueden liquidarse por completo.</p>
         </>
       )}
     </div>
