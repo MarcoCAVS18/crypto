@@ -26,3 +26,18 @@ export function createRequireSession({ lookup = getSession, remove = deleteSessi
   };
 }
 export const requireSession = createRequireSession();
+
+/** Si hay un token válido deja el usuario en req.userId; si no, sigue sin usuario (para rutas públicas que mejoran con sesión). */
+export function createOptionalSession({ lookup = getSession, now = () => Date.now() } = {}) {
+  return async function optionalSession(req, _res, next) {
+    const token = tokenFrom(req);
+    if (token) {
+      try {
+        const s = await lookup(sessionId(token));
+        if (sessionValid(s, now())) req.userId = s.userId;
+      } catch { /* sin sesión: se sigue como anónimo */ }
+    }
+    next();
+  };
+}
+export const optionalSession = createOptionalSession();

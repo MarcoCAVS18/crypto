@@ -54,17 +54,60 @@ export function byStrength(records = [], h = 20) {
   return out;
 }
 
+const DAY_MS = 86400000;
+const GAP_MS = 12 * 3600 * 1000;   // dos avisos seguidos del mismo tipo con menos de 12 h de diferencia son UNA señal
+const dayOf = (ms) => Math.floor(ms / DAY_MS);
+
 /**
- * ¿Seguiste la señal? Un BUY/SELL se considera seguido si hay una operación del mismo tipo y símbolo
- * dentro de las `windowH` horas posteriores. Devuelve tasa de seguimiento y resultado medio seguido vs no seguido (h20).
+ * Agrupa los avisos horarios en señales distintas: una compra que la app repite cada hora durante días es UNA señal, no
+ * cientos (antes cada hora contaba aparte y el "% seguido" no significaba nada). Por tipo (BUY/SELL), huecos ≤ 12 h.
+ * @returns {Array<{ action, start, end, first }>} `first` = el primer aviso del episodio (para el resultado a 20 d)
  */
-export function followStats(records = [], operations = [], windowH = 24, h = 20) {
-  const acted = records.filter(x => x.action === 'BUY' || x.action === 'SELL');
-  const followed = (rec) => operations.some(op => op.type === rec.action && Number(op.ts) >= rec.ts && Number(op.ts) <= rec.ts + windowH * 3600000);
-  const f = acted.filter(followed), nf = acted.filter(x => !followed(x));
-  const avg = (rs) => r(mean(rs.filter(x => x[`h${h}`]).map(x => x[`h${h}`].ret)));
-  return { signals: acted.length, followed: f.length, followRate: acted.length ? r(f.length / acted.length) : null,
-    meanRetFollowed: avg(f), meanRetNotFollowed: avg(nf) };
+export function signalEpisodes(records = []) {
+  const out = [];
+  for (const action of ['BUY', 'SELL']) {
+    const rs = records.filter(x => x.action === action && Number.isFinite(x.ts)).sort((a, b) => a.ts - b.ts);
+    let cur = null;
+    for (const x of rs) {
+      if (cur && x.ts - cur.end <= GAP_MS) cur.end = x.ts;
+      else { cur = { action, start: x.ts, end: x.ts, first: x }; out.push(cur); }
+    }
+  }
+  return out.sort((a, b) => a.start - b.start);
+}
+
+/**
+ * ¿Una operación corresponde a una señal? Las operaciones se guardan con FECHA (sin hora), así que se compara por DÍA, no
+ * por hora: mismo tipo y símbolo, el día de la señal o el siguiente (la operación del mismo día tampoco "llega después":
+ * antes se la descartaba si el aviso había salido a la tarde). Si el aviso salió en las primeras horas UTC (noche en
+ * América), también vale el día anterior.
+ */
+export function opMatchesEpisode(op, ep) {
+  if (op.type !== ep.action || !Number.isFinite(Number(op.ts))) return false;
+  const day = dayOf(Number(op.ts));
+  const earliest = dayOf(ep.start) - (new Date(ep.start).getUTCHours() < 6 ? 1 : 0);
+  return day >= earliest && day <= dayOf(ep.end) + 1;
+}
+
+/**
+ * ¿Seguiste la señal? Por señal distinta (episodio), no por aviso horario. Devuelve también las operaciones que hiciste SIN
+ * señal y el resultado medio a 20 d de las seguidas vs no seguidas.
+ * @param {Array} records     avisos con { ts, action, h20? } (de las decisiones guardadas, con el resultado si ya está etiquetado)
+ * @param {Array} operations  operaciones del usuario { type, ts }
+ */
+export function followStats(records = [], operations = [], _legacyWindowH = 24, h = 20) {
+  const episodes = signalEpisodes(records);
+  const ops = operations.filter(o => (o.type === 'BUY' || o.type === 'SELL') && Number.isFinite(Number(o.ts)));
+  const followed = (ep) => ops.some(op => opMatchesEpisode(op, ep));
+  const f = episodes.filter(followed), nf = episodes.filter(ep => !followed(ep));
+  const avg = (eps) => r(mean(eps.map(e => e.first[`h${h}`]).filter(Boolean).map(x => x.ret)));
+  const withoutSignal = ops.filter(op => !episodes.some(ep => opMatchesEpisode(op, ep)));
+  return {
+    signals: episodes.length, followed: f.length, followRate: episodes.length ? r(f.length / episodes.length) : null,
+    operations: ops.length, operationsWithoutSignal: withoutSignal.length,
+    meanRetFollowed: avg(f), meanRetNotFollowed: avg(nf),
+    recent: episodes.slice(-5).reverse().map(ep => ({ action: ep.action, from: ep.start, to: ep.end, followed: followed(ep) }))
+  };
 }
 
 /** Campeón vs sombra (DCA fijo): retorno medio a h días de las compras que cada uno habría hecho. */

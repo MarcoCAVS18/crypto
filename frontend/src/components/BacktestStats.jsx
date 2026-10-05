@@ -328,11 +328,18 @@ function RealMetrics({ symbol }) {
       )}
 
       {data.follow?.signals > 0 && (
-        <p className="text-[11px] text-slate-500">
-          Seguiste <span className="text-slate-300 font-semibold">{rate(data.follow.followRate)}</span> de las señales de compra/venta
-          {Number.isFinite(data.follow.meanRetFollowed) && Number.isFinite(data.follow.meanRetNotFollowed)
-            ? ` · a 20 d: seguidas ${pct(data.follow.meanRetFollowed)} vs no seguidas ${pct(data.follow.meanRetNotFollowed)}` : ''}.
-        </p>
+        <div className="text-[11px] text-slate-500 space-y-0.5">
+          <p>
+            Seguiste <span className="text-slate-300 font-semibold">{data.follow.followed} de {data.follow.signals}</span> señales de compra/venta
+            {Number.isFinite(data.follow.followRate) ? <> (<span className="text-slate-300 font-semibold">{rate(data.follow.followRate)}</span>)</> : ''}
+            {data.follow.operationsWithoutSignal > 0 ? ` · ${data.follow.operationsWithoutSignal} de tus ${data.follow.operations} operaciones no tuvieron señal` : ''}
+            {Number.isFinite(data.follow.meanRetFollowed) && Number.isFinite(data.follow.meanRetNotFollowed)
+              ? ` · a 20 d: seguidas ${pct(data.follow.meanRetFollowed)} vs no seguidas ${pct(data.follow.meanRetNotFollowed)}` : ''}.
+          </p>
+          <p className="text-[10px] text-slate-600">
+            Una señal que la app repite varias horas cuenta una vez. Se considera seguida si registraste una operación del mismo tipo el día de la señal o el siguiente.
+          </p>
+        </div>
       )}
       {data.shadow?.n > 0 && (
         <p className="text-[11px] text-slate-500">
