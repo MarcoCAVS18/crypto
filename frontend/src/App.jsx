@@ -141,7 +141,7 @@ function AuthenticatedApp() {
   const userInitial = currentUser.initial ?? currentUser.name?.[0] ?? '?';
 
   return (
-    <div className="min-h-svh overflow-x-hidden">
+    <div className="min-h-svh overflow-x-clip">
       <AppHeader
         initial={userInitial} name={currentUser.name} title={TITLES[screen]}
         onOpenProfile={() => setSettingsOpen(true)} onRefresh={handleRefresh} refreshing={loading}
