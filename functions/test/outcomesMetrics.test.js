@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { computeOutcome, baselineReturns, isComplete, HORIZON_DAYS } from '../src/services/outcomes.js';
-import { summarizeOutcomes, byStrength, followStats, compareShadow, isHit } from '../src/services/metrics.js';
+import { summarizeOutcomes, byStrength, followStats, compareShadow, isHit, signalEpisodes, opMatchesEpisode } from '../src/services/metrics.js';
 import { shadowFixedDca } from '../src/services/shadow.js';
 import { shouldAlertSourcesDown } from '../src/services/healthAlert.js';
 
@@ -69,12 +69,55 @@ test('byStrength: separa fuerte/moderado/débil', () => {
   assert.equal(r['débil'].hitRate, 0.5);
 });
 
-test('followStats: una señal se considera seguida si hay una operación del mismo tipo dentro de 24 h', () => {
-  const records = [rec('BUY', 0.05, { ts: T0 }), rec('BUY', -0.03, { ts: T0 + 5 * DAY }), rec('WAIT', 0.0, { ts: T0 + 6 * DAY })];
-  const ops = [{ type: 'BUY', ts: T0 + 3600e3 }, { type: 'SELL', ts: T0 + 5 * DAY + 3600e3 }];   // la 2.ª es SELL: no cuenta
-  const f = followStats(records, ops);
-  assert.equal(f.signals, 2); assert.equal(f.followed, 1); assert.equal(f.followRate, 0.5);
+// Las operaciones se guardan con fecha (sin hora): getOperationsForSymbol les pone 12:00 UTC
+const noon = (iso) => Date.parse(`${iso}T12:00:00Z`);
+const sig = (action, iso, h20 = null) => ({ action, ts: Date.parse(iso), h20: h20 === null ? null : { ret: h20 } });
+
+test('seguimiento: una operación del MISMO DÍA que sale después del aviso de la tarde cuenta como seguida (antes no)', () => {
+  // aviso de compra a las 21:00 UTC; la operación del día figura a las 12:00 UTC (anterior al aviso, pero es el mismo día)
+  const f = followStats([sig('BUY', '2026-10-02T21:00:00Z')], [{ type: 'BUY', ts: noon('2026-10-02') }]);
+  assert.equal(f.signals, 1); assert.equal(f.followed, 1); assert.equal(f.followRate, 1);
+});
+
+test('seguimiento: los avisos horarios repetidos son UNA señal (no cientos) y se sigue con una sola operación', () => {
+  const hourly = Array.from({ length: 30 }, (_, i) => sig('BUY', new Date(Date.parse('2026-10-01T10:00:00Z') + i * 3600e3).toISOString()));   // 30 h seguidas
+  assert.equal(signalEpisodes(hourly).length, 1);
+  const f = followStats(hourly, [{ type: 'BUY', ts: noon('2026-10-02') }]);
+  assert.equal(f.signals, 1); assert.equal(f.followRate, 1);
+});
+
+test('seguimiento: señales separadas (> 12 h) son distintas, y cada tipo va por separado', () => {
+  const recs = [sig('BUY', '2026-10-01T10:00:00Z'), sig('BUY', '2026-10-04T10:00:00Z'), sig('SELL', '2026-10-04T11:00:00Z'), sig('WAIT', '2026-10-05T10:00:00Z')];
+  const eps = signalEpisodes(recs);
+  assert.deepEqual(eps.map(e => e.action), ['BUY', 'BUY', 'SELL']);   // WAIT no es señal
+});
+
+test('seguimiento: tipo equivocado o fuera de ventana no cuenta; ventana = día de la señal y el siguiente', () => {
+  const ep = { action: 'BUY', start: Date.parse('2026-10-02T15:00:00Z'), end: Date.parse('2026-10-02T15:00:00Z') };
+  assert.equal(opMatchesEpisode({ type: 'BUY', ts: noon('2026-10-02') }, ep), true);
+  assert.equal(opMatchesEpisode({ type: 'BUY', ts: noon('2026-10-03') }, ep), true);
+  assert.equal(opMatchesEpisode({ type: 'BUY', ts: noon('2026-10-04') }, ep), false);   // dos días después
+  assert.equal(opMatchesEpisode({ type: 'BUY', ts: noon('2026-10-01') }, ep), false);   // el día anterior (aviso de la tarde)
+  assert.equal(opMatchesEpisode({ type: 'SELL', ts: noon('2026-10-02') }, ep), false);
+  // aviso de madrugada UTC (noche en América): vale también la operación del día anterior
+  const early = { action: 'BUY', start: Date.parse('2026-10-03T02:00:00Z'), end: Date.parse('2026-10-03T02:00:00Z') };
+  assert.equal(opMatchesEpisode({ type: 'BUY', ts: noon('2026-10-02') }, early), true);
+});
+
+test('followStats: tasa, operaciones sin señal y resultado medio a 20 d de seguidas vs no seguidas', () => {
+  const recs = [sig('BUY', '2026-09-01T10:00:00Z', 0.05), sig('BUY', '2026-09-10T10:00:00Z', -0.03), sig('SELL', '2026-09-20T10:00:00Z')];
+  const ops = [{ type: 'BUY', ts: noon('2026-09-01') }, { type: 'BUY', ts: noon('2026-09-25') }, { type: 'SELL', ts: noon('2026-09-21') }];
+  const f = followStats(recs, ops);
+  assert.equal(f.signals, 3); assert.equal(f.followed, 2); assert.equal(f.followRate, 0.6667);
+  assert.equal(f.operations, 3); assert.equal(f.operationsWithoutSignal, 1);    // la compra del 25-sep no tuvo señal
   assert.equal(f.meanRetFollowed, 0.05); assert.equal(f.meanRetNotFollowed, -0.03);
+  assert.equal(f.recent.length, 3); assert.equal(f.recent[0].action, 'SELL');
+});
+
+test('followStats: sin señales o sin operaciones no inventa tasas', () => {
+  assert.equal(followStats([], [{ type: 'BUY', ts: 1 }]).followRate, null);
+  const f = followStats([sig('BUY', '2026-10-02T10:00:00Z')], []);
+  assert.equal(f.followed, 0); assert.equal(f.followRate, 0); assert.equal(f.operations, 0);
 });
 
 test('compareShadow: campeón vs DCA fijo', () => {

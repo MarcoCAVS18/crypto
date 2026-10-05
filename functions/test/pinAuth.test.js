@@ -214,3 +214,19 @@ test('portfolio: valida las operaciones (tipos, rangos, fecha, símbolo)', async
   const saved = (await call('GET', '/api/portfolio/operations', null, t)).body.operations[0];
   assert.equal(saved.symbol, 'PAXG'); assert.equal(saved.type, 'SELL'); assert.equal(saved.notes.length, 500);
 });
+
+// ── sesión opcional (rutas públicas que mejoran con sesión) ─────────────────
+import { createOptionalSession } from '../src/middleware/session.js';
+test('optionalSession: con token válido deja el userId; sin token, token inválido o error de lectura sigue sin usuario', async () => {
+  const now = 1_000_000;
+  const store = { [sessionId('tok')]: { userId: 'marco', expiresAt: now + 1000 } };
+  const mw = createOptionalSession({ lookup: async (id) => store[id] ?? null, now: () => now });
+  const run = async (headers) => { const req = { headers }; let called = false; await mw(req, {}, () => { called = true; }); return { req, called }; };
+  const ok = await run({ authorization: 'Bearer tok' });
+  assert.equal(ok.req.userId, 'marco'); assert.equal(ok.called, true);
+  assert.equal((await run({})).req.userId, undefined);
+  assert.equal((await run({ authorization: 'Bearer otro' })).req.userId, undefined);
+  const boom = createOptionalSession({ lookup: async () => { throw new Error('firestore'); } });
+  const req = { headers: { authorization: 'Bearer tok' } }; let called = false; await boom(req, {}, () => { called = true; });
+  assert.equal(called, true); assert.equal(req.userId, undefined);
+});
