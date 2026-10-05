@@ -111,6 +111,9 @@ http.createServer(async (req, res) => {
     if ((m = /^\/portfolio\/operations\/([\w-]+)$/.exec(p))) {
       const i = OPS.findIndex(o => o.id === m[1]);
       if (i < 0) return send(res, 404, { error: 'Operación no encontrada.' });
+      if (req.method === 'PUT' && process.env.PUT_MODE === 'html') { res.writeHead(200, { 'content-type': 'text/html' }); return res.end('<!doctype html><html><body>app</body></html>'); }
+      if (req.method === 'PUT' && process.env.PUT_MODE === 'fail') return send(res, 500, { error: 'No se pudo guardar el cambio.' });
+      if (req.method === 'PUT' && process.env.PUT_MODE === 'slow') await new Promise(r => setTimeout(r, 4000));
       if (req.method === 'PUT') { const b = await readBody(req); OPS[i] = { ...OPS[i], ...b, id: m[1] }; return send(res, 200, { ok: true }); }
       if (req.method === 'DELETE') { OPS.splice(i, 1); return send(res, 200, { ok: true }); }
     }

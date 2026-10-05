@@ -25,10 +25,10 @@ const toForm = (op) => ({
   fee: op.fee > 0 ? String(op.fee) : '', exchange: op.exchange || 'Binance', notes: op.notes ?? ''
 });
 
-/** Nueva operación, o —con `editing`— corrige una existente (se reabre con sus datos; el padre le pone `key` por operación). */
-export function OperationSheet({ open, onClose, symbols, editing = null }) {
+/** Nueva operación, o —con `editing`— corrige una existente. `draft` = datos para reintentar una que falló. El padre le cambia la `key` en cada apertura (formulario siempre fresco). */
+export function OperationSheet({ open, onClose, symbols, editing = null, draft = null, onFail = null }) {
   const { addOperation, updateOperation, cryptoData, selectedCrypto } = useAppStore();
-  const [form, setForm] = useState(() => (editing ? toForm(editing) : emptyForm(symbols.includes(selectedCrypto) ? selectedCrypto : symbols[0])));
+  const [form, setForm] = useState(() => (editing || draft ? toForm({ ...(editing ?? {}), ...(draft ?? {}) }) : emptyForm(symbols.includes(selectedCrypto) ? selectedCrypto : symbols[0])));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
@@ -48,17 +48,22 @@ export function OperationSheet({ open, onClose, symbols, editing = null }) {
   const submit = async () => {
     setError(null);
     if (!form.date || !form.amount_usd || !form.price || !form.units) { setError('Completá fecha, precio, monto y unidades.'); return; }
+    if (![form.amount_usd, form.price, form.units].every(v => Number.isFinite(parseFloat(v)) && parseFloat(v) > 0)) { setError('Precio, monto y unidades tienen que ser números mayores que 0.'); return; }
     const issues = operationIssues({ amount_usd: form.amount_usd, price: form.price, units: form.units });
     if (issues.length) { setError(`${issues[0]} Revisá los tres campos.`); return; }
     const market = cryptoData?.[form.symbol]?.price;
     if (priceFarFromMarket(form.price, market) &&
         !window.confirm(`El precio que cargaste ($${parseFloat(form.price).toLocaleString('en-US')}) está muy lejos del precio actual de ${form.symbol} ($${Number(market).toLocaleString('en-US', { maximumFractionDigits: 2 })}). ¿Guardar igual?`)) return;
+    if (saving) return;
+    const data = { ...form, amount_usd: parseFloat(form.amount_usd), price: parseFloat(form.price), units: parseFloat(form.units), fee: parseFloat(form.fee) || 0 };
+    // La hoja se cierra al toque (la pantalla ya muestra el cambio): esperar a la API con la hoja abierta tapaba todo si el servidor tardaba.
+    // El teclado se baja antes de cerrar (en iPhone, cerrar con el teclado abierto puede dejar la pantalla trabada).
+    document.activeElement?.blur?.();
     setSaving(true);
+    onClose();
     try {
-      const data = { ...form, amount_usd: parseFloat(form.amount_usd), price: parseFloat(form.price), units: parseFloat(form.units), fee: parseFloat(form.fee) || 0 };
-      if (editing) await updateOperation(editing.id, data); else { await addOperation(data); setForm(emptyForm(form.symbol)); }
-      onClose();
-    } catch (e) { setError(e.message); } finally { setSaving(false); }
+      if (editing) await updateOperation(editing.id, data); else await addOperation(data);
+    } catch (e) { onFail?.(e.message, data, editing); } finally { setSaving(false); }
   };
 
   return (

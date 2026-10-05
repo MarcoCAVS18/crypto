@@ -11,6 +11,7 @@ import { DashboardScreen } from './components/DashboardScreen';
 import { DetailsSheet } from './components/DetailsSheet';
 import { PortfolioSection } from './components/PortfolioSection';
 import { ChatScreen } from './components/ChatScreen';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { OnboardingOverlay, useOnboarding } from './components/OnboardingOverlay';
 import { ProfileSettingsSheet } from './components/ProfileSettingsSheet';
 import { useZoneAlert } from './hooks/useZoneAlert';
@@ -140,7 +141,7 @@ function AuthenticatedApp() {
   const userInitial = currentUser.initial ?? currentUser.name?.[0] ?? '?';
 
   return (
-    <div className="min-h-svh overflow-x-hidden">
+    <div className="min-h-svh overflow-x-clip">
       <AppHeader
         initial={userInitial} name={currentUser.name} title={TITLES[screen]}
         onOpenProfile={() => setSettingsOpen(true)} onRefresh={handleRefresh} refreshing={loading}
@@ -169,6 +170,7 @@ function AuthenticatedApp() {
       <main className="max-w-xl mx-auto px-4 pt-3 pb-36">
         <AnimatePresence mode="wait" custom={dir} onExitComplete={toTop}>
           <motion.div key={screen} custom={dir} variants={screenVariants} initial="initial" animate="animate" exit="exit">
+            <ErrorBoundary key={screen}>
             {screen === 'dashboard' && (
               <DashboardScreen
                 selectedCrypto={selectedCrypto} cryptos={profileCryptos} onSelect={setSelectedCrypto}
@@ -178,6 +180,7 @@ function AuthenticatedApp() {
             )}
             {screen === 'portfolio' && <PortfolioSection />}
             {screen === 'chat' && <ChatScreen />}
+            </ErrorBoundary>
           </motion.div>
         </AnimatePresence>
       </main>
