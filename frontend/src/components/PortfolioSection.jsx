@@ -97,8 +97,11 @@ export function PortfolioSection() {
   const symbols = currentUser?.cryptos?.filter(s => s !== 'XAUUSDT') ?? ['BTC', 'PAXG'];
   const { operations, summary, loading } = portfolio;
 
-  const [formOpen, setFormOpen] = useState(false);
-  const [editing, setEditing] = useState(null);       // operación que se está corrigiendo (null = alta nueva)
+  // Hoja de operación: `k` cambia en cada apertura para que el formulario arranque siempre limpio (o con los datos de la operación).
+  const [sheet, setSheet] = useState({ open: false, k: 0, editing: null, draft: null });
+  const openSheet = (editing = null, draft = null) => { document.activeElement?.blur?.(); setSheet(s => ({ open: true, k: s.k + 1, editing, draft })); };
+  const closeSheet = () => setSheet(s => ({ ...s, open: false }));
+  const [saveFail, setSaveFail] = useState(null);       // { message, data, editing } si la API rechazó el alta/cambio
   const [splitOpen, setSplitOpen] = useState(false);
   const [filter, setFilter] = useState('ALL');
   const [visible, setVisible] = useState(5);
@@ -134,9 +137,9 @@ export function PortfolioSection() {
         <Panel className="text-center py-14 space-y-4">
           <span className="mx-auto w-14 h-14 rounded-full bg-accent/15 text-accent flex items-center justify-center"><Wallet className="w-6 h-6" /></span>
           <div><p className="text-lg font-bold text-ink">Todavía no cargaste operaciones</p><p className="text-sm text-muted mt-1">Cargá tu primera compra o venta y acá vas a ver cuánto tenés y cómo viene.</p></div>
-          <button onClick={() => { setEditing(null); setFormOpen(true); }} className="px-6 py-3.5 rounded-full bg-accent text-accent-ink font-bold glow-accent">Agregar operación</button>
+          <button onClick={() => openSheet()} className="px-6 py-3.5 rounded-full bg-accent text-accent-ink font-bold glow-accent">Agregar operación</button>
         </Panel>
-        <OperationSheet key={editing?.id ?? 'new'} open={formOpen} onClose={() => setFormOpen(false)} symbols={symbols} editing={editing} />
+        <OperationSheet key={sheet.k} open={sheet.open} onClose={closeSheet} symbols={symbols} editing={sheet.editing} draft={sheet.draft} onFail={(message, data, editing) => setSaveFail({ message, data, editing })} />
       </div>
     );
   }
@@ -148,7 +151,7 @@ export function PortfolioSection() {
         <p className="text-sm text-muted">Tus posiciones valen</p>
         <div className="flex items-end justify-between gap-3 mt-1">
           <p className="text-[48px] leading-none font-bold text-ink tracking-tight">{totals.value != null ? money(totals.value) : '—'}</p>
-          <button onClick={() => { setEditing(null); setFormOpen(true); }} aria-label="Agregar operación" className="w-14 h-14 rounded-full bg-accent text-accent-ink flex items-center justify-center glow-accent shrink-0"><Plus className="w-6 h-6" /></button>
+          <button onClick={() => openSheet()} aria-label="Agregar operación" className="w-14 h-14 rounded-full bg-accent text-accent-ink flex items-center justify-center glow-accent shrink-0"><Plus className="w-6 h-6" /></button>
         </div>
         {totals.pnl != null && (
           <div className="flex items-center gap-3 mt-3 flex-wrap">
@@ -163,6 +166,14 @@ export function PortfolioSection() {
       </section>
 
       {error && <div className="flex items-start gap-2 text-pink text-sm p-3.5 bg-pink/10 rounded-2xl"><AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />{error}</div>}
+      {saveFail && (
+        <div className="flex items-start gap-3 text-pink text-sm p-3.5 bg-pink/10 rounded-2xl">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span className="flex-1 leading-relaxed">{saveFail.message || 'No se pudo guardar.'} <b>El cambio no se aplicó.</b></span>
+          <button onClick={() => { const f = saveFail; setSaveFail(null); openSheet(f.editing, f.data); }} className="font-bold underline shrink-0">Corregir</button>
+          <button onClick={() => setSaveFail(null)} aria-label="Cerrar" className="opacity-70 shrink-0">✕</button>
+        </div>
+      )}
 
       {/* Distribución + posiciones */}
       {totals.positions.length > 0 && (
@@ -213,13 +224,13 @@ export function PortfolioSection() {
         )}
         {symbols.length > 1 && <div className="mb-3"><PillTabs options={[{ id: 'ALL', label: 'Todas' }, ...symbols.map(s => ({ id: s, label: assetTab(s) }))]} value={filter} onChange={(f) => { setFilter(f); setVisible(5); }} size="sm" layoutId="ops-filter" /></div>}
         <Panel className="!py-1">
-          <Rows>{slice.map(op => <OperationItem key={op.id} op={op} expanded={expanded === op.id} onToggle={() => setExpanded(expanded === op.id ? null : op.id)} onDelete={() => remove(op.id)} onEdit={() => { setEditing(op); setFormOpen(true); }} suspect={odd.has(op.id)} />)}</Rows>
+          <Rows>{slice.map(op => <OperationItem key={op.id} op={op} expanded={expanded === op.id} onToggle={() => setExpanded(expanded === op.id ? null : op.id)} onDelete={() => remove(op.id)} onEdit={() => openSheet(op)} suspect={odd.has(op.id)} />)}</Rows>
           {shown.length === 0 && <p className="text-sm text-muted py-6 text-center">No hay operaciones de este activo.</p>}
         </Panel>
         {shown.length > visible && <button onClick={() => setVisible(v => v + 5)} className="mt-3 w-full py-3 rounded-full bg-panel border border-line text-sm font-semibold text-ink">Ver {Math.min(5, shown.length - visible)} más</button>}
       </Section>
 
-      <OperationSheet key={editing?.id ?? 'new'} open={formOpen} onClose={() => setFormOpen(false)} symbols={symbols} editing={editing} />
+      <OperationSheet key={sheet.k} open={sheet.open} onClose={closeSheet} symbols={symbols} editing={sheet.editing} draft={sheet.draft} onFail={(message, data, editing) => setSaveFail({ message, data, editing })} />
       <CashSplitSheet open={splitOpen} onClose={() => setSplitOpen(false)} />
     </div>
   );

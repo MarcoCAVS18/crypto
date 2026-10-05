@@ -11,6 +11,7 @@ import { DashboardScreen } from './components/DashboardScreen';
 import { DetailsSheet } from './components/DetailsSheet';
 import { PortfolioSection } from './components/PortfolioSection';
 import { ChatScreen } from './components/ChatScreen';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { OnboardingOverlay, useOnboarding } from './components/OnboardingOverlay';
 import { ProfileSettingsSheet } from './components/ProfileSettingsSheet';
 import { useZoneAlert } from './hooks/useZoneAlert';
@@ -169,6 +170,7 @@ function AuthenticatedApp() {
       <main className="max-w-xl mx-auto px-4 pt-3 pb-36">
         <AnimatePresence mode="wait" custom={dir} onExitComplete={toTop}>
           <motion.div key={screen} custom={dir} variants={screenVariants} initial="initial" animate="animate" exit="exit">
+            <ErrorBoundary key={screen}>
             {screen === 'dashboard' && (
               <DashboardScreen
                 selectedCrypto={selectedCrypto} cryptos={profileCryptos} onSelect={setSelectedCrypto}
@@ -178,6 +180,7 @@ function AuthenticatedApp() {
             )}
             {screen === 'portfolio' && <PortfolioSection />}
             {screen === 'chat' && <ChatScreen />}
+            </ErrorBoundary>
           </motion.div>
         </AnimatePresence>
       </main>
