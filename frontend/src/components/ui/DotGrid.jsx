@@ -1,9 +1,11 @@
 // Actividad en puntos (referencia: "Your Activity"): una columna por semana, una fila por día.
 // cells: { 'YYYY-MM-DD': { buy: n, sell: n } }. Verde = compra, rosa = venta, gris = sin operaciones.
+import { motion, useReducedMotion } from 'framer-motion';
 const DAYS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 const iso = (d) => d.toISOString().slice(0, 10);
 
 export function DotGrid({ cells = {}, weeks = 12, now = new Date() }) {
+  const reduce = useReducedMotion();
   // la última columna es la semana actual (lunes → domingo)
   const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   const dow = (today.getUTCDay() + 6) % 7;                       // 0 = lunes
@@ -20,10 +22,11 @@ export function DotGrid({ cells = {}, weeks = 12, now = new Date() }) {
       <div className="flex flex-1 justify-between gap-[3px]">
         {cols.map((col, w) => (
           <div key={w} className="flex flex-col gap-[7px]">
-            {col.map(c => {
+            {col.map((c, d) => {
               const buy = c.v?.buy ?? 0, sell = c.v?.sell ?? 0;
               const cls = c.future ? 'bg-transparent' : buy && sell ? 'bg-lime' : buy ? 'bg-accent' : sell ? 'bg-pink' : 'bg-panel-2';
-              return <span key={c.key} title={c.v ? `${c.key}: ${buy} compra(s), ${sell} venta(s)` : c.key} className={`w-[14px] h-[14px] rounded-full ${cls}`} />;
+              return <motion.span key={c.key} title={c.v ? `${c.key}: ${buy} compra(s), ${sell} venta(s)` : c.key} className={`w-[14px] h-[14px] rounded-full ${cls}`}
+                initial={reduce ? false : { opacity: 0, scale: 0.2 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.35, delay: w * 0.035 + d * 0.01 }} />;
             })}
           </div>
         ))}

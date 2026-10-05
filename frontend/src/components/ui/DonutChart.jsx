@@ -1,3 +1,5 @@
+import { motion, useReducedMotion } from 'framer-motion';
+
 // Donut de distribución (referencia: "Portfolio Statistic"). SVG puro, extremos redondeados y un pequeño hueco entre tramos.
 // Paleta de DATOS validada contra la superficie oscura (dataviz/validate_palette.js: banda de luminosidad, croma y contraste OK;
 // separación para daltonismo verde↔rosa en banda "WARN" ⇒ siempre con leyenda + valores y 2 px de separación entre tramos).
@@ -5,6 +7,7 @@
 const PALETTE = ['#3b9fd1', '#2da84a', '#e0468a'];
 
 export function DonutChart({ segments = [], size = 200, thickness = 26, top = null, bottom = null }) {
+  const reduce = useReducedMotion();
   const total = segments.reduce((a, s) => a + Math.max(0, s.value), 0);
   const r = (size - thickness) / 2, c = 2 * Math.PI * r, cx = size / 2;
   const gap = segments.length > 1 ? Math.min(10, c * 0.025) : 0;
@@ -16,17 +19,20 @@ export function DonutChart({ segments = [], size = 200, thickness = 26, top = nu
         {total > 0 && segments.map((s, i) => {
           const len = Math.max(0, (s.value / total) * c - gap);
           const el = (
-            <circle key={s.label ?? i} cx={cx} cy={cx} r={r} fill="none" stroke={s.color ?? PALETTE[i % PALETTE.length]} strokeWidth={thickness}
-              strokeLinecap="round" strokeDasharray={`${Math.max(0.01, len)} ${c}`} strokeDashoffset={-offset} />
+            <motion.circle key={s.label ?? i} cx={cx} cy={cx} r={r} fill="none" stroke={s.color ?? PALETTE[i % PALETTE.length]} strokeWidth={thickness}
+              strokeLinecap="round" strokeDashoffset={-offset}
+              initial={{ strokeDasharray: reduce ? `${Math.max(0.01, len)} ${c}` : `0.01 ${c}` }}
+              animate={{ strokeDasharray: `${Math.max(0.01, len)} ${c}` }}
+              transition={{ duration: 0.9, delay: i * 0.12, ease: [0.22, 1, 0.36, 1] }} />
           );
           offset += (s.value / total) * c;
           return el;
         })}
       </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
+      <motion.div initial={{ opacity: reduce ? 1 : 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.6, delay: 0.3 }} className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
         {top && <span className="text-[11px] text-muted">{top}</span>}
         {bottom && <span className="text-2xl font-bold text-ink num leading-tight">{bottom}</span>}
-      </div>
+      </motion.div>
     </div>
   );
 }

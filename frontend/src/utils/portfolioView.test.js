@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { portfolioTotals, activityCells, evolutionSeries, fmtCompact, signalOutcome } from './portfolioView.js';
+import { priceFarOff, suspiciousOps, portfolioTotals, activityCells, evolutionSeries, fmtCompact, signalOutcome } from './portfolioView.js';
 
 const summary = [
   { symbol: 'PAXG', units: 0.5, costBasis: 2000, avgBuyPrice: 4000, operations: 3, realizedPnl: 0 },
@@ -56,4 +56,19 @@ test('formato compacto y resultado de señal', () => {
   assert.equal(signalOutcome('SELL', 100, 110).good, false);
   assert.equal(signalOutcome('WAIT', 100, 110), null);
   assert.equal(signalOutcome('BUY', null, 110), null);
+});
+
+test('precio sospechoso: lejos del actual (5×) arriba o abajo; sin dato no marca', () => {
+  assert.equal(priceFarOff(4486, 86000), true);       // BTC cargado con precio de oro
+  assert.equal(priceFarOff(70000, 86000), false);
+  assert.equal(priceFarOff(500000, 86000), true);
+  assert.equal(priceFarOff(4486, null), false);
+  assert.equal(priceFarOff(0, 86000), false);
+  const ops = [{ id: 'a', symbol: 'BTC', price: 4486 }, { id: 'b', symbol: 'BTC', price: 80000 }, { id: 'c', symbol: 'ETH', price: 1 }];
+  assert.deepEqual([...suspiciousOps(ops, { BTC: 86000 })], ['a']);
+});
+
+test('una posición con promedio absurdo queda marcada como sospechosa', () => {
+  const t = portfolioTotals([{ symbol: 'BTC', units: 0.0633, costBasis: 284, avgBuyPrice: 4486, operations: 1 }], { BTC: 86000 });
+  assert.equal(t.positions[0].suspect, true);
 });

@@ -1,9 +1,12 @@
 // Hoja inferior (móvil) / modal centrado (escritorio). Un solo patrón para detalles, ajustes y formularios.
+import { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
 import { IconButton } from './IconButton';
 
-export function Sheet({ open, onClose, title, children, header = null, maxWidth = 'max-w-lg' }) {
+export function Sheet({ open, onClose, title, children, header = null, maxWidth = 'max-w-lg', scrollKey = null }) {
+  const body = useRef(null);
+  useEffect(() => { body.current?.scrollTo?.({ top: 0 }); }, [scrollKey]);   // otra pestaña dentro de la hoja → arriba
   return (
     <AnimatePresence>
       {open && (
@@ -26,7 +29,7 @@ export function Sheet({ open, onClose, title, children, header = null, maxWidth 
               <IconButton icon={X} label="Cerrar" onClick={onClose} size="sm" />
             </div>
             {header}
-            <div className="overflow-y-auto px-5 pb-8 flex-1">{children}</div>
+            <div ref={body} className="overflow-y-auto px-5 pb-8 flex-1">{children}</div>
           </motion.div>
         </>
       )}

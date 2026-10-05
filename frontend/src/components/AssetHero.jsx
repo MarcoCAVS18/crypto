@@ -62,7 +62,14 @@ export function AssetHero({ symbol, price, change24h, zones, high24h, low24h }) 
   useEffect(() => {
     if (!seriesRef.current) return;
     seriesRef.current.setData(candles);                  // también con [] (limpia la serie anterior)
-    if (candles.length > 0) chartRef.current?.timeScale().fitContent();
+    if (candles.length > 0) {
+      chartRef.current?.timeScale().fitContent();
+      // las velas "se dibujan" de izquierda a derecha (si el usuario no pidió menos movimiento)
+      const el = containerRef.current;
+      if (el?.animate && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+        el.animate([{ clipPath: 'inset(0 100% 0 0)' }, { clipPath: 'inset(0 0 0 0)' }], { duration: 800, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' });
+      }
+    }
   }, [candles]);
 
   // Zonas de compra / venta: dos líneas finas (etiqueta en el eje), sin llenar el gráfico de texto
