@@ -48,8 +48,8 @@ export function PortfolioEvolution({ operations, prices }) {
           <XAxis dataKey="label" tick={{ fill: CHART_TEXT, fontSize: 10 }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={28} />
           <YAxis domain={[0, max]} tickFormatter={fmtCompact} tick={{ fill: CHART_TEXT, fontSize: 10 }} axisLine={false} tickLine={false} width={48} tickCount={4} />
           <Tooltip content={<Tip />} cursor={{ stroke: 'rgba(255,255,255,0.1)' }} />
-          <Area type="stepAfter" dataKey="invested" stroke={C_INVESTED} strokeWidth={2} fill="url(#evo-inv)" dot={<Dot />} activeDot={{ r: 5, stroke: SURFACE, strokeWidth: 2 }} isAnimationActive={false} />
-          <Area type="monotone" dataKey="value" stroke={C_VALUE} strokeWidth={2} fill="none" connectNulls={false} dot={{ r: 5, fill: C_VALUE, stroke: SURFACE, strokeWidth: 2 }} isAnimationActive={false} />
+          <Area type="stepAfter" dataKey="invested" stroke={C_INVESTED} strokeWidth={2} fill="url(#evo-inv)" dot={<Dot />} activeDot={{ r: 5, stroke: SURFACE, strokeWidth: 2 }} isAnimationActive animationDuration={1100} animationEasing="ease-out" />
+          <Area type="monotone" dataKey="value" stroke={C_VALUE} strokeWidth={2} fill="none" connectNulls={false} dot={{ r: 5, fill: C_VALUE, stroke: SURFACE, strokeWidth: 2 }} isAnimationActive animationBegin={600} animationDuration={600} />
         </AreaChart>
       </ResponsiveContainer>
     </div>

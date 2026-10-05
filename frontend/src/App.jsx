@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RefreshCw, AlertCircle, X } from 'lucide-react';
 import { useAppStore } from './store/appStore';
@@ -70,9 +70,21 @@ function AuthenticatedApp() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser.id]);
 
+  // Actualización automática cada 5 min mientras la app está a la vista. En segundo plano no se pide nada (ahorra llamadas),
+  // y al volver (celular desbloqueado, otra pestaña) se actualiza al instante si los datos tienen más de 2 min.
+  const lastUpdate = useAppStore((s) => s.lastUpdate);
+  const lastUpdateRef = useRef(lastUpdate);
+  lastUpdateRef.current = lastUpdate;
   useEffect(() => {
-    const t = setInterval(refreshData, AUTO_REFRESH_INTERVAL);
-    return () => clearInterval(t);
+    const tick = () => { if (!document.hidden) refreshData(); };
+    const t = setInterval(tick, AUTO_REFRESH_INTERVAL);
+    const onVisible = () => {
+      if (document.hidden) return;
+      const last = lastUpdateRef.current ? new Date(lastUpdateRef.current).getTime() : 0;
+      if (Date.now() - last > 2 * 60 * 1000) refreshData();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onVisible); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCrypto]);
 
@@ -109,10 +121,13 @@ function AuthenticatedApp() {
     refreshData();
   };
 
+  // Al cambiar de pantalla se vuelve arriba: ahora (para que no se vea el salto) y otra vez cuando termina de salir la anterior
+  const toTop = useCallback(() => { window.scrollTo(0, 0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0; }, []);
   const go = (id) => {
+    if (id === screen) { toTop(); return; }
     setDir(SCREENS.indexOf(id) > SCREENS.indexOf(screen) ? 1 : -1);
     setScreen(id);
-    window.scrollTo({ top: 0 });
+    toTop();
   };
 
   const openDetails = (tab = 'signal') => setDetails({ open: true, tab });
@@ -152,7 +167,7 @@ function AuthenticatedApp() {
       </AnimatePresence>
 
       <main className="max-w-xl mx-auto px-4 pt-3 pb-36">
-        <AnimatePresence mode="wait" custom={dir}>
+        <AnimatePresence mode="wait" custom={dir} onExitComplete={toTop}>
           <motion.div key={screen} custom={dir} variants={screenVariants} initial="initial" animate="animate" exit="exit">
             {screen === 'dashboard' && (
               <DashboardScreen

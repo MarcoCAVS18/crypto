@@ -1,5 +1,17 @@
 // Presentación del portfolio (pura, con tests): totales, posiciones, serie de evolución y actividad. No decide nada.
 
+/** ¿El precio está a más de 5× (arriba o abajo) del precio actual? Un BTC "comprado" a $4,500 con el BTC a $86,000 casi seguro es un error de carga. */
+export function priceFarOff(price, market, ratio = 5) {
+  const p = Number(price), m = Number(market);
+  if (!(p > 0) || !(m > 0)) return false;
+  return p < m / ratio || p > m * ratio;
+}
+
+/** Ids de las operaciones con precio sospechoso respecto del precio actual de su activo. */
+export function suspiciousOps(operations = [], prices = {}) {
+  return new Set(operations.filter(o => priceFarOff(o.price, prices[o.symbol])).map(o => o.id));
+}
+
 /** Totales y posiciones a precio de mercado. `summary` viene de computePortfolioSummary. Sin precio, la posición no se valúa. */
 export function portfolioTotals(summary = [], prices = {}) {
   const positions = summary.filter(s => s.units > 1e-9).map(s => {
@@ -8,7 +20,8 @@ export function portfolioTotals(summary = [], prices = {}) {
     const invested = s.costBasis ?? s.netInvested ?? 0;
     const pnl = value != null ? value - invested : null;
     return { symbol: s.symbol, units: s.units, price: price ?? null, value, invested, avg: s.avgBuyPrice || null,
-      pnl, pnlPct: pnl != null && invested > 0 ? (pnl / invested) * 100 : null, operations: s.operations };
+      pnl, pnlPct: pnl != null && invested > 0 ? (pnl / invested) * 100 : null, operations: s.operations,
+      suspect: priceFarOff(s.avgBuyPrice, price) };
   });
   const valued = positions.filter(p => p.value != null);
   const value = valued.reduce((a, p) => a + p.value, 0);
