@@ -144,6 +144,16 @@ export async function addUserOperation(op) {
   const ref = await db().collection('portfolio_operations').add({ ...op, created_at: FieldValue.serverTimestamp() });
   return ref.id;
 }
+/** Corrige una operación existente, solo si es del usuario (conserva `created_at`). @returns {'updated'|'not_found'|'forbidden'} */
+export async function updateUserOperation(userId, id, op) {
+  const ref = db().collection('portfolio_operations').doc(id);
+  const doc = await ref.get();
+  if (!doc.exists) return 'not_found';
+  if (!isOwn(doc.data(), userId)) return 'forbidden';
+  // el dueño no cambia: las operaciones viejas sin userId (de Marco) pasan a llevar el suyo al editarlas
+  await ref.set({ ...op, userId: doc.data().userId ?? userId, updated_at: FieldValue.serverTimestamp() }, { merge: true });
+  return 'updated';
+}
 /** Borra solo si la operación es del usuario. @returns {'deleted'|'not_found'|'forbidden'} */
 export async function deleteUserOperation(userId, id) {
   const ref = db().collection('portfolio_operations').doc(id);

@@ -2,7 +2,7 @@
 // acá con sesión: cada usuario solo ve y toca lo suyo, y las reglas de Firestore pueden cerrarse por completo.
 import express from 'express';
 import { requireSession } from '../middleware/session.js';
-import { listUserOperations, addUserOperation, deleteUserOperation } from '../config/database.js';
+import { listUserOperations, addUserOperation, updateUserOperation, deleteUserOperation } from '../config/database.js';
 
 const router = express.Router();
 router.use(requireSession);
@@ -57,6 +57,21 @@ router.post('/operations', async (req, res) => {
   } catch (err) {
     console.error('[Portfolio] add:', err.message);
     res.status(500).json({ error: 'No se pudo guardar la operación.' });
+  }
+});
+
+router.put('/operations/:id', async (req, res) => {
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const parsed = parseOperation(req.body, req.userId);      // misma validación que al crear; el dueño sale de la sesión
+  if (parsed.error) return res.status(400).json({ error: parsed.error });
+  try {
+    const r = await updateUserOperation(req.userId, req.params.id, parsed.op);
+    if (r === 'not_found') return res.status(404).json({ error: 'Operación no encontrada.' });
+    if (r === 'forbidden') return res.status(403).json({ error: 'Esa operación no es tuya.' });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[Portfolio] update:', err.message);
+    res.status(500).json({ error: 'No se pudo guardar el cambio.' });
   }
 });
 

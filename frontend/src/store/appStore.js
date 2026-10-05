@@ -2,7 +2,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { fetchCryptoData, requestDecision } from '../services/api';
-import { fsAddOperation, fsGetOperations, fsDeleteOperation } from '../services/firestorePortfolio';
+import { fsAddOperation, fsGetOperations, fsUpdateOperation, fsDeleteOperation } from '../services/firestorePortfolio';
 import { buildSettings } from '../utils/settings';
 import { effectiveCashUsd, engineCash } from '../utils/cash';
 import { computePortfolioSummary } from '../utils/portfolioMath';
@@ -227,6 +227,20 @@ export const useAppStore = create(
           });
           // Resync con Firestore por si el write llegó a completarse antes del timeout
           setTimeout(() => get().loadPortfolio({ force: true }), 3500);
+          throw err;
+        }
+      },
+
+      // Optimistic edit: la UI cambia al instante; si la API lo rechaza (o falla), vuelve a como estaba.
+      updateOperation: async (id, opData) => {
+        const prevOps = get().portfolio.operations;
+        const next = { ...opData, symbol: opData.symbol.toUpperCase(), type: opData.type.toUpperCase() };
+        const newOps = prevOps.map(o => (o.id === id ? { ...o, ...next, id } : o));
+        set((state) => ({ portfolio: { ...state.portfolio, operations: newOps, summary: computePortfolioSummary(newOps) } }));
+        try {
+          await fsUpdateOperation(id, next);
+        } catch (err) {
+          set((state) => ({ portfolio: { ...state.portfolio, operations: prevOps, summary: computePortfolioSummary(prevOps) } }));
           throw err;
         }
       },

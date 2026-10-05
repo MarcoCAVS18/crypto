@@ -107,6 +107,13 @@ http.createServer(async (req, res) => {
     if ((m = /^\/crypto\/([A-Za-z]+)$/.exec(p))) return send(res, 200, market(m[1].toUpperCase(), u.searchParams.get('timeframe') || '4h').body);
     if (p.startsWith('/gold-context')) return send(res, 200, goldContext());
     if (p === '/calendar') return send(res, 200, { events: getUpcomingEvents(Number(u.searchParams.get('days')) || 21, u.searchParams.get('symbol')), coverage: { upcomingCount: 8 } });
+    if (p === '/portfolio/operations' && req.method === 'POST') { const b = await readBody(req); const id = `new${OPS.length + 1}`; OPS.unshift({ id, ...b, userId: 'marco' }); return send(res, 201, { id }); }
+    if ((m = /^\/portfolio\/operations\/([\w-]+)$/.exec(p))) {
+      const i = OPS.findIndex(o => o.id === m[1]);
+      if (i < 0) return send(res, 404, { error: 'Operación no encontrada.' });
+      if (req.method === 'PUT') { const b = await readBody(req); OPS[i] = { ...OPS[i], ...b, id: m[1] }; return send(res, 200, { ok: true }); }
+      if (req.method === 'DELETE') { OPS.splice(i, 1); return send(res, 200, { ok: true }); }
+    }
     if (p === '/portfolio/operations') return send(res, 200, { operations: OPS, count: OPS.length });
     if ((m = /^\/metrics\/([A-Za-z]+)$/.exec(p))) return send(res, 200, { symbol: m[1], records: 14, complete: 6, baselines: {}, summary: { BUY: { 5: { n: 8, hitRate: 0.62, baseUpRate: 0.55, meanRet: 0.012, edgeVsBase: 0.007 }, 20: { n: 6, hitRate: 0.67, baseUpRate: 0.58, meanRet: 0.021, edgeVsBase: 0.04 } }, SELL: { 20: { n: 3, hitRate: 0.33, baseUpRate: 0.58, meanRet: 0.004, edgeVsBase: -0.01 } } }, byStrength: {}, follow: { signals: 9, followed: 6, followRate: 0.6667, operations: 13, operationsWithoutSignal: 3, meanRetFollowed: 0.02, meanRetNotFollowed: 0.01 }, shadow: { n: 6, champion: { buys: 4, meanRet: 0.02 }, shadow: { buys: 6, meanRet: 0.015 } } });
     if (p === '/history') return send(res, 200, { decisions: [] });

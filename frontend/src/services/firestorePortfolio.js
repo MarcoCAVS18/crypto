@@ -11,6 +11,14 @@ export async function fsAddOperation(op) {
   return data.id;
 }
 
+export async function fsUpdateOperation(id, op) {
+  await api.put(`/portfolio/operations/${encodeURIComponent(id)}`, {
+    date: op.date, symbol: op.symbol, type: op.type,
+    amount_usd: Number(op.amount_usd), price: Number(op.price), units: Number(op.units),
+    fee: Number(op.fee) || 0, exchange: op.exchange || 'Binance', notes: op.notes || ''
+  });
+}
+
 export async function fsGetOperations(symbolFilter = null, _userId = null, limitCount = 500) {
   const params = { limit: limitCount };
   if (symbolFilter) params.symbol = symbolFilter;
