@@ -1,7 +1,7 @@
 // Pantalla Portfolio: cuánto tenés y cómo viene (arriba), dónde está repartido, cómo evolucionó, tu actividad,
 // cómo te fue con las señales y el detalle de cada operación. Se agrega una operación desde un botón, en una hoja.
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, ChevronDown, Trash2, AlertCircle, Calculator, ArrowDownLeft, ArrowUpRight, Wallet } from 'lucide-react';
+import { Plus, Pencil, ChevronDown, Trash2, AlertCircle, Calculator, ArrowDownLeft, ArrowUpRight, Wallet } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import { useAuthStore } from '../store/authStore';
 import { fetchCryptoData } from '../services/api';
@@ -51,7 +51,7 @@ function Position({ p, i, onReview }) {
   );
 }
 
-function OperationItem({ op, expanded, onToggle, onDelete, suspect }) {
+function OperationItem({ op, expanded, onToggle, onDelete, onEdit, suspect }) {
   const [confirming, setConfirming] = useState(false);
   const buy = op.type === 'BUY';
   const bad = operationIssues(op).length > 0;
@@ -80,7 +80,10 @@ function OperationItem({ op, expanded, onToggle, onDelete, suspect }) {
               <button onClick={() => setConfirming(false)} className="px-3.5 py-1.5 rounded-full bg-panel-2 text-ink">Cancelar</button>
             </div>
           ) : (
-            <button onClick={() => setConfirming(true)} className="flex items-center gap-1.5 text-pink/80 hover:text-pink"><Trash2 className="w-3.5 h-3.5" />Eliminar operación</button>
+            <div className="flex items-center gap-5">
+              <button onClick={onEdit} className="flex items-center gap-1.5 font-semibold text-accent"><Pencil className="w-3.5 h-3.5" />Editar</button>
+              <button onClick={() => setConfirming(true)} className="flex items-center gap-1.5 text-pink/80 hover:text-pink"><Trash2 className="w-3.5 h-3.5" />Eliminar</button>
+            </div>
           )}
         </div>
       )}
@@ -95,6 +98,7 @@ export function PortfolioSection() {
   const { operations, summary, loading } = portfolio;
 
   const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState(null);       // operación que se está corrigiendo (null = alta nueva)
   const [splitOpen, setSplitOpen] = useState(false);
   const [filter, setFilter] = useState('ALL');
   const [visible, setVisible] = useState(5);
@@ -130,9 +134,9 @@ export function PortfolioSection() {
         <Panel className="text-center py-14 space-y-4">
           <span className="mx-auto w-14 h-14 rounded-full bg-accent/15 text-accent flex items-center justify-center"><Wallet className="w-6 h-6" /></span>
           <div><p className="text-lg font-bold text-ink">Todavía no cargaste operaciones</p><p className="text-sm text-muted mt-1">Cargá tu primera compra o venta y acá vas a ver cuánto tenés y cómo viene.</p></div>
-          <button onClick={() => setFormOpen(true)} className="px-6 py-3.5 rounded-full bg-accent text-accent-ink font-bold glow-accent">Agregar operación</button>
+          <button onClick={() => { setEditing(null); setFormOpen(true); }} className="px-6 py-3.5 rounded-full bg-accent text-accent-ink font-bold glow-accent">Agregar operación</button>
         </Panel>
-        <OperationSheet open={formOpen} onClose={() => setFormOpen(false)} symbols={symbols} />
+        <OperationSheet key={editing?.id ?? 'new'} open={formOpen} onClose={() => setFormOpen(false)} symbols={symbols} editing={editing} />
       </div>
     );
   }
@@ -144,7 +148,7 @@ export function PortfolioSection() {
         <p className="text-sm text-muted">Tus posiciones valen</p>
         <div className="flex items-end justify-between gap-3 mt-1">
           <p className="text-[48px] leading-none font-bold text-ink tracking-tight">{totals.value != null ? money(totals.value) : '—'}</p>
-          <button onClick={() => setFormOpen(true)} aria-label="Agregar operación" className="w-14 h-14 rounded-full bg-accent text-accent-ink flex items-center justify-center glow-accent shrink-0"><Plus className="w-6 h-6" /></button>
+          <button onClick={() => { setEditing(null); setFormOpen(true); }} aria-label="Agregar operación" className="w-14 h-14 rounded-full bg-accent text-accent-ink flex items-center justify-center glow-accent shrink-0"><Plus className="w-6 h-6" /></button>
         </div>
         {totals.pnl != null && (
           <div className="flex items-center gap-3 mt-3 flex-wrap">
@@ -209,13 +213,13 @@ export function PortfolioSection() {
         )}
         {symbols.length > 1 && <div className="mb-3"><PillTabs options={[{ id: 'ALL', label: 'Todas' }, ...symbols.map(s => ({ id: s, label: assetTab(s) }))]} value={filter} onChange={(f) => { setFilter(f); setVisible(5); }} size="sm" layoutId="ops-filter" /></div>}
         <Panel className="!py-1">
-          <Rows>{slice.map(op => <OperationItem key={op.id} op={op} expanded={expanded === op.id} onToggle={() => setExpanded(expanded === op.id ? null : op.id)} onDelete={() => remove(op.id)} suspect={odd.has(op.id)} />)}</Rows>
+          <Rows>{slice.map(op => <OperationItem key={op.id} op={op} expanded={expanded === op.id} onToggle={() => setExpanded(expanded === op.id ? null : op.id)} onDelete={() => remove(op.id)} onEdit={() => { setEditing(op); setFormOpen(true); }} suspect={odd.has(op.id)} />)}</Rows>
           {shown.length === 0 && <p className="text-sm text-muted py-6 text-center">No hay operaciones de este activo.</p>}
         </Panel>
         {shown.length > visible && <button onClick={() => setVisible(v => v + 5)} className="mt-3 w-full py-3 rounded-full bg-panel border border-line text-sm font-semibold text-ink">Ver {Math.min(5, shown.length - visible)} más</button>}
       </Section>
 
-      <OperationSheet open={formOpen} onClose={() => setFormOpen(false)} symbols={symbols} />
+      <OperationSheet key={editing?.id ?? 'new'} open={formOpen} onClose={() => setFormOpen(false)} symbols={symbols} editing={editing} />
       <CashSplitSheet open={splitOpen} onClose={() => setSplitOpen(false)} />
     </div>
   );

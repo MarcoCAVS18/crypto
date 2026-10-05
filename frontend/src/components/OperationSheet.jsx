@@ -19,9 +19,16 @@ const Num = ({ value, onChange, placeholder }) => (
   <input type="text" inputMode="decimal" value={value} onChange={e => onChange(sanitizeDecimal(e.target.value))} placeholder={placeholder} className={cls} />
 );
 
-export function OperationSheet({ open, onClose, symbols }) {
-  const { addOperation, cryptoData, selectedCrypto } = useAppStore();
-  const [form, setForm] = useState(() => emptyForm(symbols.includes(selectedCrypto) ? selectedCrypto : symbols[0]));
+const toForm = (op) => ({
+  date: String(op.date ?? '').slice(0, 10) || today(), symbol: op.symbol, type: op.type,
+  amount_usd: String(op.amount_usd ?? ''), price: String(op.price ?? ''), units: String(op.units ?? ''),
+  fee: op.fee > 0 ? String(op.fee) : '', exchange: op.exchange || 'Binance', notes: op.notes ?? ''
+});
+
+/** Nueva operación, o —con `editing`— corrige una existente (se reabre con sus datos; el padre le pone `key` por operación). */
+export function OperationSheet({ open, onClose, symbols, editing = null }) {
+  const { addOperation, updateOperation, cryptoData, selectedCrypto } = useAppStore();
+  const [form, setForm] = useState(() => (editing ? toForm(editing) : emptyForm(symbols.includes(selectedCrypto) ? selectedCrypto : symbols[0])));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
@@ -48,14 +55,14 @@ export function OperationSheet({ open, onClose, symbols }) {
         !window.confirm(`El precio que cargaste ($${parseFloat(form.price).toLocaleString('en-US')}) está muy lejos del precio actual de ${form.symbol} ($${Number(market).toLocaleString('en-US', { maximumFractionDigits: 2 })}). ¿Guardar igual?`)) return;
     setSaving(true);
     try {
-      await addOperation({ ...form, amount_usd: parseFloat(form.amount_usd), price: parseFloat(form.price), units: parseFloat(form.units), fee: parseFloat(form.fee) || 0 });
-      setForm(emptyForm(form.symbol));
+      const data = { ...form, amount_usd: parseFloat(form.amount_usd), price: parseFloat(form.price), units: parseFloat(form.units), fee: parseFloat(form.fee) || 0 };
+      if (editing) await updateOperation(editing.id, data); else { await addOperation(data); setForm(emptyForm(form.symbol)); }
       onClose();
     } catch (e) { setError(e.message); } finally { setSaving(false); }
   };
 
   return (
-    <Sheet open={open} onClose={() => { setError(null); onClose(); }} title="Nueva operación">
+    <Sheet open={open} onClose={() => { setError(null); onClose(); }} title={editing ? 'Editar operación' : 'Nueva operación'}>
       <div className="space-y-5">
         <PillTabs options={[{ id: 'BUY', label: 'Compra' }, { id: 'SELL', label: 'Venta' }]} value={form.type} onChange={v => set('type', v)} layoutId="op-type" />
         {symbols.length > 1 && <PillTabs options={symbols.map(s => ({ id: s, label: s }))} value={form.symbol} onChange={v => set('symbol', v)} size="sm" layoutId="op-symbol" />}
@@ -75,7 +82,7 @@ export function OperationSheet({ open, onClose, symbols }) {
         <Field label="Notas (opcional)"><input type="text" value={form.notes} onChange={e => set('notes', e.target.value)} className={cls} /></Field>
 
         <button onClick={submit} disabled={saving} className="w-full py-4 rounded-full bg-accent text-accent-ink font-bold text-base glow-accent disabled:opacity-50">
-          {saving ? 'Guardando…' : 'Guardar operación'}
+          {saving ? 'Guardando…' : editing ? 'Guardar cambios' : 'Guardar operación'}
         </button>
       </div>
     </Sheet>

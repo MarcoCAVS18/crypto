@@ -171,8 +171,8 @@ test('auth: monedas — solo con sesión, validadas', async () => {
 const op = (o = {}) => ({ date: '2026-09-01', symbol: 'PAXG', type: 'BUY', amount_usd: 100, price: 4000, units: 0.025, fee: 0.1, exchange: 'Binance', notes: '', ...o });
 
 test('portfolio: exige sesión', async () => {
-  for (const [m, p] of [['GET', '/api/portfolio/operations'], ['POST', '/api/portfolio/operations'], ['DELETE', '/api/portfolio/operations/x']]) {
-    const r = await call(m, p, m === 'POST' ? op() : undefined);
+  for (const [m, p] of [['GET', '/api/portfolio/operations'], ['POST', '/api/portfolio/operations'], ['PUT', '/api/portfolio/operations/x'], ['DELETE', '/api/portfolio/operations/x']]) {
+    const r = await call(m, p, m === 'POST' || m === 'PUT' ? op() : undefined);
     assert.equal(r.status, 401, `${m} ${p}`);
     assert.equal(r.body.code, 'SESSION');
   }
@@ -192,6 +192,25 @@ test('portfolio: cada usuario ve y borra solo lo suyo (el userId sale de la sesi
   assert.equal((await call('DELETE', `/api/portfolio/operations/${created.body.id}`, undefined, tomas)).status, 403);
   assert.equal((await call('DELETE', `/api/portfolio/operations/${created.body.id}`, undefined, marco)).status, 200);
   assert.equal((await call('DELETE', `/api/portfolio/operations/${created.body.id}`, undefined, marco)).status, 404);
+});
+
+test('portfolio: editar una operación — solo la propia, con la misma validación, y conserva el resto', async () => {
+  const marco = (await call('POST', '/api/auth/setup', { userId: 'marco', pin: '1111' })).body.token;
+  const tomas = (await call('POST', '/api/auth/setup', { userId: 'tomas', pin: '2222' })).body.token;
+  const id = (await call('POST', '/api/portfolio/operations', op({ symbol: 'BTC', price: 4486, units: 0.0633, amount_usd: 284 }), marco)).body.id;
+
+  assert.equal((await call('PUT', `/api/portfolio/operations/${id}`, op({ symbol: 'BTC', price: 86000, units: 0.0033, amount_usd: 284 }), tomas)).status, 403);
+  assert.equal((await call('PUT', `/api/portfolio/operations/${id}`, op({ price: 0 }), marco)).status, 400);                       // valida igual que al crear
+  assert.equal((await call('PUT', `/api/portfolio/operations/${id}`, op({ symbol: 'BTC', amount_usd: 999, price: 86000, units: 0.0033 }), marco)).status, 400);   // no cuadra
+  assert.equal((await call('PUT', '/api/portfolio/operations/no-existe', op(), marco)).status, 404);
+
+  const r = await call('PUT', `/api/portfolio/operations/${id}`, { ...op({ symbol: 'BTC', price: 86000, units: 0.0033, amount_usd: 284 }), userId: 'tomas' }, marco);
+  assert.equal(r.status, 200);
+  const list = (await call('GET', '/api/portfolio/operations', null, marco)).body;
+  assert.equal(list.count, 1);                                  // se editó, no se duplicó
+  assert.equal(list.operations[0].price, 86000);
+  assert.equal(list.operations[0].userId, 'marco');             // el dueño no se puede cambiar desde el body
+  assert.equal((await call('GET', '/api/portfolio/operations', null, tomas)).body.count, 0);
 });
 
 test('portfolio: Marco también ve las operaciones viejas sin userId; otros usuarios no', async () => {
