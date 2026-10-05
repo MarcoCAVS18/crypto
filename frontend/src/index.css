@@ -1,115 +1,109 @@
 @import "tailwindcss";
+@import "@fontsource-variable/dm-sans";
 
-/* ── Design tokens ────────────────────────────────────────────────────────── */
+/* ── Sistema de diseño ────────────────────────────────────────────────────────
+   Negro con verde neón. Reglas: UN solo acento (verde = a favor / acción), rosa = en contra, amarillo = espera/atención.
+   Superficies redondeadas (28 px), números grandes, etiquetas chicas en gris. Pocas "cards": las secciones se separan
+   con espacio y filas, no con cajas dentro de cajas. */
 @theme {
-  --color-risk-on:      #10b981;
-  --color-risk-neutral: #f59e0b;
-  --color-risk-off:     #f43f5e;
-  --color-zone-buy:     #34d399;
-  --color-zone-neutral: #fbbf24;
-  --color-zone-sell:    #f87171;
+  --font-sans: 'DM Sans Variable', 'DM Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  /* semánticos (usar estos en componentes nuevos) */
+  --color-bg:        #040705;
+  --color-panel:     #0b120d;
+  --color-panel-2:   #121b14;
+  --color-line:      rgba(255, 255, 255, 0.07);
+  --color-ink:       #f3f6f4;
+  --color-muted:     #8d9a91;
+  --color-faint:     #56625a;
+  --color-accent:    #58e26f;
+  --color-accent-ink:#04120a;
+  --color-pink:      #ff5fa8;
+  --color-lime:      #e4f26b;
+  --color-warn:      #f3d95c;
+
+  /* Re-pintado de la paleta que usan los componentes viejos (pantallas que todavía no se rehicieron):
+     grises → neutros verdosos; violeta/azul → verde de acento; rojo → rosa; ámbar → amarillo. */
+  --color-slate-50:  #f3f6f4;  --color-slate-100: #e6ece8;  --color-slate-200: #cfd8d2;  --color-slate-300: #aab6ae;
+  --color-slate-400: #8d9a91;  --color-slate-500: #66736b;  --color-slate-600: #49554d;  --color-slate-700: #2a352d;
+  --color-slate-800: #18221b;  --color-slate-900: #0d140f;  --color-slate-950: #060a07;
+  --color-gray-400:  #8d9a91;  --color-gray-500:  #66736b;  --color-gray-600:  #49554d;
+  --color-violet-300: #a6f0b3; --color-violet-400: #7beb8d; --color-violet-500: #58e26f; --color-violet-600: #3cc455;
+  --color-purple-400: #7beb8d; --color-purple-500: #58e26f;
+  --color-blue-300:   #a6f0b3; --color-blue-400:   #7beb8d; --color-blue-500:   #58e26f; --color-blue-600: #3cc455;
+  --color-red-300:   #ff9ac4;  --color-red-400:   #ff7ab6;  --color-red-500:   #ff5fa8;  --color-red-600:  #e6408c;
+  --color-rose-300:  #ff9ac4;  --color-rose-400:  #ff7ab6;  --color-rose-500:  #ff5fa8;  --color-rose-600: #e6408c;
+  --color-amber-300: #f7e68c;  --color-amber-400: #f3d95c;  --color-amber-500: #e6c93a;
+  --color-yellow-400:#f3d95c;
+  --color-emerald-300:#a6f0b3; --color-emerald-400:#58e26f; --color-emerald-500:#3cc455; --color-emerald-600:#2fa646;
+
+  --color-risk-on:      #58e26f;
+  --color-risk-neutral: #f3d95c;
+  --color-risk-off:     #ff5fa8;
+  --color-zone-buy:     #58e26f;
+  --color-zone-neutral: #f3d95c;
+  --color-zone-sell:    #ff5fa8;
 }
 
 /* ── Base ─────────────────────────────────────────────────────────────────── */
-html {
-  color-scheme: dark;
-}
+html { color-scheme: dark; }
 
 body {
-  background-color: #060916;
+  background-color: #040705;
   background-image:
-    radial-gradient(ellipse 90% 55% at 50% -20%, rgba(109,40,217,0.13), transparent),
-    radial-gradient(ellipse 60% 40% at 90% 100%, rgba(6,182,212,0.04), transparent);
-  color: #e2e8f0;
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
+    radial-gradient(ellipse 80% 45% at 50% -10%, rgba(88, 226, 111, 0.10), transparent 70%),
+    radial-gradient(ellipse 70% 40% at 100% 100%, rgba(88, 226, 111, 0.05), transparent 70%);
+  background-attachment: fixed;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
   min-height: 100svh;
   -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'ss01', 'cv11';
 }
 
-/* iOS zoom fix */
-input, select, textarea {
-  font-size: 16px;
-}
+/* iOS: sin zoom al enfocar un campo */
+input, select, textarea { font-size: 16px; }
 
-/* ── Range input ──────────────────────────────────────────────────────────── */
+/* ── Controles ────────────────────────────────────────────────────────────── */
 input[type='range'] {
-  -webkit-appearance: none;
-  appearance: none;
-  height: 4px;
-  background: rgba(255,255,255,0.08);
-  border-radius: 9999px;
-  outline: none;
-  cursor: pointer;
+  -webkit-appearance: none; appearance: none; height: 4px;
+  background: rgba(255,255,255,0.08); border-radius: 9999px; outline: none; cursor: pointer;
 }
 input[type='range']::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: #7c3aed;
-  border: 2px solid rgba(124,58,237,0.4);
-  box-shadow: 0 0 8px rgba(124,58,237,0.5);
-  cursor: pointer;
-  transition: box-shadow 0.15s;
-}
-input[type='range']::-webkit-slider-thumb:hover {
-  box-shadow: 0 0 14px rgba(124,58,237,0.7);
+  -webkit-appearance: none; appearance: none; width: 20px; height: 20px; border-radius: 50%;
+  background: var(--color-accent); border: 3px solid var(--color-bg); box-shadow: 0 0 0 1px var(--color-accent); cursor: pointer;
 }
 input[type='range']::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: #7c3aed;
-  border: 2px solid rgba(124,58,237,0.4);
-  cursor: pointer;
+  width: 20px; height: 20px; border-radius: 50%; background: var(--color-accent); border: 3px solid var(--color-bg); cursor: pointer;
 }
 
-/* ── Animations ───────────────────────────────────────────────────────────── */
-.animate-fade-in {
-  animation: fadeIn 0.4s ease-out both;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(12px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
+/* ── Animaciones ──────────────────────────────────────────────────────────── */
+.animate-fade-in { animation: fadeIn 0.4s ease-out both; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes pulse-ring {
   0%   { box-shadow: 0 0 0 0 currentColor; opacity: 0.6; }
   70%  { box-shadow: 0 0 0 10px currentColor; opacity: 0; }
   100% { box-shadow: 0 0 0 0 currentColor; opacity: 0; }
 }
+.pulse-ring { animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
 
-.pulse-ring {
-  animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-/* ── Custom scrollbar ─────────────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 6px; }
+/* ── Scroll ───────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.08);
-  border-radius: 9999px;
-}
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 9999px; }
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
 
-/* ── Glass card ───────────────────────────────────────────────────────────── */
+/* ── Utilidades ───────────────────────────────────────────────────────────── */
 .glass {
-  background: rgba(8, 11, 28, 0.78);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(11, 18, 13, 0.78);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--color-line);
 }
-
-/* ── Tabular numbers ──────────────────────────────────────────────────────── */
-.tabular {
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum";
-}
-
-/* ── Gradient fade ────────────────────────────────────────────────────────── */
+.tabular, .num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
 .fade-bottom {
   mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
   -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
 }
+/* resplandor verde de la referencia (detrás de botones y datos clave) */
+.glow-accent { box-shadow: 0 0 36px -6px rgba(88, 226, 111, 0.55); }

@@ -1,703 +1,211 @@
-// Sección de Portfolio personal: registro de operaciones e inversiones
-import { sanitizeDecimal } from '../utils/decimalInput';
-import { operationIssues, priceFarFromMarket } from '../utils/opChecks';
-import { useState, useEffect, useRef } from 'react';
-import { Card } from './ui/Card';
-import { Button } from './ui/Button';
-import { Badge } from './ui/Badge';
-import {
-  PlusCircle, Trash2, TrendingUp, TrendingDown, Wallet,
-  BarChart3, RefreshCw, ChevronDown, ChevronUp, AlertCircle,
-  DollarSign, ShoppingCart, ArrowRight, Sparkles
-} from 'lucide-react';
+// Pantalla Portfolio: cuánto tenés y cómo viene (arriba), dónde está repartido, cómo evolucionó, tu actividad,
+// cómo te fue con las señales y el detalle de cada operación. Se agrega una operación desde un botón, en una hoja.
+import { useEffect, useMemo, useState } from 'react';
+import { Plus, ChevronDown, Trash2, AlertCircle, Calculator, ArrowDownLeft, ArrowUpRight, Wallet } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import { useAuthStore } from '../store/authStore';
-import { PortfolioChart } from './PortfolioChart';
-import { BacktestStats } from './BacktestStats';
+import { fetchCryptoData } from '../services/api';
+import { Panel } from './ui/Panel';
+import { Section } from './ui/Section';
+import { Rows } from './ui/Row';
+import { Delta } from './ui/Delta';
+import { PillTabs } from './ui/PillTabs';
+import { DonutChart } from './ui/DonutChart';
+import { DotGrid } from './ui/DotGrid';
+import { PortfolioEvolution } from './PortfolioEvolution';
+import { SignalResults } from './SignalResults';
+import { OperationSheet } from './OperationSheet';
+import { CashSplitSheet } from './CashSplitSheet';
+import { portfolioTotals, activityCells, fmtCompact } from '../utils/portfolioView';
+import { operationIssues } from '../utils/opChecks';
+import { entityColor } from '../utils/chartColors';
+import { assetName, assetTab, fmtPrice, fmtUnits } from '../utils/signalView';
 
-const EXCHANGES = ['Binance', 'Coinbase', 'Kraken', 'OKX', 'Bybit', 'Manual'];
+const money = (v, d = 0) => `$${Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d })}`;
+const signed = (v) => `${v >= 0 ? '+' : '-'}${money(v)}`;
+const shortDay = (iso) => new Date(`${String(iso).slice(0, 10)}T12:00:00`).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' });
 
-const EMPTY_FORM = {
-  date: new Date().toISOString().split('T')[0],
-  symbol: 'BTC',
-  type: 'BUY',
-  amount_usd: '',
-  price: '',
-  units: '',
-  fee: '',
-  exchange: 'Binance',
-  notes: ''
-};
-
-// ── Cash Distribution Card ─────────────────────────────────────────────────────
-// Completely isolated — uses its own local state and its own API call.
-// Never modifies the global userState or currentDecision.
-
-function CashDistributionCard() {
-  const { selectedCrypto, portfolio } = useAppStore();
-
-  const [inputVal, setInputVal]   = useState('');
-  const [loading, setLoading]     = useState(false);
-  const [ops, setOps]             = useState([]);
-  const [recommendation, setRecommendation] = useState('');
-  const [cashLabel, setCashLabel] = useState(0);
-
-  const handleApply = async () => {
-    const val = parseFloat(inputVal);
-    if (!val || val <= 0) return;
-    setLoading(true);
-    setOps([]);
-    setRecommendation('');
-    try {
-      const portfolioSummary = portfolio.summary.find(s => s.symbol === selectedCrypto) ?? null;
-      const portfolioContext = portfolioSummary?.units > 0 ? {
-        ...portfolioSummary,
-        hasPosition:  portfolioSummary.units > 0,
-        currentPrice: null,
-        allBuys:      [],
-        executedBuys: []
-      } : null;
-      const { requestDecision } = await import('../services/api');
-      const data = await requestDecision(selectedCrypto, 100, 'inversion', val, portfolioContext);
-      const buyOps = data?.decision?.operations?.filter(o => o.type === 'BUY') ?? [];
-      setOps(buyOps);
-      setRecommendation(data?.decision?.recommendation ?? '');
-      setCashLabel(val);
-    } catch {
-      setOps([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+function Position({ p, i }) {
+  const up = (p.pnl ?? 0) >= 0;
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-sm p-5 space-y-4">
-      {/* Header */}
-      <div className="flex items-center gap-2">
-        <Sparkles className="w-4 h-4 text-blue-400 shrink-0" />
-        <h3 className="text-sm font-semibold text-slate-300">Distribución de efectivo</h3>
+    <div className="flex items-center gap-4 py-3.5">
+      <span className="w-11 h-11 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0" style={{ background: entityColor(p.symbol, i) }}>{assetTab(p.symbol).slice(0, 4)}</span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-ink truncate">{assetName(p.symbol)}</p>
+        <p className="text-xs text-muted num truncate">{fmtUnits(p.units)} · promedio {p.avg ? fmtPrice(p.avg) : '—'}</p>
       </div>
-
-      {/* Cash input */}
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
-          <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
-          <input
-            type="number"
-            inputMode="decimal"
-            placeholder="¿Cuánto efectivo tenés disponible?"
-            value={inputVal}
-            onChange={e => setInputVal(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleApply()}
-            className="w-full pl-8 pr-3 py-2.5 text-sm bg-slate-900/60 border border-white/[0.08] rounded-xl text-slate-200
-                       placeholder:text-slate-600 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20"
-          />
-        </div>
-        <button
-          onClick={handleApply}
-          disabled={loading || !inputVal || parseFloat(inputVal) <= 0}
-          className="px-4 py-2.5 rounded-xl bg-violet-600/80 hover:bg-violet-600 text-white text-sm font-medium
-                     transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
-        >
-          {loading ? '...' : 'Calcular'}
-        </button>
+      <div className="text-right shrink-0">
+        <p className="text-sm font-bold text-ink num">{p.value != null ? money(p.value) : 'Sin precio'}</p>
+        {p.pnl != null && <p className={`text-xs font-semibold num ${up ? 'text-accent' : 'text-pink'}`}>{signed(p.pnl)} · {up ? '+' : ''}{p.pnlPct.toFixed(1)} %</p>}
       </div>
-
-      {/* Results */}
-      {ops.length > 0 && !loading && (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1">
-            <span>Distribución sugerida para <span className="text-slate-300 font-semibold">{selectedCrypto}</span></span>
-            <span className="tabular font-mono text-slate-400">
-              Efectivo: ${cashLabel.toLocaleString('en-US', { maximumFractionDigits: 0 })}
-            </span>
-          </div>
-          {ops.map((op, i) => (
-            <div key={i} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-emerald-500/5 border border-emerald-500/15">
-              <span className="w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center shrink-0
-                               border border-emerald-500/30 text-emerald-400">
-                {op.level}
-              </span>
-              <span className="text-sm text-slate-300 flex-1 truncate">{op.label}</span>
-              <div className="flex items-center gap-3 shrink-0 text-right">
-                {op.price && (
-                  <div>
-                    <p className="text-[9px] text-slate-600 mb-0.5">Precio</p>
-                    <p className="text-xs font-mono text-slate-400 tabular">
-                      ${op.price >= 1000
-                        ? Math.round(op.price).toLocaleString('en-US')
-                        : op.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}
-                    </p>
-                  </div>
-                )}
-                {op.usdAmount != null && (
-                  <div>
-                    <p className="text-[9px] text-slate-600 mb-0.5">Monto</p>
-                    <p className="text-sm font-semibold font-mono text-emerald-400 tabular">
-                      ${Math.round(op.usdAmount).toLocaleString('en-US')}
-                    </p>
-                  </div>
-                )}
-                {op.percentage != null && (
-                  <div>
-                    <p className="text-[9px] text-slate-600 mb-0.5">% capital</p>
-                    <p className="text-xs text-slate-400 tabular">{op.percentage}%</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-          {recommendation && (
-            <p className="text-xs text-slate-500 italic pt-1 leading-relaxed">{recommendation}</p>
-          )}
-        </div>
-      )}
-
-      {loading && (
-        <div className="flex items-center justify-center py-4 text-slate-500 text-sm gap-2">
-          <RefreshCw className="w-4 h-4 animate-spin" />
-          Calculando distribución...
-        </div>
-      )}
-
-      {ops.length === 0 && !loading && (
-        <p className="text-xs text-slate-600 text-center py-2">
-          Ingresá tu capital disponible para ver cómo distribuirlo entre las zonas de compra.
-        </p>
-      )}
     </div>
   );
 }
 
-// ── Main section ───────────────────────────────────────────────────────────────
-
-export function PortfolioSection() {
-  const { portfolio, loadPortfolio, addOperation, removeOperation, cryptoData } = useAppStore();
-  const { currentUser } = useAuthStore();
-  const SUPPORTED_SYMBOLS = currentUser?.cryptos ?? ['BTC', 'PAXG'];
-  const { operations, summary, loading } = portfolio;
-
-  const [showForm, setShowForm] = useState(false);
-  const formRef = useRef(null);
-  const [form, setForm] = useState(EMPTY_FORM);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(null);
-  const [expandedOp, setExpandedOp] = useState(null);
-
-  // Al abrir el formulario, llevar la vista hasta él (la lista de operaciones/gráficos lo empujaba fuera de pantalla)
-  useEffect(() => {
-    if (!showForm) return;
-    const id = requestAnimationFrame(() => {
-      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-    return () => cancelAnimationFrame(id);
-  }, [showForm]);
-  const [filterSymbol, setFilterSymbol] = useState('ALL');
-  const [visibleCount, setVisibleCount] = useState(3);
-
-  useEffect(() => {
-    // No-op si ya hay datos cacheados (ver appStore.loadPortfolio)
-    loadPortfolio();
-  }, []);
-
-  // Calcular units automáticamente si se tienen amount y price
-  const handleFormChange = (field, value) => {
-    setForm(prev => {
-      const updated = { ...prev, [field]: value };
-      if ((field === 'amount_usd' || field === 'price') && updated.amount_usd && updated.price) {
-        const units = parseFloat(updated.amount_usd) / parseFloat(updated.price);
-        if (!isNaN(units)) updated.units = units.toFixed(8);
-      }
-      if (field === 'units' && updated.units && updated.price) {
-        const amount = parseFloat(updated.units) * parseFloat(updated.price);
-        if (!isNaN(amount)) updated.amount_usd = amount.toFixed(2);
-      }
-      return updated;
-    });
-  };
-
-  const handleSubmit = async () => {
-    setError(null);
-    if (!form.date || !form.amount_usd || !form.price || !form.units) {
-      setError('Completa todos los campos requeridos');
-      return;
-    }
-    const issues = operationIssues({ amount_usd: form.amount_usd, price: form.price, units: form.units });
-    if (issues.length) { setError(`${issues[0]} Revisá los tres campos.`); return; }
-    const marketPrice = cryptoData?.[form.symbol]?.price;
-    if (priceFarFromMarket(form.price, marketPrice) &&
-        !window.confirm(`El precio que cargaste ($${parseFloat(form.price).toLocaleString('en-US')}) está muy lejos del precio actual de ${form.symbol} ($${Number(marketPrice).toLocaleString('en-US', { maximumFractionDigits: 2 })}). ¿Guardar igual?`)) return;
-    setSaving(true);
-    try {
-      await addOperation({
-        ...form,
-        amount_usd: parseFloat(form.amount_usd),
-        price: parseFloat(form.price),
-        units: parseFloat(form.units),
-        fee: parseFloat(form.fee) || 0
-      });
-      setForm(EMPTY_FORM);
-      setShowForm(false);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDelete = async (id) => {
-    try {
-      await removeOperation(id);
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  const filteredOps = filterSymbol === 'ALL'
-    ? operations
-    : operations.filter(o => o.symbol === filterSymbol);
-
-  const visibleOps = filteredOps.slice(0, visibleCount);
-  const hiddenCount = filteredOps.length - visibleOps.length;
-
-  // Reset al cambiar de filtro
-  useEffect(() => {
-    setVisibleCount(3);
-  }, [filterSymbol]);
-
-  const badOps = operations.filter(o => operationIssues(o).length > 0);
-
-  const currentPrices = {
-    BTC: cryptoData.BTC?.price,
-    ETH: cryptoData.ETH?.price,
-    PAXG: cryptoData.PAXG?.price
-  };
-
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-lg font-bold text-white shrink-0">Mi Portfolio</h2>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => loadPortfolio({ force: true })}
-            disabled={loading}
-            title="Recargar desde Firestore"
-            className="p-2 rounded-lg bg-slate-800/60 hover:bg-slate-700/60 border border-white/[0.06] transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 text-gray-400 ${loading ? 'animate-spin' : ''}`} />
-          </button>
-          <Button onClick={() => setShowForm(!showForm)} className="flex items-center gap-1.5 text-sm">
-            <PlusCircle className="w-4 h-4" />
-            <span className="hidden sm:inline">Agregar operación</span>
-            <span className="sm:hidden">Agregar</span>
-          </Button>
-        </div>
-      </div>
-
-      {/* Gráficos P&L + Velas */}
-      {operations.length > 0 && (
-        <PortfolioChart
-          operations={operations}
-          currentPrices={currentPrices}
-          symbols={SUPPORTED_SYMBOLS}
-        />
-      )}
-
-      {/* Resumen por símbolo — fila densa */}
-      {summary.length > 0 && (
-        <div className="space-y-2">
-          {summary.map(s => (
-            <SummaryCard key={s.symbol} summary={s} currentPrice={currentPrices[s.symbol]} />
-          ))}
-        </div>
-      )}
-
-      {summary.length === 0 && !loading && (
-        <Card className="text-center py-8 text-gray-500">
-          <Wallet className="w-8 h-8 mx-auto mb-2 opacity-40" />
-          <p>Aún no hay operaciones registradas.</p>
-          <p className="text-sm mt-1">Agrega tu primera compra o venta para ver el balance.</p>
-        </Card>
-      )}
-
-      {/* Distribución de efectivo — DCA sugerido */}
-      <CashDistributionCard />
-
-      {/* Formulario de nueva operación */}
-      {showForm && (
-        <div ref={formRef} className="scroll-mt-20">
-        <Card className="border border-blue-500/30">
-          <h3 className="text-sm font-semibold text-blue-400 mb-4">Nueva Operación</h3>
-
-          {error && (
-            <div className="flex items-center gap-2 text-red-400 text-sm mb-3 p-2 bg-red-500/10 rounded-lg">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              {error}
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {/* Fecha */}
-            <FormField label="Fecha *">
-              <input type="date" value={form.date}
-                onChange={e => handleFormChange('date', e.target.value)}
-                className={inputClass} />
-            </FormField>
-
-            {/* Símbolo */}
-            <FormField label="Activo *">
-              <select value={form.symbol}
-                onChange={e => handleFormChange('symbol', e.target.value)}
-                className={inputClass}>
-                {SUPPORTED_SYMBOLS.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </FormField>
-
-            {/* Tipo */}
-            <FormField label="Tipo *">
-              <div className="flex gap-2">
-                {['BUY', 'SELL'].map(t => (
-                  <button
-                    key={t}
-                    onClick={() => handleFormChange('type', t)}
-                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors
-                      ${form.type === t
-                        ? t === 'BUY' ? 'bg-emerald-500/15 border border-emerald-500/50 text-emerald-400'
-                          : 'bg-rose-500/15 border border-rose-500/50 text-rose-400'
-                        : 'bg-slate-800/60 border border-white/[0.08] text-slate-400 hover:border-white/[0.15]'
-                      }`}
-                  >
-                    {t === 'BUY' ? 'Compra' : 'Venta'}
-                  </button>
-                ))}
-              </div>
-            </FormField>
-
-            {/* Precio */}
-            <FormField label="Precio por unidad (USD) *">
-              <NumericInput value={form.price} prefix="$"
-                onChange={v => handleFormChange('price', v)} placeholder="Ej: 95000" />
-            </FormField>
-
-            {/* Monto USD */}
-            <FormField label="Monto total (USD) *">
-              <NumericInput value={form.amount_usd} prefix="$"
-                onChange={v => handleFormChange('amount_usd', v)} placeholder="Ej: 500" />
-            </FormField>
-
-            {/* Unidades */}
-            <FormField label="Unidades *">
-              <NumericInput value={form.units}
-                onChange={v => handleFormChange('units', v)} placeholder="Auto-calculado" />
-            </FormField>
-
-            {/* Fee */}
-            <FormField label={`Fee / Comisión (${form.symbol})`}>
-              <NumericInput value={form.fee}
-                onChange={v => handleFormChange('fee', v)} placeholder="0" />
-            </FormField>
-
-            {/* Exchange */}
-            <FormField label="Exchange">
-              <select value={form.exchange}
-                onChange={e => handleFormChange('exchange', e.target.value)}
-                className={inputClass}>
-                {EXCHANGES.map(e => <option key={e} value={e}>{e}</option>)}
-              </select>
-            </FormField>
-
-            {/* Notas */}
-            <FormField label="Notas">
-              <input type="text" value={form.notes}
-                onChange={e => handleFormChange('notes', e.target.value)}
-                placeholder="Opcional"
-                className={inputClass} />
-            </FormField>
-          </div>
-
-          <div className="flex gap-2 mt-4">
-            <Button onClick={handleSubmit} disabled={saving} className="flex-1">
-              {saving ? 'Guardando...' : 'Guardar Operación'}
-            </Button>
-            <button
-              onClick={() => { setShowForm(false); setError(null); }}
-              className="px-4 py-2 rounded-xl bg-slate-800/60 text-slate-400 hover:bg-slate-700/60 border border-white/[0.06] transition-colors text-sm"
-            >
-              Cancelar
-            </button>
-          </div>
-        </Card>
-        </div>
-      )}
-
-      {/* Historial de señales IA */}
-      <BacktestStats />
-
-      {/* Lista de operaciones */}
-      {operations.length > 0 && (
-        <div className="space-y-3">
-          {badOps.length > 0 && (
-            <div className="flex items-start gap-2 text-amber-300 text-xs p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>
-                {badOps.length === 1 ? 'Hay 1 operación' : `Hay ${badOps.length} operaciones`} con datos que no cuadran (monto distinto de unidades × precio):{' '}
-                {badOps.slice(0, 3).map(o => `${o.symbol} ${o.date}`).join(', ')}{badOps.length > 3 ? '…' : ''}. Deforman el costo promedio y el P&L: abrila y eliminala si es un error.
-              </span>
-            </div>
-          )}
-          {/* Filtro por símbolo */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-gray-500">Filtrar:</span>
-            {['ALL', ...SUPPORTED_SYMBOLS].map(s => (
-              <button
-                key={s}
-                onClick={() => setFilterSymbol(s)}
-                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors
-                  ${filterSymbol === s
-                    ? 'bg-violet-500/15 text-violet-400 border border-violet-500/40'
-                    : 'bg-slate-800/50 text-slate-500 hover:text-slate-300 border border-white/[0.05]'
-                  }`}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-
-          <div className="relative">
-            <div className="space-y-2">
-              {visibleOps.map(op => (
-                <OperationRow
-                  key={op.id}
-                  op={op}
-                  expanded={expandedOp === op.id}
-                  onToggle={() => setExpandedOp(expandedOp === op.id ? null : op.id)}
-                  onDelete={() => handleDelete(op.id)}
-                />
-              ))}
-            </div>
-
-            {/* Fade inferior cuando hay más operaciones ocultas */}
-            {hiddenCount > 0 && (
-              <div
-                className="absolute inset-x-0 bottom-0 h-14 pointer-events-none"
-                style={{
-                  background: 'linear-gradient(to bottom, transparent 0%, rgba(8, 12, 24, 0.75) 55%, rgba(8, 12, 24, 0.97) 100%)'
-                }}
-              />
-            )}
-          </div>
-
-          {/* Paginación: ver más / ver menos */}
-          {filteredOps.length > 3 && (
-            <div className="flex items-center justify-center gap-3 pt-2">
-              {hiddenCount > 0 && (
-                <button
-                  onClick={() => setVisibleCount(c => c + 3)}
-                  className="text-sm text-violet-400 hover:text-violet-300 transition-colors flex items-center gap-1"
-                >
-                  <ChevronDown className="w-4 h-4" />
-                  Ver más ({hiddenCount} restante{hiddenCount === 1 ? '' : 's'})
-                </button>
-              )}
-              {visibleCount > 3 && (
-                <button
-                  onClick={() => setVisibleCount(3)}
-                  className="text-sm text-gray-500 hover:text-gray-400 transition-colors flex items-center gap-1"
-                >
-                  <ChevronUp className="w-4 h-4" />
-                  Ver menos
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Sub-componentes ────────────────────────────────────────────────────────────
-
-function SummaryCard({ summary, currentPrice }) {
-  const hasPrice     = currentPrice != null;
-  const currentValue = hasPrice ? summary.units * currentPrice : null;
-  const pnl          = hasPrice ? currentValue - summary.netInvested : null;
-  const pnlPct       = hasPrice && summary.netInvested > 0 ? (pnl / summary.netInvested) * 100 : null;
-  const isProfit     = pnl >= 0;
-
-  return (
-    <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-slate-900/50 border border-white/[0.05] hover:border-white/[0.1] transition-colors">
-      {/* Símbolo */}
-      <div className="flex flex-col shrink-0 min-w-[64px]">
-        <span className="font-bold text-white text-sm leading-tight">{summary.symbol}</span>
-        <span className="text-[10px] text-slate-500">{summary.operations} op.</span>
-      </div>
-
-      {/* Métricas en línea — colapsa en móvil mostrando lo crítico */}
-      <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-x-3 gap-y-1 text-xs min-w-0">
-        <InlineMetric label="Unidades"  value={formatUnits(summary.units)} />
-        <InlineMetric label="Invertido" value={`$${summary.netInvested.toLocaleString('en-US', { maximumFractionDigits: 0 })}`} />
-        {currentValue != null && (
-          <InlineMetric label="Valor"   value={`$${currentValue.toLocaleString('en-US', { maximumFractionDigits: 0 })}`} />
-        )}
-        {summary.avgBuyPrice > 0 && (
-          <InlineMetric label="Avg. compra" value={formatPrice(summary.avgBuyPrice)} className="hidden sm:block" />
-        )}
-      </div>
-
-      {/* P&L destacado a la derecha */}
-      {pnl != null && (
-        <div className={`shrink-0 text-right ${isProfit ? 'text-emerald-400' : 'text-red-400'}`}>
-          <div className="flex items-center gap-1 justify-end font-bold tabular text-sm">
-            {isProfit ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-            {isProfit ? '+' : ''}{pnl.toLocaleString('en-US', { maximumFractionDigits: 0, style: 'currency', currency: 'USD' })}
-          </div>
-          {pnlPct != null && (
-            <div className="text-[10px] opacity-70 tabular">{isProfit ? '+' : ''}{pnlPct.toFixed(1)}%</div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function InlineMetric({ label, value, className = '' }) {
-  return (
-    <div className={`min-w-0 ${className}`}>
-      <p className="text-[10px] text-slate-500 truncate leading-tight">{label}</p>
-      <p className="text-xs text-slate-200 font-semibold truncate tabular">{value}</p>
-    </div>
-  );
-}
-
-function OperationRow({ op, expanded, onToggle, onDelete }) {
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const isBuy = op.type === 'BUY';
-  const color = isBuy ? 'text-emerald-400' : 'text-rose-400';
-  const bg = isBuy ? 'bg-emerald-500/[0.05] border-emerald-500/20' : 'bg-rose-500/[0.05] border-rose-500/20';
-
-  return (
-    <div className={`rounded-lg border ${bg} overflow-hidden`}>
-      <div
-        className="flex items-center gap-2 sm:gap-3 p-3 cursor-pointer hover:bg-white/5 transition-colors"
-        onClick={onToggle}
-      >
-        {/* Badge tipo */}
-        <Badge color={isBuy ? 'green' : 'red'} size="sm">{op.type}</Badge>
-
-        {/* Símbolo + fecha */}
-        <div className="flex-1 min-w-0">
-          <span className="font-semibold text-white text-sm">{op.symbol}</span>
-          <span className="text-gray-500 text-xs ml-1.5">{op.date}</span>
-          {operationIssues(op).length > 0 && <span className="ml-1.5 text-amber-400 text-xs" title={operationIssues(op)[0]}>⚠ no cuadra</span>}
-        </div>
-
-        {/* Monto + unidades */}
-        <div className="text-right shrink-0 max-w-[120px] sm:max-w-none">
-          <p className={`text-sm font-mono font-semibold ${color} truncate`}>
-            ${parseFloat(op.amount_usd).toLocaleString('en-US', { maximumFractionDigits: 0 })}
-          </p>
-          <p className="text-xs text-gray-500 truncate">{formatUnits(op.units)} @ {formatPrice(op.price)}</p>
-        </div>
-
-        {/* Toggle */}
-        <div className="text-gray-600 shrink-0">
-          {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-        </div>
-      </div>
-
-      {/* Detalle expandido */}
-      {expanded && (
-        <div className="px-3 pb-3 border-t border-white/5">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3 text-xs">
-            <Metric label="Exchange" value={op.exchange || 'N/A'} />
-            <Metric label="Fee" value={op.fee > 0 ? `$${op.fee}` : 'Sin fee'} />
-            <Metric label="Precio" value={formatPrice(op.price)} />
-            {op.notes && <Metric label="Notas" value={op.notes} />}
-          </div>
-          {confirmingDelete ? (
-            <div className="mt-3 flex items-center gap-3">
-              <span className="text-xs text-red-400">¿Eliminar esta operación?</span>
-              <button
-                onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                className="text-xs px-2.5 py-1 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
-              >
-                Confirmar
-              </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); setConfirmingDelete(false); }}
-                className="text-xs px-2.5 py-1 rounded-lg bg-white/5 text-gray-400 hover:bg-white/10 transition-colors"
-              >
-                Cancelar
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={(e) => { e.stopPropagation(); setConfirmingDelete(true); }}
-              className="mt-3 flex items-center gap-1.5 text-xs text-red-400/70 hover:text-red-400 transition-colors"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              Eliminar operación
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────────────
-
-function FormField({ label, children, className = '' }) {
-  return (
-    <div className={`space-y-1 ${className}`}>
-      <label className="text-xs text-slate-500">{label}</label>
-      {children}
-    </div>
-  );
-}
-
-function NumericInput({ value, onChange, placeholder, prefix }) {
-  return (
-    <div className="relative">
-      {prefix && <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">{prefix}</span>}
-      <input
-        type="text"
-        inputMode="decimal"
-        value={value}
-        onChange={e => onChange(sanitizeDecimal(e.target.value))}
-        placeholder={placeholder}
-        className={`${inputClass} ${prefix ? 'pl-6' : ''}`}
-      />
-    </div>
-  );
-}
-
-function Metric({ label, value }) {
+function OperationItem({ op, expanded, onToggle, onDelete }) {
+  const [confirming, setConfirming] = useState(false);
+  const buy = op.type === 'BUY';
+  const bad = operationIssues(op).length > 0;
   return (
     <div>
-      <p className="text-xs text-slate-500">{label}</p>
-      <p className="text-sm text-slate-200 font-medium">{value}</p>
+      <button onClick={onToggle} className="w-full flex items-center gap-4 py-3.5 text-left">
+        <span className={`w-11 h-11 rounded-full flex items-center justify-center shrink-0 ${buy ? 'bg-accent/15 text-accent' : 'bg-pink/15 text-pink'}`}>
+          {buy ? <ArrowDownLeft className="w-5 h-5" /> : <ArrowUpRight className="w-5 h-5" />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-ink">{buy ? 'Compra' : 'Venta'} {assetTab(op.symbol)}{bad && <span className="ml-2 text-xs font-medium text-warn">no cuadra</span>}</p>
+          <p className="text-xs text-muted num truncate">{shortDay(op.date)} · {fmtUnits(parseFloat(op.units))} @ {fmtPrice(parseFloat(op.price))}</p>
+        </div>
+        <p className={`text-sm font-bold num shrink-0 ${buy ? 'text-ink' : 'text-pink'}`}>{buy ? '' : '+'}{money(parseFloat(op.amount_usd))}</p>
+        <ChevronDown className={`w-4 h-4 text-faint shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+      </button>
+      {expanded && (
+        <div className="pb-4 pl-[60px] space-y-3 text-xs text-muted">
+          <p>{[op.exchange || 'Manual', op.fee > 0 ? `comisión ${op.fee}` : 'sin comisión', op.notes].filter(Boolean).join(' · ')}</p>
+          {bad && <p className="text-warn leading-relaxed">El monto no coincide con unidades × precio: deforma tu promedio y el P&L. Si es un error, eliminala.</p>}
+          {confirming ? (
+            <div className="flex items-center gap-2">
+              <span className="text-pink">¿Eliminar?</span>
+              <button onClick={onDelete} className="px-3.5 py-1.5 rounded-full bg-pink text-bg font-semibold">Sí, eliminar</button>
+              <button onClick={() => setConfirming(false)} className="px-3.5 py-1.5 rounded-full bg-panel-2 text-ink">Cancelar</button>
+            </div>
+          ) : (
+            <button onClick={() => setConfirming(true)} className="flex items-center gap-1.5 text-pink/80 hover:text-pink"><Trash2 className="w-3.5 h-3.5" />Eliminar operación</button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-function formatPrice(price) {
-  if (!price) return 'N/A';
-  const p = parseFloat(price);
-  if (p >= 1000) return '$' + p.toLocaleString('en-US', { maximumFractionDigits: 0 });
-  return '$' + p.toLocaleString('en-US', { maximumFractionDigits: 4 });
-}
+export function PortfolioSection() {
+  const { portfolio, removeOperation, cryptoData } = useAppStore();
+  const currentUser = useAuthStore(s => s.currentUser);
+  const symbols = currentUser?.cryptos?.filter(s => s !== 'XAUUSDT') ?? ['BTC', 'PAXG'];
+  const { operations, summary, loading } = portfolio;
 
-function formatUnits(units) {
-  if (!units) return '0';
-  const u = parseFloat(units);
-  if (u >= 1) return u.toFixed(4);
-  if (u >= 0.001) return u.toFixed(6);
-  return u.toFixed(8);
-}
+  const [formOpen, setFormOpen] = useState(false);
+  const [splitOpen, setSplitOpen] = useState(false);
+  const [filter, setFilter] = useState('ALL');
+  const [visible, setVisible] = useState(5);
+  const [expanded, setExpanded] = useState(null);
+  const [error, setError] = useState(null);
 
-const inputClass = 'w-full bg-slate-900/70 border border-white/[0.08] rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 placeholder-slate-600';
+  // Precios de todo lo que tenés: el store solo trae el activo abierto en Inicio, así que el resto se pide acá.
+  const [extra, setExtra] = useState({});
+  const held = summary.filter(s => s.units > 1e-9).map(s => s.symbol).join(',');
+  useEffect(() => {
+    let off = false;
+    held.split(',').filter(sym => sym && !cryptoData[sym]?.price && !extra[sym]).forEach(sym => {
+      fetchCryptoData(sym).then(d => { if (!off && Number.isFinite(d?.price)) setExtra(e => ({ ...e, [sym]: d.price })); }).catch(() => {});
+    });
+    return () => { off = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [held]);
+  const prices = useMemo(() => ({ ...extra, ...Object.fromEntries(Object.entries(cryptoData).filter(([, v]) => v?.price).map(([k, v]) => [k, v.price])) }), [cryptoData, extra]);
+  const totals = useMemo(() => portfolioTotals(summary, prices), [summary, prices]);
+  const activity = useMemo(() => activityCells(operations), [operations]);
+  const bad = operations.filter(o => operationIssues(o).length > 0);
+  const shown = operations.filter(o => filter === 'ALL' || o.symbol === filter);
+  const slice = shown.slice(0, visible);
+  const up = (totals.pnl ?? 0) >= 0;
+
+  const remove = async (id) => { try { await removeOperation(id); setExpanded(null); } catch (e) { setError(e.message); } };
+
+  if (operations.length === 0 && !loading) {
+    return (
+      <div className="space-y-6">
+        <Panel className="text-center py-14 space-y-4">
+          <span className="mx-auto w-14 h-14 rounded-full bg-accent/15 text-accent flex items-center justify-center"><Wallet className="w-6 h-6" /></span>
+          <div><p className="text-lg font-bold text-ink">Todavía no cargaste operaciones</p><p className="text-sm text-muted mt-1">Cargá tu primera compra o venta y acá vas a ver cuánto tenés y cómo viene.</p></div>
+          <button onClick={() => setFormOpen(true)} className="px-6 py-3.5 rounded-full bg-accent text-accent-ink font-bold glow-accent">Agregar operación</button>
+        </Panel>
+        <OperationSheet open={formOpen} onClose={() => setFormOpen(false)} symbols={symbols} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8">
+      {/* Balance */}
+      <section>
+        <p className="text-sm text-muted">Tus posiciones valen</p>
+        <div className="flex items-end justify-between gap-3 mt-1">
+          <p className="text-[48px] leading-none font-bold text-ink tracking-tight">{totals.value != null ? money(totals.value) : '—'}</p>
+          <button onClick={() => setFormOpen(true)} aria-label="Agregar operación" className="w-14 h-14 rounded-full bg-accent text-accent-ink flex items-center justify-center glow-accent shrink-0"><Plus className="w-6 h-6" /></button>
+        </div>
+        {totals.pnl != null && (
+          <div className="flex items-center gap-3 mt-3 flex-wrap">
+            <Delta value={totals.pnlPct} />
+            <span className={`text-sm font-semibold num ${up ? 'text-accent' : 'text-pink'}`}>{signed(totals.pnl)}</span>
+            <span className="text-sm text-muted">sobre {money(totals.invested)} invertidos</span>
+          </div>
+        )}
+        {totals.unpriced > 0 && <p className="text-xs text-warn mt-2">Falta el precio de {totals.unpriced} activo{totals.unpriced === 1 ? '' : 's'}: no se suma al total. Actualizá para reintentar.</p>}
+        {totals.realized !== 0 && <p className="text-xs text-muted mt-2">Ganancia ya realizada con ventas: <span className="num font-semibold text-ink">{signed(totals.realized)}</span></p>}
+      </section>
+
+      {error && <div className="flex items-start gap-2 text-pink text-sm p-3.5 bg-pink/10 rounded-2xl"><AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />{error}</div>}
+
+      {/* Distribución + posiciones */}
+      {totals.positions.length > 0 && (
+        <Section title="Distribución">
+          <Panel className="space-y-2">
+            {totals.value != null && totals.positions.length > 0 && (
+              <div className="flex items-center justify-center gap-6 py-2 flex-wrap">
+                <DonutChart size={168} thickness={22} top="Total" bottom={fmtCompact(totals.value)}
+                  segments={totals.positions.filter(p => p.value != null).map((p, i) => ({ label: p.symbol, value: p.value, color: entityColor(p.symbol, i) }))} />
+                <ul className="space-y-2.5 min-w-[130px]">
+                  {totals.positions.filter(p => p.value != null).map((p, i) => (
+                    <li key={p.symbol} className="flex items-center gap-2.5 text-sm">
+                      <i className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: entityColor(p.symbol, i) }} />
+                      <span className="text-muted flex-1">{assetTab(p.symbol)}</span>
+                      <b className="text-ink num">{p.share.toFixed(0)} %</b>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <Rows>{totals.positions.map((p, i) => <Position key={p.symbol} p={p} i={i} />)}</Rows>
+          </Panel>
+        </Section>
+      )}
+
+      <Section title="Evolución"><Panel><PortfolioEvolution operations={operations} prices={prices} /></Panel></Section>
+
+      <Section title="Tu actividad">
+        <Panel className="space-y-3">
+          <DotGrid cells={activity} weeks={12} />
+          <p className="flex items-center gap-4 text-xs text-muted">
+            <span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full bg-accent" />Compra</span>
+            <span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full bg-pink" />Venta</span>
+            <span className="ml-auto">últimas 12 semanas</span>
+          </p>
+        </Panel>
+      </Section>
+
+      <SignalResults symbols={symbols} />
+
+      {/* Operaciones */}
+      <Section title="Operaciones" action={<button onClick={() => setSplitOpen(true)} className="flex items-center gap-1.5 text-xs font-semibold text-accent"><Calculator className="w-3.5 h-3.5" />Repartir USDT</button>}>
+        {bad.length > 0 && (
+          <div className="flex items-start gap-2.5 p-3.5 mb-3 rounded-2xl bg-warn/10 text-warn text-xs leading-relaxed">
+            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+            <span>{bad.length === 1 ? 'Hay 1 operación' : `Hay ${bad.length} operaciones`} con datos que no cuadran ({bad.slice(0, 3).map(o => `${o.symbol} ${o.date}`).join(', ')}{bad.length > 3 ? '…' : ''}). Deforman el promedio y el P&L: abrila y eliminala si es un error.</span>
+          </div>
+        )}
+        {symbols.length > 1 && <div className="mb-3"><PillTabs options={[{ id: 'ALL', label: 'Todas' }, ...symbols.map(s => ({ id: s, label: assetTab(s) }))]} value={filter} onChange={(f) => { setFilter(f); setVisible(5); }} size="sm" layoutId="ops-filter" /></div>}
+        <Panel className="!py-1">
+          <Rows>{slice.map(op => <OperationItem key={op.id} op={op} expanded={expanded === op.id} onToggle={() => setExpanded(expanded === op.id ? null : op.id)} onDelete={() => remove(op.id)} />)}</Rows>
+          {shown.length === 0 && <p className="text-sm text-muted py-6 text-center">No hay operaciones de este activo.</p>}
+        </Panel>
+        {shown.length > visible && <button onClick={() => setVisible(v => v + 5)} className="mt-3 w-full py-3 rounded-full bg-panel border border-line text-sm font-semibold text-ink">Ver {Math.min(5, shown.length - visible)} más</button>}
+      </Section>
+
+      <OperationSheet open={formOpen} onClose={() => setFormOpen(false)} symbols={symbols} />
+      <CashSplitSheet open={splitOpen} onClose={() => setSplitOpen(false)} />
+    </div>
+  );
+}
 
 export default PortfolioSection;
