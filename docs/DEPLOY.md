@@ -30,7 +30,7 @@ y después *Run workflow* del deploy. Diagnóstico: `/api/health/deep` (configur
 - Los permisos de la cuenta de servicio para `firestore:rules/indexes` (Firebase Rules Admin / Cloud Datastore Index Admin) hay que otorgarlos si querés usar `deploy_firestore`.
 
 ## Checklist después de cada deploy (resumen del *Smoke test*)
-Debería decir: ✅ Web · ✅ API · ✅ Groq (la clave funciona) · versiones `p3 / p3 / p3-1` · ✅ COT desde la función · "Contexto de oro … faltan: nada" · Noticias 9/9 · Métricas PAXG con 200 · y **ningún aviso de calendario**. Si algo falla: `/api/health/deep` (config y frescura), `/api/health/ai`, `/api/health/news`, `/api/health/cot`.
+Debería decir: ✅ Web · ✅ API · ✅ Groq (la clave funciona) · versiones `p3 / p3 / p3-2` · ✅ COT desde la función · "Contexto de oro … faltan: nada" · Noticias 9/9 · Métricas PAXG con 200 · y **ningún aviso de calendario**. Si algo falla: `/api/health/deep` (config y frescura), `/api/health/ai`, `/api/health/news`, `/api/health/cot`.
 
 **Ojo con el cron:** GitHub desactiva los workflows programados (*News relay*) tras 60 días sin actividad en el repo. Si las noticias o el COT dejan de actualizarse, revisá Actions → *News relay* y reactivalo.
 

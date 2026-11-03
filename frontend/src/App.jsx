@@ -17,6 +17,7 @@ import { ProfileSettingsSheet } from './components/ProfileSettingsSheet';
 import { useZoneAlert } from './hooks/useZoneAlert';
 import { useUpcomingEvents } from './hooks/useUpcomingEvents';
 import { AUTO_REFRESH_INTERVAL } from './utils/constants';
+import { effectiveCashUsd } from './utils/cash';
 import { requestPermission, isSupported, getPermission } from './services/notifications';
 import { subscribeToPush } from './services/pushSubscription';
 import { getToken } from './services/session';
@@ -132,8 +133,8 @@ function AuthenticatedApp() {
   };
 
   const openDetails = (tab = 'signal') => setDetails({ open: true, tab });
-  const handleUserStateSubmit = ({ cashUsd, mode, targetPercent = null, feePercent = null }) => {
-    updateUserState({ cashUsd, mode, targetPercent, feePercent });
+  const handleUserStateSubmit = ({ cashUsd, mode, targetPercent = null, feePercent = null, installments = null }) => {
+    updateUserState({ cashUsd, mode, targetPercent, feePercent, installments });
     getDecision();
   };
 
@@ -175,7 +176,7 @@ function AuthenticatedApp() {
               <DashboardScreen
                 selectedCrypto={selectedCrypto} cryptos={profileCryptos} onSelect={setSelectedCrypto}
                 data={currentData} loading={loading} decision={currentDecision} decisionLoading={decisionLoading}
-                portfolioSummary={portfolioSummary} onOpenDetails={openDetails}
+                portfolioSummary={portfolioSummary} cashUsd={effectiveCashUsd(userState)} onOpenDetails={openDetails}
               />
             )}
             {screen === 'portfolio' && <PortfolioSection />}

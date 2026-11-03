@@ -5,7 +5,7 @@ Reglas de contenido: **una idea, un lugar** (la señal vive en la tarjeta de Ini
 
 ## Pantallas
 - **Inicio**: activos (píldoras) → precio + velas con zonas → *Señal* (Comprar / Esperar / Vender, monto y efecto en tu promedio) → resumen de mercado.
-- **Detalles** (hoja, 3 pestañas): *Señal* (órdenes y por qué), *Mercado* (lectura de la IA, macro, indicadores, noticias), *Posición* (tus USDT).
+- **Detalles** (hoja, 3 pestañas): *Señal* (órdenes, cuánto de tus USDT se usa y cuánto queda de reserva, y por qué), *Mercado* (lectura de la IA, macro, indicadores, noticias), *Posición* (tus USDT).
 - **Portfolio**: valor y P&L → distribución (donut) y posiciones → evolución → actividad → resultados de las señales → operaciones. Agregar operación y "Repartir USDT" son hojas.
 - **Asistente**: pantalla completa (tercer ícono de la barra). **Avisos** (campana): alerta de zona + próximos eventos macro.
 

@@ -48,7 +48,7 @@ export function applyCosts(operations = [], costsInput) {
 export function costNote({ totalCostUsd, dropped }, costsInput) {
   const c = normalizeCosts(costsInput);
   const parts = [];
-  if (totalCostUsd > 0) parts.push(` Costo estimado ≈ $${totalCostUsd.toFixed(2)} (supuesto: ${(c.feeBps / 100).toFixed(2)} % de comisión + ${(c.spreadBps / 100).toFixed(2)} % de spread; ajustable en el perfil).`);
-  if (dropped > 0) parts.push(` Se omitieron ${dropped} tramo(s) menores a $${c.minOrderUsd} para que el costo no se coma el beneficio.`);
+  if (totalCostUsd > 0) parts.push(` · Costo estimado ≈ $${totalCostUsd.toFixed(2)} (supuesto: ${(c.feeBps / 100).toFixed(2)} % de comisión + ${(c.spreadBps / 100).toFixed(2)} % de spread; ajustable en el perfil).`);
+  if (dropped > 0) parts.push(` · Se omitieron ${dropped} tramo(s) menores a $${c.minOrderUsd} para que el costo no se coma el beneficio.`);
   return parts.join('');
 }

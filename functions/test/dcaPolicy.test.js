@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DCA_POLICY, dcaCapFraction, tiltNote } from '../src/services/dcaPolicy.js';
+import { DCA_POLICY, dcaCapFraction, tiltNote, normalizeInstallments, buyBudgetUsd, tranchePlan, pacingNote } from '../src/services/dcaPolicy.js';
 import { modulation } from '../src/backtest/dcaSim.js';
 
 test('el mapeo desplegado es exactamente el evaluado en el backtest (modulation con los mismos parámetros)', () => {
@@ -43,4 +43,86 @@ test('tiltNote: describe el ajuste con honestidad (efecto chico) y no dice nada 
   assert.match(tiltNote({ multiplier: 1.2 }), /efecto chico/);
   assert.match(tiltNote({ multiplier: 0.8 }), /×0\.80/);
   assert.equal(tiltNote({ multiplier: 1 }), '');
+});
+
+// ── p3-2: ritmo de compra ───────────────────────────────────────────────────────
+
+test('p3-2: la cuota base es 1/N de los USDT y el tilt acotado (el evaluado) la modula', () => {
+  assert.equal(DCA_POLICY.version, 'p3-2');
+  assert.equal(DCA_POLICY.baseFraction, 0.25);
+  for (const n of [1, 2, 4, 8, 12]) {
+    const r = dcaCapFraction(0, { installments: n });
+    assert.equal(r.installments, n);
+    assert.equal(r.capFraction, Math.round((1 / n) * 1000) / 1000);          // score neutro ⇒ exactamente 1/N
+  }
+  // el caso real: score −0.59 con 4 compras ⇒ ×1.295 sobre el 25 % (antes: 97 % de TODO el efectivo)
+  const r = dcaCapFraction(-0.59);
+  assert.equal(r.multiplier, 1.295);
+  assert.equal(r.capFraction, 0.324);
+});
+
+test('p3-2: con la cuota por defecto ninguna señal pasa del 37.5 % (25 % × el tope del tilt 1.5)', () => {
+  for (let s = -3; s <= 3; s += 0.1) assert.ok(dcaCapFraction(s).capFraction <= 0.375 + 1e-9, `score ${s}`);
+  assert.equal(dcaCapFraction(-3).capFraction, 0.375);
+  assert.equal(dcaCapFraction(3).capFraction, 0.125);                          // y no baja de ×0.5
+});
+
+test('p3-2: una sola compra reproduce el comportamiento anterior (hasta el 100 %) y N altos no bajan del piso', () => {
+  assert.equal(dcaCapFraction(-1, { installments: 1 }).capFraction, 1);        // clamp a 100 %
+  assert.ok(dcaCapFraction(1, { installments: 12 }).capFraction >= DCA_POLICY.minFraction);
+});
+
+test('p3-2: sin tilt (BTC/ETH) el multiplicador es ×1 y el score no se registra', () => {
+  const r = dcaCapFraction(-0.9, { tilt: false });
+  assert.equal(r.multiplier, 1);
+  assert.equal(r.capFraction, 0.25);
+  assert.equal(r.score, null);
+  assert.equal(r.tilt, false);
+});
+
+test('normalizeInstallments: entero 1–12; ausente o inválido ⇒ 4', () => {
+  assert.equal(normalizeInstallments(undefined), 4);
+  assert.equal(normalizeInstallments(null), 4);
+  assert.equal(normalizeInstallments(''), 4);
+  assert.equal(normalizeInstallments('abc'), 4);
+  assert.equal(normalizeInstallments(NaN), 4);
+  assert.equal(normalizeInstallments('6'), 6);
+  assert.equal(normalizeInstallments(5.6), 6);
+  assert.equal(normalizeInstallments(0), 1);
+  assert.equal(normalizeInstallments(-3), 1);
+  assert.equal(normalizeInstallments(500), 12);
+});
+
+test('buyBudgetUsd: cuota × efectivo, con piso (una orden mínima) y techo (el efectivo)', () => {
+  assert.equal(buyBudgetUsd(333, 0.324), 333 * 0.324);
+  assert.equal(buyBudgetUsd(30, 0.25), 10);                 // 7.5 → piso de una orden mínima
+  assert.equal(buyBudgetUsd(6, 0.25), 6);                   // no alcanza ni la mínima: todo lo que hay (después se descarta por costos)
+  assert.equal(buyBudgetUsd(100, 5), 100);                  // nunca más que el efectivo
+  assert.equal(buyBudgetUsd(0, 0.25), 0);
+  assert.equal(buyBudgetUsd(-5, 0.25), 0);
+  assert.equal(buyBudgetUsd(1000, NaN), 10);                // fracción inválida ⇒ solo el piso
+  assert.equal(buyBudgetUsd(100, 0.1, 25), 25);             // mínimo configurable
+});
+
+test('tranchePlan: 3 tramos si el más chico llega al mínimo, si no 2, si no 1; sin capital se muestra el plan en %', () => {
+  assert.deepEqual(tranchePlan(250), [0.3, 0.3, 0.4]);
+  assert.deepEqual(tranchePlan(34), [0.3, 0.3, 0.4]);       // 0.3 × 34 = 10.2
+  assert.deepEqual(tranchePlan(33), [0.4, 0.6]);            // 0.3 × 33 = 9.9 < 10
+  assert.deepEqual(tranchePlan(25), [0.4, 0.6]);
+  assert.deepEqual(tranchePlan(24), [1]);                   // 0.4 × 24 = 9.6 < 10
+  assert.deepEqual(tranchePlan(10), [1]);
+  assert.deepEqual(tranchePlan(1000, 2), [0.4, 0.6]);       // esquema por % con poco efectivo: máximo 2
+  assert.deepEqual(tranchePlan(0), [0.3, 0.3, 0.4]);        // sin capital cargado: plan en %
+  assert.deepEqual(tranchePlan(0, 2), [0.4, 0.6]);
+  for (const b of [0, 5, 24, 40, 500]) assert.equal(Math.round(tranchePlan(b).reduce((a, w) => a + w, 0) * 100), 100);   // siempre suma 100 %
+});
+
+test('pacingNote: dice cuánto se usa y cuánto queda de reserva; calla sin efectivo o con una sola compra', () => {
+  const t = pacingNote({ cashUsd: 333, fraction: 0.324, installments: 4 });
+  assert.match(t, /~4 compras/);
+  assert.match(t, /esta usa el 32 % \(\$108 de \$333\)/);
+  assert.match(t, /\$225\) queda de reserva/);
+  assert.equal(pacingNote({ cashUsd: 0, fraction: 0.25, installments: 4 }), '');
+  assert.equal(pacingNote({ cashUsd: 333, fraction: 1, installments: 1 }), '');
+  assert.match(pacingNote({ cashUsd: 30, fraction: 0.25, installments: 4 }), /esta usa el 33 % \(\$10 de \$30\)/);   // el piso se refleja
 });

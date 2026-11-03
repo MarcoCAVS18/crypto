@@ -25,12 +25,16 @@ function Field({ label, hint, children }) {
 const inputCls = 'w-full bg-panel-2 border border-line rounded-2xl px-4 py-3 text-ink placeholder:text-faint focus:outline-none focus:border-accent/60 focus:ring-1 focus:ring-accent/60';
 const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
 
-export function UserStateInput({ onSubmit, initialMode = 'inversion', initialCashUsd = 0, initialTarget = '', initialFee = '', symbol = 'PAXG', busy = false }) {
+export const DEFAULT_INSTALLMENTS = 4;
+const INSTALLMENT_OPTIONS = [1, 2, 3, 4, 6, 8].map(n => ({ id: String(n), label: String(n) }));
+
+export function UserStateInput({ onSubmit, initialMode = 'inversion', initialCashUsd = 0, initialTarget = '', initialFee = '', initialInstallments = null, symbol = 'PAXG', busy = false }) {
   const isGold = symbol === 'PAXG';
   const [mode, setMode] = useState(initialMode);
   const [cash, setCash] = useState(initialCashUsd > 0 ? String(initialCashUsd) : '');
   const [target, setTarget] = useState(initialTarget ?? '');
   const [fee, setFee] = useState(initialFee ?? '');
+  const [installments, setInstallments] = useState(String(initialInstallments ?? DEFAULT_INSTALLMENTS));
   const [showMore, setShowMore] = useState(false);
 
   return (
@@ -42,7 +46,7 @@ export function UserStateInput({ onSubmit, initialMode = 'inversion', initialCas
           <input type="text" inputMode="decimal" value={cash} onChange={e => setCash(sanitizeDecimal(e.target.value))} placeholder="200"
             className="w-full bg-transparent text-4xl font-bold text-ink placeholder:text-faint focus:outline-none num" />
         </div>
-        <p className="text-xs text-muted mt-2 leading-relaxed">Solo el efectivo que te queda. Lo que ya compraste se toma del Portfolio.</p>
+        <p className="text-xs text-muted mt-2 leading-relaxed">Solo el efectivo que te queda. Lo que ya compraste se toma del Portfolio. Cada señal usa una parte (por defecto, un cuarto) y el resto queda de reserva.</p>
       </div>
 
       <div className="space-y-2">
@@ -54,6 +58,11 @@ export function UserStateInput({ onSubmit, initialMode = 'inversion', initialCas
         <button onClick={() => setShowMore(v => !v)} className="text-sm font-semibold text-accent">{showMore ? 'Ocultar ajustes' : 'Ajustes opcionales'}</button>
         {showMore && (
           <Panel tone="soft" className="mt-3 space-y-4">
+            <div className="space-y-2">
+              <p className="text-sm text-ink">Repartir mis USDT en … compras</p>
+              <PillTabs options={INSTALLMENT_OPTIONS} value={installments} onChange={setInstallments} size="sm" layoutId="installments-pill" />
+              <p className="text-xs text-muted leading-relaxed">Cada señal usa 1/N de tus USDT (ajustado por el contexto) y el resto queda de reserva. Con 4, una señal usa entre un 12 % y un 37 %; con 1, todo de una vez.</p>
+            </div>
             {isGold && (
               <Field label="Peso objetivo del oro (%)" hint="Con objetivo, el motor frena las compras si te pasás de la banda (±5 pts) y acelera si estás por debajo.">
                 <input type="text" inputMode="decimal" value={target} placeholder="Sin objetivo" onChange={e => setTarget(sanitizeDecimal(e.target.value))} className={inputCls} />
@@ -67,7 +76,7 @@ export function UserStateInput({ onSubmit, initialMode = 'inversion', initialCas
       </div>
 
       <button disabled={busy}
-        onClick={() => onSubmit({ cashUsd: num(cash) ?? 0, mode, targetPercent: isGold ? num(target) : num(initialTarget), feePercent: num(fee) })}
+        onClick={() => onSubmit({ cashUsd: num(cash) ?? 0, mode, targetPercent: isGold ? num(target) : num(initialTarget), feePercent: num(fee), installments: Number(installments) === DEFAULT_INSTALLMENTS ? null : Number(installments) })}
         className="w-full py-4 rounded-full bg-accent text-accent-ink font-bold text-base glow-accent disabled:opacity-50">
         {busy ? 'Analizando…' : 'Actualizar señal'}
       </button>

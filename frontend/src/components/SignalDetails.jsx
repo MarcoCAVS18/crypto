@@ -4,9 +4,9 @@ import { Panel } from './ui/Panel';
 import { Row, Rows } from './ui/Row';
 import { Section } from './ui/Section';
 import { DecisionExplainer } from './DecisionExplainer';
-import { fmtPrice, fmtUnits } from '../utils/signalView';
+import { fmtPrice, fmtUnits, usageOf } from '../utils/signalView';
 
-export function SignalDetails({ decision, marketData, symbol, onConfigure }) {
+export function SignalDetails({ decision, marketData, symbol, cashUsd = 0, onConfigure }) {
   if (!decision) {
     return (
       <Panel className="text-center space-y-4 py-10">
@@ -17,6 +17,7 @@ export function SignalDetails({ decision, marketData, symbol, onConfigure }) {
   }
   const ops = (decision.operations ?? []).filter(o => o.type === 'BUY' || o.type === 'SELL');
   const isBuy = ops[0]?.type !== 'SELL';
+  const usage = usageOf(decision.operations, cashUsd);
 
   return (
     <div className="space-y-7">
@@ -47,10 +48,24 @@ export function SignalDetails({ decision, marketData, symbol, onConfigure }) {
               ))}
             </Rows>
           </Panel>
+          {usage && (
+            <Panel tone="soft" className="mt-3 space-y-3">
+              <div className="flex items-baseline justify-between gap-3">
+                <p className="text-sm text-ink">Usás <b className="num">{fmtPrice(usage.usd, { decimals: 0 })}</b> de tus <b className="num">{fmtPrice(usage.cash, { decimals: 0 })}</b></p>
+                <p className="text-sm font-semibold text-accent num">{usage.pct} %</p>
+              </div>
+              <div className="h-2 rounded-full bg-panel-2 overflow-hidden" role="img" aria-label={`Usás el ${usage.pct} % de tus USDT`}>
+                <div className="h-full rounded-full bg-accent" style={{ width: `${Math.min(100, usage.pct)}%` }} />
+              </div>
+              <p className="text-xs text-muted leading-relaxed">
+                Reserva: <b className="text-ink num">{fmtPrice(usage.reserve, { decimals: 0 })}</b> para las próximas compras o por si el precio sigue bajando.
+              </p>
+            </Panel>
+          )}
         </Section>
       )}
 
-      <DecisionExplainer decision={decision} marketMode={marketData?.marketMode} symbol={symbol} />
+      <DecisionExplainer decision={decision} marketMode={marketData?.marketMode} symbol={symbol} cashUsd={cashUsd} />
     </div>
   );
 }

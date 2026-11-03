@@ -18,3 +18,10 @@ test('valores inválidos se ignoran (0, ≥100, negativos, NaN)', () => {
   assert.deepEqual(buildSettings({ targetPercent: 100 }), {});
   assert.deepEqual(buildSettings({ targetPercent: NaN, feePercent: NaN }), {});
 });
+
+test('cantidad de compras: entero 1–12 viaja al servidor; null, decimales o fuera de rango se ignoran', () => {
+  assert.deepEqual(buildSettings({ installments: 6 }), { installments: 6 });
+  assert.deepEqual(buildSettings({ installments: 1 }), { installments: 1 });
+  assert.deepEqual(buildSettings({ installments: 12, feePercent: 0.1 }), { installments: 12, costs: { feeBps: 10 } });
+  for (const bad of [null, undefined, 0, 13, 2.5, '4', NaN, -1]) assert.deepEqual(buildSettings({ installments: bad }), {}, String(bad));
+});

@@ -1,7 +1,7 @@
 // Motor de decisión: cruza market mode, zonas, indicadores y perfil del usuario
 
-import { dcaCapFraction, tiltNote, DCA_POLICY } from './dcaPolicy.js';
-import { applyCosts, costNote } from './costModel.js';
+import { dcaCapFraction, normalizeInstallments, buyBudgetUsd, tranchePlan, tiltNote, pacingNote, DCA_POLICY } from './dcaPolicy.js';
+import { applyCosts, costNote, normalizeCosts } from './costModel.js';
 import { weightState, trimPctToBand } from './portfolioPolicy.js';
 import { evaluateExit } from './exitPolicy.js';
 
@@ -51,7 +51,7 @@ export function makeDecision(marketMode, zones, currentPrice, userState, indicat
     // --- MODO TRADING: más agresivo, usa RSI como confirmación adicional ---
     ? decideTradingMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, portfolioContext, symbol)
     // --- MODO INVERSIÓN: conservador, largo plazo, usa P&L real del portfolio ---
-    : decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, portfolioContext, indicators, symbol, { target: userState.target ?? null, pullback: meta?.pullback ?? null });
+    : decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, portfolioContext, indicators, symbol, { target: userState.target ?? null, pullback: meta?.pullback ?? null, installments: userState.installments, costs: userState.costs });
 
   // Sin cash suficiente no se COMPRA (y el motivo relevante es ese). Las ventas siempre se
   // permiten (liberan cash): antes este gate bloqueaba también las salidas.
@@ -184,18 +184,29 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
   const isStrongProfit   = pnlPercent !== null && pnlPercent >= sellStrongPct;
   const sellMakesSense   = isGoodProfit || isStrongProfit;
 
-  // ── PAXG: tamaño del DCA (política respaldada por backtest, ver dcaPolicy.js) ──
-  // Antes la fracción SEGUÍA al score (más capital con score alto) y se recortaba por COT/tasa real/GVZ/tendencia:
-  // el backtest mostró que eso encarece el costo promedio, y esas señales ya forman parte del score (doble conteo).
-  // Ahora: base fija con un tilt acotado a comprar más en la debilidad.
-  const dcaPolicy = isPaxg ? dcaCapFraction(goldScore) : null;
+  // ── Tamaño del DCA: ritmo de compra + tilt acotado (política respaldada por backtest, ver dcaPolicy.js) ──
+  // Los USDT se reparten en N compras (4 por defecto): cada señal usa 1/N de lo que queda, nunca todo de golpe.
+  // En PAXG esa cuota se modula con el tilt validado (más peso a la debilidad, ×0.5–×1.5); BTC/ETH no tienen evidencia ⇒ ×1.
+  // Antes la fracción SEGUÍA al score y luego fue "75 % de todo el efectivo" (hasta 97 % con score bajo): ver dcaPolicy.js.
+  const installments = normalizeInstallments(ext.installments);
+  const minOrderUsd = normalizeCosts(ext.costs).minOrderUsd;
+  const cashAvailable = totalCapital > 0 ? totalCapital * (cashPercent / 100) : 0;
+  const dcaPolicy = dcaCapFraction(isPaxg ? goldScore : null, { installments, tilt: isPaxg });
   // Peso objetivo (opcional, solo PAXG): por debajo de la banda se acelera el DCA (×1.25, tope 100 %); por encima se frena (abajo)
   const weight = isPaxg ? weightState(allocationPercent ?? (totalCapital > 0 ? 0 : NaN), ext.target) : null;
   const bandBoost = weight?.state === 'below' ? 1.25 : 1;
-  const paxgCapFraction = dcaPolicy ? Math.min(DCA_POLICY.maxFraction, dcaPolicy.capFraction * bandBoost) : 1.0;
+  // `factor` recorta la cuota en contextos de entrada reducida (neutral con soporte macro, BTC/ETH en neutral)
+  const sized = (factor = 1) => {
+    const fraction = Math.min(DCA_POLICY.maxFraction, dcaPolicy.capFraction * bandBoost * factor);
+    return {
+      fraction,
+      policy: { ...dcaPolicy, capFraction: Math.round(fraction * 1000) / 1000, ...(bandBoost > 1 ? { bandBoost } : {}), ...(factor !== 1 ? { reduction: factor } : {}) },
+      pace: pacingNote({ cashUsd: cashAvailable, fraction, installments, minOrderUsd })
+    };
+  };
   const bandNote = weight?.state === 'below'
     ? ` Peso del oro ${weight.allocationPercent.toFixed(0)} % por debajo de tu banda objetivo (${weight.target.lower.toFixed(0)}–${weight.target.upper.toFixed(0)} %): DCA acelerado ×1.25.` : '';
-  const policyNote = (dcaPolicy ? tiltNote(dcaPolicy) : '') + bandNote;
+  const policyNote = (isPaxg ? tiltNote(dcaPolicy) : '') + bandNote;
 
   // ── PAXG: línea de contexto macro para recomendaciones ─────────────────────
   let macroLine = '';
@@ -285,15 +296,16 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
           'Si ese porcentaje no refleja tu efectivo real, ajustalo en "Tu posición".'
         );
       }
-      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', paxgCapFraction, executedBuys, symbol, ext.pullback);
+      const sz = sized();
+      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', sz.fraction, executedBuys, symbol, ext.pullback, minOrderUsd);
       if (ops.length > 0) {
         return {
           action: 'BUY',
           strength: 'moderado',
           reason: `PAXG en Risk OFF: se sigue acumulando la debilidad (DCA) — no comprar en estos momentos encareció el costo promedio en el backtest${pnlTag}${allocationLine}`,
-          recommendation: `Acumulación en tramos con tamaño acotado. El score bajo no es motivo para frenar el DCA del oro; sí para no apurarse: usá los tramos escalonados.${policyNote}${macroLine}${rrLine}`,
+          recommendation: `Acumulación en tramos con tamaño acotado. El score bajo no es motivo para frenar el DCA del oro; sí para no apurarse: usá los tramos escalonados.${policyNote}${sz.pace}${macroLine}${rrLine}`,
           operations: ops,
-          policy: dcaPolicy
+          policy: sz.policy
         };
       }
       return blocked(
@@ -321,14 +333,15 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
       dailyBias?.alignment !== 'bear';  // no entrar si el diario es claramente bajista
 
     if (macroFavorable && (isBelowAvg || currentZone === 'buy') && cashPercent >= 30) {
-      const capFrac = paxgCapFraction * 0.60; // entrada conservadora en contexto mixto
-      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', capFrac, executedBuys, symbol, ext.pullback);
+      const sz = sized(0.60); // entrada conservadora en contexto mixto
+      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', sz.fraction, executedBuys, symbol, ext.pullback, minOrderUsd);
       return {
         action: 'BUY',
         strength: 'moderado',
         reason: `PAXG: macro favorable en contexto técnico neutro${pnlTag}${macroLine}`,
-        recommendation: `Entrada reducida (60% del plan) aprovechando soporte macro. El entorno fundamental del oro justifica acumular pese al contexto técnico mixto.${macroLine}${rrLine}`,
-        operations: ops
+        recommendation: `Entrada reducida (60% de la cuota) aprovechando soporte macro. El entorno fundamental del oro justifica acumular pese al contexto técnico mixto.${sz.pace}${macroLine}${rrLine}`,
+        operations: ops,
+        policy: sz.policy
       };
     }
   }
@@ -341,7 +354,8 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
     const buyZoneOk      = currentZone === 'buy' && cashPercent >= 30;
 
     if (buyZoneOk || dcaOpportunity) {
-      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', paxgCapFraction, executedBuys, symbol, ext.pullback);
+      const sz = sized();
+      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', sz.fraction, executedBuys, symbol, ext.pullback, minOrderUsd);
       const isDca = dcaOpportunity && !buyZoneOk;
       const concentrationNote = isLightlyExposed
         ? ' Posición leve — buena oportunidad para construir posición.'
@@ -369,8 +383,7 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
           };
         }
 
-        const capitalDisponible = totalCapital > 0 ? totalCapital * (cashPercent / 100) : 0;
-        const addlAmount = capitalDisponible * 0.20;
+        const addlAmount = cashAvailable * 0.20;
         const addlOp = addlAmount > 0 ? [{
           level: 1,
           type: 'BUY',
@@ -396,10 +409,10 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
           ? `Precio por debajo del promedio de compra${pnlTag}${allocationLine}`
           : `Risk ON + zona de compra + ${cashPercent}% cash disponible${pnlTag}${allocationLine}`,
         recommendation: isDca
-          ? `Oportunidad de DCA: el precio está ${Math.abs(pnlPercent).toFixed(1)}% por debajo de tu promedio (${formatPrice(avgBuyPrice)}). Acumular en tramos reduce el precio promedio.${concentrationNote}${policyNote}${macroLine}${rrLine}`
-          : `Acumulación progresiva. Dividir entrada en 2-3 tramos para promediar precio.${concentrationNote}${policyNote}${macroLine}${rrLine}`,
+          ? `Oportunidad de DCA: el precio está ${Math.abs(pnlPercent).toFixed(1)}% por debajo de tu promedio (${formatPrice(avgBuyPrice)}). Acumular en tramos reduce el precio promedio.${concentrationNote}${policyNote}${sz.pace}${macroLine}${rrLine}`
+          : `Acumulación progresiva. Dividir entrada en 2-3 tramos para promediar precio.${concentrationNote}${policyNote}${sz.pace}${macroLine}${rrLine}`,
         operations: ops,
-        policy: dcaPolicy
+        policy: sz.policy
       };
     }
 
@@ -453,16 +466,17 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
     const normalBuy = currentZone === 'buy' && cashPercent >= 50;
 
     if (strongDca || normalBuy) {
-      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', isPaxg ? paxgCapFraction : 0.5, executedBuys, symbol, ext.pullback);
+      const sz = sized(isPaxg ? 1 : 0.5);      // BTC/ETH en contexto neutral: media cuota (como antes, la mitad del esquema pleno)
+      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', sz.fraction, executedBuys, symbol, ext.pullback, minOrderUsd);
       return {
         action: 'BUY',
         strength: 'moderado',
         reason: strongDca
           ? `Precio ${Math.abs(pnlPercent).toFixed(1)}% por debajo del promedio${pnlTag} — contexto mixto pero DCA válido`
           : `Zona de soporte con cash suficiente (${cashPercent}%)${pnlTag}`,
-        recommendation: `Entrada reducida — máximo ${Math.round((isPaxg ? paxgCapFraction : 0.5) * 100)}% del capital previsto. Contexto incierto, dividir en tramos.${policyNote}${macroLine}`,
+        recommendation: `Entrada reducida — máximo ${Math.round(sz.fraction * 100)}% de tus USDT. Contexto incierto, dividir en tramos.${policyNote}${sz.pace}${macroLine}`,
         operations: ops,
-        policy: dcaPolicy
+        policy: sz.policy
       };
     }
 
@@ -575,12 +589,14 @@ function decideTradingMode(marketMode, zones, currentPrice, cashPercent, rsi, to
  * Genera una lista de órdenes de compra escalonadas, filtrando niveles ya
  * ejecutados según compras registradas en el portfolio (tolerancia ±1.5%).
  *
- * @param {number} capitalFraction - fracción del capital disponible a usar (0-1)
+ * @param {number} capitalFraction - fracción del efectivo disponible que usa ESTA señal (0-1): la cuota del ritmo de compra
  * @param {Array}  executedBuys    - [{ price, amount_usd }] del portfolio
+ * @param {number} minOrderUsd     - monto mínimo de una orden: define el piso del presupuesto y cuántos tramos caben
  */
-function generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, mode, capitalFraction = 1.0, executedBuys = [], symbol = '', pullback = null) {
+function generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, mode, capitalFraction = 1.0, executedBuys = [], symbol = '', pullback = null, minOrderUsd = 10) {
   const capitalDisponible = totalCapital > 0 ? totalCapital * (cashPercent / 100) : 0;
-  const capitalAUsar = capitalDisponible * capitalFraction;
+  // Presupuesto de la señal: cuota × efectivo, con piso (una orden mínima) y techo (el efectivo)
+  const capitalAUsar = buyBudgetUsd(capitalDisponible, capitalFraction, minOrderUsd);
   const hasCapital = capitalAUsar > 0;
 
   // PAXG se mueve menos que BTC/ETH: nivel 2 a -1.5% (no -2%)
@@ -609,16 +625,23 @@ function generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, m
     return pending.map((op, i) => ({ ...op, level: i + 1 }));
   }
 
-  // Inversión: 3 o 2 niveles según cash disponible
-  const candidates = cashPercent >= 60
+  // Inversión: hasta 3 niveles (2 con poco efectivo en el esquema por %), y menos si el presupuesto no alcanza para que
+  // cada tramo llegue al mínimo de orden (si no, se descartaban después y podía quedar solo el tramo profundo).
+  const plan = tranchePlan(capitalAUsar, cashPercent >= 60 ? 3 : 2, minOrderUsd);
+  const pctOf = (w) => Math.round(w * 100);
+  const candidates = plan.length === 3
     ? [
-        buildBuyOp(0, 'tramo — ahora', level1Price, capitalAUsar * 0.30, hasCapital, 30),
-        buildBuyOp(0, `tramo — si baja a ${formatPrice(level2Price)}`, level2Price, capitalAUsar * 0.30, hasCapital, 30),
-        buildBuyOp(0, `tramo — nivel profundo (${formatPrice(level3Price)})`, level3Price, capitalAUsar * 0.40, hasCapital, 40)
+        buildBuyOp(0, 'tramo — ahora', level1Price, capitalAUsar * plan[0], hasCapital, pctOf(plan[0])),
+        buildBuyOp(0, `tramo — si baja a ${formatPrice(level2Price)}`, level2Price, capitalAUsar * plan[1], hasCapital, pctOf(plan[1])),
+        buildBuyOp(0, `tramo — nivel profundo (${formatPrice(level3Price)})`, level3Price, capitalAUsar * plan[2], hasCapital, pctOf(plan[2]))
+      ]
+    : plan.length === 2
+    ? [
+        buildBuyOp(0, 'tramo — ahora', level1Price, capitalAUsar * plan[0], hasCapital, pctOf(plan[0])),
+        buildBuyOp(0, `tramo — si baja a ${formatPrice(level2Price)}`, level2Price, capitalAUsar * plan[1], hasCapital, pctOf(plan[1]))
       ]
     : [
-        buildBuyOp(0, 'tramo — ahora', level1Price, capitalAUsar * 0.40, hasCapital, 40),
-        buildBuyOp(0, `tramo — si baja a ${formatPrice(level2Price)}`, level2Price, capitalAUsar * 0.60, hasCapital, 60)
+        buildBuyOp(0, 'tramo — ahora', level1Price, capitalAUsar, hasCapital, 100)
       ];
 
   const pending = candidates.filter(op => !alreadyDone(op.price));

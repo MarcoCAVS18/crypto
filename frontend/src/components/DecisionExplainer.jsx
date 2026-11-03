@@ -24,8 +24,8 @@ function FactorRow({ f }) {
   );
 }
 
-export function DecisionExplainer({ decision, marketMode, symbol }) {
-  const e = buildExplanation({ decision, marketMode, symbol });
+export function DecisionExplainer({ decision, marketMode, symbol, cashUsd = 0 }) {
+  const e = buildExplanation({ decision, marketMode, symbol, cashUsd });
   if (!e) return null;
   const mode = e.score ? modeView(e.score.mode) : null;
 

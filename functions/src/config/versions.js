@@ -17,7 +17,7 @@ export function getVersions() {
     revision: process.env.K_REVISION ?? null,          // revisión de Cloud Functions/Run en producción
     parameters: {
       aiWeight: AI_WEIGHT, modeEnter: MODE_THRESHOLD, modeExit: MODE_EXIT_THRESHOLD,
-      dcaTilt: DCA_POLICY.tilt, dcaBaseFraction: DCA_POLICY.baseFraction,
+      dcaTilt: DCA_POLICY.tilt, dcaBaseFraction: DCA_POLICY.baseFraction, dcaInstallments: DCA_POLICY.installments,
       eventRules: EVENT_RULES, exitRules: EXIT_RULES, defaultCosts: DEFAULT_COSTS
     }
   };

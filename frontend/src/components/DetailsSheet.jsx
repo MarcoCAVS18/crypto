@@ -19,7 +19,7 @@ export function DetailsSheet({ open, onClose, tab, onTabChange, marketData, deci
   return (
     <Sheet open={open} onClose={onClose} title={assetName(symbol)} scrollKey={`${symbol}-${current}`}
       header={<div className="px-5 pb-4"><PillTabs options={TABS} value={current} onChange={change} size="sm" layoutId="details-pill" /></div>}>
-      {current === 'signal' && <SignalDetails decision={decision} marketData={marketData} symbol={symbol} onConfigure={() => change('position')} />}
+      {current === 'signal' && <SignalDetails decision={decision} marketData={marketData} symbol={symbol} cashUsd={effectiveCashUsd(userState)} onConfigure={() => change('position')} />}
       {current === 'market' && marketData && <MarketDetails key={symbol} symbol={symbol} data={marketData} />}
       {current === 'position' && (
         <UserStateInput
@@ -30,6 +30,7 @@ export function DetailsSheet({ open, onClose, tab, onTabChange, marketData, deci
           initialCashUsd={effectiveCashUsd(userState)}
           initialTarget={userState.targetPercent ?? ''}
           initialFee={userState.feePercent ?? ''}
+          initialInstallments={userState.installments ?? null}
           symbol={symbol}
         />
       )}

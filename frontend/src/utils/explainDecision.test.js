@@ -48,7 +48,8 @@ test('buildExplanation (oro): cabecera, score, factores, tamaño por política, 
   assert.equal(e.headline.actionLabel, 'Comprar');
   assert.deepEqual(e.score, { value: -0.3, mode: 'risk_off', heldByHysteresis: true });
   assert.equal(e.factors[0].key, 'tenYear');
-  assert.match(e.sizing[0], /90 % del efectivo.*×1\.20.*comprar la debilidad/);
+  assert.match(e.sizing.join(' '), /usa el 90 % de tus USDT/);
+  assert.match(e.sizing.join(' '), /ajusta ×1\.20.*comprar la debilidad/);
   assert.deepEqual(e.adjustments.map(a => a.kind), ['calendar', 'costs', 'quality']);
   assert.match(e.adjustments[1].text, /\$1\.20/);
   assert.equal(e.issues[0].key, 'cot');
@@ -60,6 +61,29 @@ test('buildExplanation: BTC no muestra factores del oro ni advertencia; sin dato
   assert.deepEqual(e.factors, []); assert.equal(e.caveat, null); assert.deepEqual(e.reasons, ['r']);
   assert.equal(buildExplanation({}), null);
   // política neutra: sin texto de ajuste de peso
-  const n = buildExplanation({ symbol: 'PAXG', decision: { action: 'BUY', policy: { capFraction: 0.75, multiplier: 1.0 } } });
-  assert.match(n.sizing[0], /sin ajuste: score neutro/);
+  const n = buildExplanation({ symbol: 'PAXG', decision: { action: 'BUY', policy: { capFraction: 0.25, multiplier: 1.0 } } });
+  assert.match(n.sizing.join(' '), /Sin ajuste por el score \(neutro\)/);
+});
+
+test('buildExplanation: ritmo de compra — explica las N compras, cuánto se usa de los USDT y cuánto queda de reserva', () => {
+  const decision = {
+    action: 'BUY', policy: { capFraction: 0.324, multiplier: 1.295, installments: 4, tilt: true },
+    operations: [{ type: 'BUY', usdAmount: 32.4 }, { type: 'BUY', usdAmount: 32.4 }, { type: 'BUY', usdAmount: 43.2 }]
+  };
+  const e = buildExplanation({ symbol: 'PAXG', decision, cashUsd: 333 });
+  assert.equal(e.sizing.length, 3);
+  assert.match(e.sizing[0], /se reparten en ~4 compras.*1\/4.*queda de reserva/);
+  assert.match(e.sizing[1], /usa el 32 % de tus USDT: \$108 de \$333\. Te quedan \$225 de reserva/);
+  assert.match(e.sizing[2], /×1\.29.*comprar la debilidad/);
+  // sin USDT cargados: solo el porcentaje; con una sola compra no se explica el reparto
+  const noCash = buildExplanation({ symbol: 'PAXG', decision: { ...decision, operations: [] } });
+  assert.match(noCash.sizing[1], /^Esta compra usa el 32 % de tus USDT\.$/);
+  const one = buildExplanation({ symbol: 'PAXG', decision: { ...decision, policy: { ...decision.policy, installments: 1 } }, cashUsd: 333 });
+  assert.doesNotMatch(one.sizing.join(' '), /se reparten en/);
+});
+
+test('buildExplanation: BTC/ETH (sin tilt) no hablan del score en el tamaño', () => {
+  const e = buildExplanation({ symbol: 'BTC', decision: { action: 'BUY', policy: { capFraction: 0.25, multiplier: 1, installments: 4, tilt: false }, operations: [{ type: 'BUY', usdAmount: 250 }] }, cashUsd: 1000 });
+  assert.match(e.sizing.join(' '), /usa el 25 % de tus USDT: \$250 de \$1,000/);
+  assert.doesNotMatch(e.sizing.join(' '), /score/);
 });

@@ -81,7 +81,7 @@ const decisionFor = (symbol, body) => {
   const ops = OPS.filter(o => o.symbol === symbol);
   const units = ops.reduce((a, o) => a + o.units, 0), cost = ops.reduce((a, o) => a + o.amount_usd, 0);
   const ctx = body.portfolioContext ?? { hasPosition: units > 0, units, avgBuyPrice: cost / units, costBasis: cost, netInvested: cost, currentPrice: m.price, allBuys: [], executedBuys: [] };
-  const d = makeDecision(m.marketMode, m.zones, m.price, { cashPercent: Number(body.cashPercent) || 100, mode: body.mode || 'inversion', totalCapital: Number(body.totalCapital) || 0, costs: body.settings?.costs, target: body.settings?.target ?? null }, m.indicators, symbol, ctx, { candlesSource: 'real' });
+  const d = makeDecision(m.marketMode, m.zones, m.price, { cashPercent: Number(body.cashPercent) || 100, mode: body.mode || 'inversion', totalCapital: Number(body.totalCapital) || 0, costs: body.settings?.costs, installments: body.settings?.installments, target: body.settings?.target ?? null }, m.indicators, symbol, ctx, { candlesSource: 'real' });
   return { symbol, price: m.price, marketMode: m.marketMode, zones: m.zones, decision: d };
 };
 
