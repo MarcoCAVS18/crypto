@@ -67,6 +67,10 @@ Pre-declaradas antes de correr; 8 comparaciones más (4 variantes × pre-hold-ou
 
 Conclusión: el único efecto consistente es *no seguir al score* (comprar más cuando es bajo); el mapeo acotado conserva ~la mitad del efecto del mapeo amplio (×0.25–×2: −0.80 %) con menos riesgo. El efecto (~0.3 %) equivale a ~3 comisiones de Binance spot (0.1 %) y es menor que una comisión de un exchange minorista (~0.5 %): con Binance el costo del DCA no se come el beneficio, pero conviene no multiplicar operaciones (por eso los tramos < $10 se descartan).
 
+### Qué NO dice este resultado (aclaración de p3-2)
+
+El tilt se evaluó con **gasto igualado y compras semanales**: reparte un gasto fijo entre compras. No hay evidencia, en ningún run, sobre **cuánto del efectivo total** conviene desplegar en una señal ni sobre cuántas compras usar para vaciarlo. Eso es una decisión de manejo de riesgo (los USDT se reparten en N compras, 4 por defecto) y no debe presentarse como "respaldada por el backtest". `p3-1` la presentaba así por error (base 75 % del efectivo + tilt hasta 97 %).
+
 ## Límites conocidos
 
 - GC=F ≠ PAXG (base de futuros, sesión de negociación distinta); el ratio oro/plata usa futuros.

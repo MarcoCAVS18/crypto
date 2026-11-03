@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { actionView, modeView, strengthDots, fmtPrice, fmtUnits, summarizeOps, calcDcaEffect, totalDcaEffect, rsiTag, zoneView, dataStatus, assetName, assetTab } from './signalView.js';
+import { actionView, modeView, strengthDots, fmtPrice, fmtUnits, summarizeOps, calcDcaEffect, totalDcaEffect, usageOf, rsiTag, zoneView, dataStatus, assetName, assetTab } from './signalView.js';
 
 test('acción y modo: textos y tonos; desconocidos caen en esperar / neutral', () => {
   assert.equal(actionView('BUY').word, 'Comprar'); assert.equal(actionView('SELL').tone, 'pink');
@@ -39,4 +39,14 @@ test('RSI, zona, datos y nombres', () => {
   assert.equal(dataStatus({ goldContext: { dataHealth: { missing: [], stale: [] } } }).text, 'Al día');
   assert.equal(dataStatus({}).known, false);
   assert.equal(assetName('PAXG'), 'Oro · PAXG'); assert.equal(assetName('SOL'), 'SOL'); assert.equal(assetTab('XAUUSDT'), 'XAUT');
+});
+
+test('usageOf: cuánto de los USDT usa la compra y cuánto queda de reserva', () => {
+  const ops = [{ type: 'BUY', usdAmount: 32.4 }, { type: 'BUY', usdAmount: 32.4 }, { type: 'BUY', usdAmount: 43.2 }];
+  assert.deepEqual(usageOf(ops, 333), { usd: 108, cash: 333, pct: 32, reserve: 225 });
+  assert.equal(usageOf(ops, 0), null);                                        // sin USDT cargados
+  assert.equal(usageOf([{ type: 'BUY', usdAmount: null }], 333), null);       // sin montos
+  assert.equal(usageOf([{ type: 'SELL', percentage: 30 }], 333), null);       // ventas no usan USDT
+  assert.equal(usageOf([], 333), null);
+  assert.equal(usageOf([{ type: 'BUY', usdAmount: 400 }], 333).reserve, 0);   // decisión vieja con menos efectivo: nunca negativa
 });

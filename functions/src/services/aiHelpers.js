@@ -26,10 +26,12 @@ const logBucket = (x, pct) => (x > 0 ? Math.round(Math.log(x) / Math.log(1 + pct
  * Antes usaba baldes de $500 sobre el precio (pensados para BTC): en PAXG el insight casi nunca
  * se refrescaba y podía mostrar un P&L viejo. Ahora los baldes son relativos (precio ~0.5 %,
  * promedio ~1 %) e incluye la acción, porque el texto la menciona.
+ * El texto también nombra los USDT disponibles y cuánto de ellos usa la compra (ritmo de compra): si cambian, la nota cambia.
  */
-export function insightCacheKey(symbol, price, portfolioContext, action) {
+export function insightCacheKey(symbol, price, portfolioContext, action, { cashUsd = 0, plannedUsd = 0 } = {}) {
   const pb = logBucket(price, 0.005);
   const ab = logBucket(portfolioContext?.avgBuyPrice ?? 0, 0.01);
   const cb = Math.round((portfolioContext?.costBasis ?? portfolioContext?.netInvested ?? 0) / 100);
-  return `portinsight_${String(symbol).toUpperCase()}_${action ?? 'NA'}_${pb}_${ab}_${cb}`;
+  const usd = `${logBucket(cashUsd, 0.05)}-${logBucket(plannedUsd, 0.05)}`;
+  return `portinsight_${String(symbol).toUpperCase()}_${action ?? 'NA'}_${pb}_${ab}_${cb}${cashUsd || plannedUsd ? `_${usd}` : ''}`;
 }

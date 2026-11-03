@@ -32,6 +32,7 @@ const BAR_FULL = 0.25;   // aporte para el que la barra se llena (el mayor peso 
 
 const fin = Number.isFinite;
 const pctText = (x) => `${Math.round(x * 100)} %`;
+const money = (x) => `$${Math.round(x).toLocaleString('en-US')}`;
 
 /** Aporte de cada componente al score, ordenado por peso absoluto. */
 export function scoreFactors(components) {
@@ -83,7 +84,7 @@ export function dataIssues({ sources = null, dataQuality = null, headlinesSource
 /**
  * @param {{ decision?: object|null, marketMode?: object|null, symbol?: string }} p
  */
-export function buildExplanation({ decision = null, marketMode = null, symbol = '' } = {}) {
+export function buildExplanation({ decision = null, marketMode = null, symbol = '', cashUsd = 0 } = {}) {
   if (!decision && !marketMode) return null;
   const isGold = String(symbol).toUpperCase() === 'PAXG';
   const gc = marketMode?.goldContext ?? null;
@@ -100,14 +101,22 @@ export function buildExplanation({ decision = null, marketMode = null, symbol = 
 
   const factors = isGold ? scoreFactors(marketMode?.components) : [];
 
-  // Tamaño: política de DCA (solo oro) + ajustes posteriores
+  // Tamaño: ritmo de compra (tus USDT repartidos en N compras) + ajuste por score (solo oro) + ajustes posteriores
   const sizing = [];
   const p = decision?.policy;
   if (p && fin(p.capFraction)) {
-    const adj = fin(p.multiplier) && Math.abs(p.multiplier - 1) >= 0.02
-      ? ` (ajuste ×${p.multiplier.toFixed(2)} por el score: ${p.multiplier > 1 ? 'algo más' : 'algo menos'} de peso a ${p.multiplier > 1 ? 'comprar la debilidad' : 'comprar con el contexto fuerte'})`
-      : ' (sin ajuste: score neutro)';
-    sizing.push(`Se despliega hasta el ${pctText(p.capFraction)} del efectivo asignado${adj}.`);
+    const n = fin(p.installments) ? p.installments : null;
+    if (n && n > 1) sizing.push(`Tus USDT se reparten en ~${n} compras: cada señal usa 1/${n} de lo que te queda (ajustado por el contexto) y el resto queda de reserva por si el precio sigue bajando.`);
+    const buys = (decision?.operations ?? []).filter(o => o?.type === 'BUY' && fin(o.usdAmount));
+    const planned = buys.reduce((s, o) => s + o.usdAmount, 0);
+    sizing.push(planned > 0 && cashUsd > 0
+      ? `Esta compra usa el ${pctText(planned / cashUsd)} de tus USDT: ${money(planned)} de ${money(cashUsd)}. Te quedan ${money(Math.max(0, cashUsd - planned))} de reserva.`
+      : `Esta compra usa el ${pctText(p.capFraction)} de tus USDT.`);
+    if (p.tilt !== false) {
+      sizing.push(fin(p.multiplier) && Math.abs(p.multiplier - 1) >= 0.02
+        ? `El score actual la ajusta ×${p.multiplier.toFixed(2)}: ${p.multiplier > 1 ? 'algo más' : 'algo menos'} de peso a ${p.multiplier > 1 ? 'comprar la debilidad' : 'comprar con el contexto fuerte'} (efecto chico, acotado entre ×0.5 y ×1.5).`
+        : 'Sin ajuste por el score (neutro).');
+    }
   }
   const adjustments = [];
   const cr = decision?.calendarRisk;

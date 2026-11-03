@@ -25,7 +25,8 @@ export const useAppStore = create(
         cashUsd:      null,    // USDT disponibles para invertir (un solo dato; antes: capital total × % de efectivo)
         mode:         'inversion',
         targetPercent: null,   // peso objetivo del oro (%) — opcional
-        feePercent:    null    // comisión por orden (%) — opcional (por defecto 0.5)
+        feePercent:    null,   // comisión por orden (%) — opcional (por defecto 0.5)
+        installments:  null    // en cuántas compras se reparten los USDT — opcional (el servidor usa 4)
       },
 
       // Decisión actual

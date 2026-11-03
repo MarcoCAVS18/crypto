@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { ArrowRight } from 'lucide-react';
 import { Panel } from './ui/Panel';
 import { Spinner } from './ui/Spinner';
-import { actionView, strengthDots, summarizeOps, totalDcaEffect, fmtPrice } from '../utils/signalView';
+import { actionView, strengthDots, summarizeOps, totalDcaEffect, usageOf, fmtPrice } from '../utils/signalView';
 
 const GLOW = { accent: 'rgba(88,226,111,0.16)', warn: 'rgba(243,217,92,0.12)', pink: 'rgba(255,95,168,0.14)' };
 
@@ -16,7 +16,7 @@ function Dots({ n, bg }) {
   );
 }
 
-export function SignalCard({ symbol, decision, loading, portfolioSummary, onOpenDetails, onConfigure }) {
+export function SignalCard({ symbol, decision, loading, portfolioSummary, cashUsd = 0, onOpenDetails, onConfigure }) {
   if (loading) {
     return <Panel className="flex items-center justify-center py-12"><Spinner /></Panel>;
   }
@@ -33,6 +33,7 @@ export function SignalCard({ symbol, decision, loading, portfolioSummary, onOpen
   const view = actionView(decision.action);
   const ops = summarizeOps(decision.operations);
   const effect = ops.type === 'BUY' ? totalDcaEffect(decision.operations, portfolioSummary) : null;
+  const usage = usageOf(decision.operations, cashUsd);
 
   return (
     <motion.div key={`${decision.action}-${decision.strength}`} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
@@ -50,7 +51,7 @@ export function SignalCard({ symbol, decision, loading, portfolioSummary, onOpen
             <div className="rounded-2xl bg-panel-2/70 border border-line p-3.5">
               <p className="text-xs text-muted">{ops.type === 'BUY' ? 'Comprar hasta' : 'Vender'}</p>
               <p className="text-2xl font-bold text-ink mt-0.5">{ops.totalUsd != null ? fmtPrice(ops.totalUsd, { decimals: 0 }) : `${ops.count} tramos`}</p>
-              <p className="text-xs text-muted mt-0.5">{ops.totalUsd != null ? `en ${ops.count} ${ops.count === 1 ? 'tramo' : 'tramos'}` : 'cargá tus USDT para ver el monto'}</p>
+              <p className="text-xs text-muted mt-0.5">{ops.totalUsd != null ? `en ${ops.count} ${ops.count === 1 ? 'tramo' : 'tramos'}${usage ? ` · el ${usage.pct} % de tus ${fmtPrice(usage.cash, { decimals: 0 })}` : ''}` : 'cargá tus USDT para ver el monto'}</p>
             </div>
             <div className="rounded-2xl bg-panel-2/70 border border-line p-3.5">
               <p className="text-xs text-muted">{effect ? 'Tu promedio' : 'Precio de entrada'}</p>

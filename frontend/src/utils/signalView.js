@@ -45,6 +45,16 @@ export function summarizeOps(operations = []) {
   };
 }
 
+/**
+ * Cuánto de tus USDT usa la compra y cuánto queda de reserva. null si no hay compra con monto o no hay efectivo cargado.
+ * @returns {{ usd:number, cash:number, pct:number, reserve:number }|null}
+ */
+export function usageOf(operations = [], cashUsd = 0) {
+  const s = summarizeOps(operations);
+  if (s.type !== 'BUY' || s.totalUsd == null || !(cashUsd > 0)) return null;
+  return { usd: s.totalUsd, cash: cashUsd, pct: Math.round((s.totalUsd / cashUsd) * 100), reserve: Math.max(0, cashUsd - s.totalUsd) };
+}
+
 /** Efecto de una compra en el costo promedio de la posición (null si no hay posición o faltan datos). */
 export function calcDcaEffect(op, summary) {
   if (!summary?.hasPosition || !summary.avgBuyPrice || !summary.units || !op?.usdAmount || !op?.price) return null;

@@ -121,17 +121,48 @@ ${numbered}`;
   }));
 }
 
-export async function generatePortfolioInsight(asset, currentPrice, indicators, portfolioCtx, userState, decision, recentDecisions = []) {
+/**
+ * Cómo se le cuenta a la IA el dinero del usuario. El cliente trabaja en "modo solo USDT" (cashPercent = 100, totalCapital =
+ * USDT disponibles): ahí `totalCapital` NO es el capital total. Dividir lo invertido por ese número daba "2100 % invertido ·
+ * −2000 % libre en cash" y la IA concluía "bajo cash disponible" aunque el sistema propusiera usar casi todo.
+ * Con el esquema viejo (capital total × % de efectivo) se mantiene el texto de antes.
+ * @returns {string} línea para el prompt (sin guion inicial)
+ */
+export function describeCapital({ netInvested, totalCapital, cashPercent, portfolioValueUsd, decision, assetValue }) {
+  const usd = (n) => `$${Math.round(n).toLocaleString('en-US')}`;
+  const cashOnly = Number(cashPercent) >= 100;
 
+  if (!cashOnly) {
+    const deployedPct = totalCapital > 0 ? (netInvested / totalCapital) * 100 : null;
+    return deployedPct != null
+      ? `${usd(netInvested)} de ${usd(totalCapital)} totales (${deployedPct.toFixed(1)}% invertido · ${(100 - deployedPct).toFixed(1)}% libre en cash)`
+      : `${usd(netInvested)} USD invertidos`;
+  }
+
+  const parts = [`Efectivo (USDT) disponible para comprar: ${usd(totalCapital)}`];
+  parts.push(`lo invertido en este activo costó ${usd(netInvested)}${assetValue > 0 ? ` y hoy vale ${usd(assetValue)}` : ''}`);
+  if (portfolioValueUsd > 0) {
+    const total = portfolioValueUsd + totalCapital;
+    parts.push(`todas sus posiciones valen ${usd(portfolioValueUsd)} (los USDT son el ${((totalCapital / total) * 100).toFixed(1)} % de su capital total de ${usd(total)})`);
+  }
+  const buys = (decision?.operations ?? []).filter(o => o.type === 'BUY' && Number.isFinite(o.usdAmount));
+  if (decision?.action === 'BUY' && buys.length && totalCapital > 0) {
+    const planned = buys.reduce((a, o) => a + o.usdAmount, 0);
+    parts.push(`esta compra propone usar ${usd(planned)} (${Math.round((planned / totalCapital) * 100)} % de los USDT) y deja ${usd(Math.max(0, totalCapital - planned))} de reserva`);
+  }
+  return parts.join(' · ');
+}
+
+/** Prompt de la nota personalizada de posición. Exportado para tests (no llama a la red). */
+export function buildPortfolioInsightPrompt({ asset, currentPrice, indicators = {}, portfolioCtx, userState = {}, decision, recentDecisions = [] }, now = Date.now()) {
   const { units = 0, avgBuyPrice = 0, allBuys = [] } = portfolioCtx;
   const netInvested = portfolioCtx.costBasis ?? portfolioCtx.netInvested ?? 0;
-  const { totalCapital = 0 } = userState;
+  const { totalCapital = 0, cashPercent } = userState;
 
   const unrealizedPnl    = (currentPrice - avgBuyPrice) * units;
   const unrealizedPnlPct = avgBuyPrice > 0 ? ((currentPrice - avgBuyPrice) / avgBuyPrice) * 100 : 0;
-  const deployedPct      = totalCapital > 0 ? (netInvested / totalCapital) * 100 : null;
   const firstBuy         = allBuys[0] ?? null;
-  const daysSinceFirst   = firstBuy ? Math.floor((Date.now() - new Date(firstBuy.date).getTime()) / 86400000) : null;
+  const daysSinceFirst   = firstBuy ? Math.floor((now - new Date(firstBuy.date).getTime()) / 86400000) : null;
   const assetName        = asset === 'PAXG' ? 'PAXG (oro tokenizado)' : asset === 'ETH' ? 'Ethereum (ETH)' : 'Bitcoin (BTC)';
 
   const buysText = allBuys.length > 0
@@ -144,14 +175,16 @@ export async function generatePortfolioInsight(asset, currentPrice, indicators, 
 
   const pnlSign  = unrealizedPnl >= 0 ? '+' : '';
   const pnlColor = unrealizedPnl >= 0 ? 'GANANCIA' : 'PÉRDIDA';
-  const deployed = deployedPct != null
-    ? `$${Math.round(netInvested).toLocaleString('en-US')} de $${Math.round(totalCapital).toLocaleString('en-US')} totales (${deployedPct.toFixed(1)}% invertido · ${(100 - deployedPct).toFixed(1)}% libre en cash)`
-    : `$${Math.round(netInvested).toLocaleString('en-US')} USD invertidos`;
+  const deployed = describeCapital({
+    netInvested, totalCapital, cashPercent, decision,
+    portfolioValueUsd: Number(portfolioCtx.portfolioValueUsd),
+    assetValue: units * currentPrice
+  });
 
   const decisionsText = recentDecisions.length > 0
     ? recentDecisions.map(d => {
         const ts = d.timestamp?.toDate ? d.timestamp.toDate() : new Date(d.timestamp);
-        const daysAgo = Math.floor((Date.now() - ts.getTime()) / 86400000);
+        const daysAgo = Math.floor((now - ts.getTime()) / 86400000);
         const timeLabel = daysAgo === 0 ? 'hoy' : daysAgo === 1 ? 'ayer' : `hace ${daysAgo}d`;
         const priceAtDecision = d.price ?? 0;
         const pnlPct = priceAtDecision > 0 ? ((currentPrice - priceAtDecision) / priceAtDecision) * 100 : null;
@@ -160,7 +193,7 @@ export async function generatePortfolioInsight(asset, currentPrice, indicators, 
       }).join('\n')
     : '  Sin historial disponible';
 
-  const prompt = `Sos un asesor de inversiones personal especializado en criptoactivos y oro.
+  return `Sos un asesor de inversiones personal especializado en criptoactivos y oro.
 
 ACTIVO: ${assetName}
 
@@ -187,15 +220,19 @@ ${decisionsText}
 Escribí UNA nota personalizada (máximo 3 oraciones cortas) en español rioplatense que:
 1. Mencione el estado real de la posición (P&L, tiempo acumulando, distribución de compras)
 2. Diga si la señal tiene sentido para ESTE usuario específicamente o si conviene esperar
-3. Sea concreta, no genérica — nombré el activo, el P&L real, el porcentaje de cash libre
+3. Sea concreta, no genérica — nombré el activo, el P&L real y, si hay compra, cuánto de sus USDT usa la señal y cuánto queda de reserva
 4. Sé honesto con el historial: si las señales recientes acertaron, decilo sin exagerar; si fallaron, decilo también. No infles la confianza en el sistema.
 5. No inventes precios de entrada ni niveles: usá solo los números que aparecen arriba.
+6. Los USDT son lo que el usuario tiene para comprar, no se miden contra el valor de su posición: no digas que hay "poco efectivo" ni contradigas el monto que propone el sistema; si querés, mencioná la reserva.
 
 Respondé SOLO con JSON válido (sin markdown):
 {
   "insight": "..."
 }`;
+}
 
+export async function generatePortfolioInsight(asset, currentPrice, indicators, portfolioCtx, userState, decision, recentDecisions = []) {
+  const prompt = buildPortfolioInsightPrompt({ asset, currentPrice, indicators, portfolioCtx, userState, decision, recentDecisions });
   const parsed = await chatJson({ prompt, temperature: 0.3, maxTokens: 450, expect: 'object', label: 'portfolioInsight' });
   return {
     insight: typeof parsed.insight === 'string' ? parsed.insight.trim() : ''

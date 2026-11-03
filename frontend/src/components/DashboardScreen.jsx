@@ -8,7 +8,7 @@ import { MarketSummary } from './MarketSummary';
 import { FuturesPanel } from './FuturesPanel';
 import { useUpcomingEvents } from '../hooks/useUpcomingEvents';
 
-export function DashboardScreen({ selectedCrypto, cryptos, onSelect, data, loading, decision, decisionLoading, portfolioSummary, onOpenDetails }) {
+export function DashboardScreen({ selectedCrypto, cryptos, onSelect, data, loading, decision, decisionLoading, portfolioSummary, cashUsd = 0, onOpenDetails }) {
   const events = useUpcomingEvents(selectedCrypto);
   const nextEvent = events.find(e => e.daysUntil <= 14 || ['FOMC', 'CPI'].includes(e.name)) ?? null;
 
@@ -27,7 +27,7 @@ export function DashboardScreen({ selectedCrypto, cryptos, onSelect, data, loadi
             </div>
           )}
           <AssetHero symbol={selectedCrypto} price={data.price} change24h={data.change24h} high24h={data.high24h} low24h={data.low24h} zones={data.zones} />
-          <SignalCard symbol={selectedCrypto} decision={decision} loading={decisionLoading} portfolioSummary={portfolioSummary}
+          <SignalCard symbol={selectedCrypto} decision={decision} loading={decisionLoading} portfolioSummary={portfolioSummary} cashUsd={cashUsd}
             onOpenDetails={() => onOpenDetails('signal')} onConfigure={() => onOpenDetails('position')} />
           <MarketSummary data={data} nextEvent={nextEvent} onOpenMarket={() => onOpenDetails('market')} />
         </>

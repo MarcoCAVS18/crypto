@@ -13,6 +13,7 @@ import { generatePortfolioInsight } from '../services/groqAnalyzer.js';
 import { applyEventRisk } from '../services/eventRisk.js';
 import { pullbackLevels } from '../services/pullbacks.js';
 import { shadowFixedDca } from '../services/shadow.js';
+import { normalizeInstallments } from '../services/dcaPolicy.js';
 import { getUpcomingEvents } from '../data/macroCalendar.js';
 import { buildDecisionRecord } from '../services/decisionLog.js';
 import { insightCacheKey } from '../services/aiHelpers.js';
@@ -211,7 +212,9 @@ router.post('/decision', async (req, res) => {
       totalCapital: parseFloat(totalCapital) || 0,
       // Ajustes opcionales del perfil (se sanean en el motor): costos de operar y peso objetivo del oro con bandas
       costs:  req.body.settings?.costs ?? undefined,
-      target: req.body.settings?.target ?? null
+      target: req.body.settings?.target ?? null,
+      // En cuántas compras se reparten los USDT (ritmo de compra, ver dcaPolicy.js): entero 1–12, por defecto 4
+      installments: normalizeInstallments(req.body.settings?.installments)
     };
 
     // Contexto del portfolio: prioridad al valor enviado por el frontend (Firestore)
@@ -245,7 +248,8 @@ router.post('/decision', async (req, res) => {
     // ── Portfolio insight personalizado (Groq, caché 1h) ─────────────────────
     if (portfolioContext?.hasPosition && portfolioContext.units > 0 && process.env.GROQ_API_KEY) {
       try {
-        const insightKey = insightCacheKey(symbol, marketData.price, portfolioContext, decision.action);
+        const plannedUsd = (decision.operations ?? []).reduce((a, o) => a + (o.type === 'BUY' && Number.isFinite(o.usdAmount) ? o.usdAmount : 0), 0);
+        const insightKey = insightCacheKey(symbol, marketData.price, portfolioContext, decision.action, { cashUsd: userState.totalCapital, plannedUsd });
 
         let portfolioInsight = await getAiCache(insightKey);
         if (!portfolioInsight) {

@@ -59,7 +59,7 @@ export function buildDecisionRecord({ symbol, marketData, marketMode, zones, ind
     reason:       decision?.reason ?? null,
     opsCount:     decision?.operations?.length ?? 0,
     shadow:       shadow,                 // qué habría hecho la política de referencia (modo sombra)
-    dcaPolicy:    decision?.policy ? { version: decision.policy.version, multiplier: decision.policy.multiplier, capFraction: decision.policy.capFraction } : null,
+    dcaPolicy:    decision?.policy ? { version: decision.policy.version, multiplier: decision.policy.multiplier, capFraction: decision.policy.capFraction, ...(decision.policy.installments ? { installments: decision.policy.installments } : {}) } : null,
     calendarModulated: !!decision?.calendarRisk,
     cashPercent:  Number(userState?.cashPercent),
     userMode:     userState?.mode ?? null,

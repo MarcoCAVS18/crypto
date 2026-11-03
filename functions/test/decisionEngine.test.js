@@ -78,7 +78,8 @@ test('P3: PAXG en risk_off + zona de compra SIGUE acumulando (antes: WAIT, lo qu
   assert.equal(d.strength, 'moderado');
   assert.ok(d.operations.length >= 2);
   assert.ok(d.operations.every(o => o.usdAmount > 0));
-  assert.equal(d.policy.version, 'p3-1');
+  assert.equal(d.policy.version, 'p3-2');
+  assert.equal(d.policy.installments, 4);
   assert.ok(d.policy.multiplier > 1, 'score bajo ⇒ tilt hacia comprar la debilidad');
   assert.match(d.recommendation, /Tamaño ajustado ×/);
 });
@@ -111,11 +112,13 @@ test('P3: el tamaño NO sigue al score: score bajo despliega ≥ que score alto 
   assert.ok(amount({ mode: 'risk_off', score: -1, reasons: [] }) <= cash + 1e-6);
 });
 
-test('P3: BTC no cambia (misma fracción de siempre, sin política de PAXG)', () => {
+test('P3: BTC no recibe el tilt de score de PAXG (no hay evidencia): solo el ritmo de compra, con multiplicador ×1', () => {
   const price = 60000;
   const d = makeDecision(on, atrZones(price, 'buy'), price, st(60), ind, 'BTC', null);
   assert.equal(d.action, 'BUY');
-  assert.equal(d.policy, undefined);
+  assert.equal(d.policy.tilt, false);
+  assert.equal(d.policy.multiplier, 1);
+  assert.equal(d.policy.score, null);
 });
 
 test('B5: observación y trading en risk_off siguen en WAIT', () => {
@@ -237,17 +240,20 @@ test('P3c costos: las operaciones llevan costo estimado y la recomendación lo a
   assert.match(d.recommendation, /Costo estimado ≈ \$.*supuesto/);
 });
 
-test('P3c costos: si TODOS los tramos quedan bajo el mínimo ⇒ WAIT "monto demasiado chico"', () => {
+test('P3c costos: si el efectivo no alcanza ni para una orden mínima ⇒ WAIT "monto demasiado chico"', () => {
   const price = 4000;
-  const d = makeDecision(on, atrZones(price, 'buy'), price, { cashPercent: 60, mode: 'inversion', totalCapital: 30 }, ind, 'PAXG', null);
+  const d = makeDecision(on, atrZones(price, 'buy'), price, { cashPercent: 60, mode: 'inversion', totalCapital: 12 }, ind, 'PAXG', null);   // 60 % de 12 = $7.2 < $10
   assert.equal(d.action, 'WAIT');
   assert.match(d.reason, /demasiado chico/);
 });
 
-test('P3c costos: un mínimo configurado por el usuario se respeta', () => {
+test('P3c costos: un mínimo configurado por el usuario se respeta (ningún tramo queda por debajo; si no alcanza el efectivo ⇒ WAIT)', () => {
   const price = 4000;
-  const d = makeDecision(on, atrZones(price, 'buy'), price, { ...st(60), costs: { minOrderUsd: 100000 } }, ind, 'PAXG', null);
-  assert.equal(d.action, 'WAIT');
+  const ok = makeDecision(on, atrZones(price, 'buy'), price, { ...st(60), costs: { minOrderUsd: 500 } }, ind, 'PAXG', null);
+  assert.equal(ok.action, 'BUY');
+  assert.ok(ok.operations.every(o => o.usdAmount >= 500));
+  const wait = makeDecision(on, atrZones(price, 'buy'), price, { cashPercent: 100, mode: 'inversion', totalCapital: 400, costs: { minOrderUsd: 500 } }, ind, 'PAXG', null);
+  assert.equal(wait.action, 'WAIT');
 });
 
 test('P3c peso objetivo: sobre la banda con ganancia ⇒ rebalanceo (SELL parcial); en pérdida ⇒ WAIT sin comprar', () => {
@@ -288,4 +294,98 @@ test('P3c retrocesos históricos: con niveles propios los tramos usan esas profu
   assert.equal(px.length, 3);
   assert.ok(Math.abs(px[1] - price * 0.99) < 1e-6);
   assert.ok(px[2] <= price * (1 - 0.025) + 1e-6 && px[2] < px[1]);
+});
+
+// ── P3-2: ritmo de compra (los USDT se reparten en N compras; nunca todo de golpe) ─────────────────
+
+// Modo "solo USDT" del cliente: cashPercent = 100 y totalCapital = USDT disponibles
+const usdtOnly = (usdt, extra = {}) => ({ cashPercent: 100, mode: 'inversion', totalCapital: usdt, ...extra });
+const total = (d) => d.operations.reduce((a, o) => a + o.usdAmount, 0);
+const swingBuy = (price) => swingZones(price, 'neutral');
+
+test('P3-2: el caso real — 333 USDT, Risk OFF (−0.59), 18 % bajo el promedio: usa ~un tercio, no el 97 %', () => {
+  const price = 3923;
+  const mm = { mode: 'risk_off', score: -0.59, reasons: ['Bono 10Y'] };
+  const pf = position(price, -18, { units: 1.7, portfolioValueUsd: 7000 });
+  const d = makeDecision(mm, swingBuy(price), price, usdtOnly(333), ind, 'PAXG', pf);
+  assert.equal(d.action, 'BUY');
+  assert.equal(d.policy.version, 'p3-2');
+  assert.equal(d.policy.installments, 4);
+  assert.ok(Math.abs(d.policy.capFraction - 0.324) < 0.001, `fracción ${d.policy.capFraction}`);
+  assert.ok(Math.abs(total(d) - 333 * 0.324) < 1, `total ${total(d)}`);          // ≈ $108 (antes: $323)
+  assert.ok(333 - total(d) > 200, 'queda de reserva más de $200');
+  assert.deepEqual(d.operations.map(o => o.percentage), [30, 30, 40]);          // 3 tramos: ahora / −1.5 % / profundo
+  assert.match(d.recommendation, /Ritmo: tus USDT se reparten en ~4 compras; esta usa el 32 % \(\$108 de \$333\)/);
+  assert.match(d.recommendation, /\$225\) queda de reserva/);
+});
+
+test('P3-2: con la cuota por defecto NINGUNA señal usa más del 37.5 % del efectivo, sea cual sea el score', () => {
+  const price = 4000;
+  for (const score of [-1, -0.59, -0.2, 0, 0.3, 0.6, 1]) {
+    for (const mode of ['risk_off', 'neutral', 'risk_on']) {
+      const d = makeDecision({ mode, score, reasons: [] }, swingBuy(price), price, usdtOnly(1000), ind, 'PAXG', position(price, -12));
+      if (d.action !== 'BUY') continue;
+      assert.ok(total(d) <= 1000 * 0.375 + 1e-6, `${mode} ${score}: ${total(d)}`);
+    }
+  }
+});
+
+test('P3-2: la cantidad de compras se puede cambiar (8 ⇒ cuota menor; 1 ⇒ todo, como antes) y se sanea', () => {
+  const price = 3923;
+  const mm = { mode: 'risk_off', score: -0.59, reasons: [] };
+  const pf = position(price, -18);
+  const amount = (n) => total(makeDecision(mm, swingBuy(price), price, usdtOnly(333, { installments: n }), ind, 'PAXG', pf));
+  assert.ok(amount(8) < amount(4) && amount(4) < amount(2) && amount(2) < amount(1) + 1e-6);
+  assert.ok(Math.abs(amount(1) - 333) < 1);                                      // 1 compra = todo el efectivo (opt-in explícito)
+  assert.equal(amount(undefined), amount(4));                                    // ausente ⇒ 4
+  assert.equal(amount('x'), amount(4));                                          // inválido ⇒ 4
+  assert.equal(amount(99), amount(12));                                          // se acota a 12
+  assert.equal(amount(0), amount(1));                                            // y a 1 como mínimo
+});
+
+test('P3-2: BTC/ETH usan el mismo ritmo (antes risk_on pedía el 100 % del efectivo), sin tilt de score', () => {
+  const price = 60000;
+  const on = { mode: 'risk_on', score: 0.6, reasons: [] };
+  const d = makeDecision(on, swingZones(price, 'buy'), price, usdtOnly(1000), ind, 'BTC', null);
+  assert.equal(d.action, 'BUY');
+  assert.ok(Math.abs(total(d) - 250) < 1, `BTC risk_on: ${total(d)}`);          // 1/4, no el 100 %
+  assert.equal(d.policy.tilt, false);
+  assert.equal(d.policy.multiplier, 1);
+  assert.equal(d.policy.score, null);                                            // sin evidencia de score para BTC/ETH
+  const n = makeDecision({ mode: 'neutral', score: 0, reasons: [] }, swingZones(price, 'buy'), price, usdtOnly(1000), ind, 'BTC', null);
+  assert.ok(Math.abs(total(n) - 125) < 1, `BTC neutral: ${total(n)}`);          // media cuota
+});
+
+test('P3-2: bolsas chicas — los tramos se achican en cantidad para que cada uno llegue al mínimo, y "ahora" nunca se pierde', () => {
+  const price = 4000;
+  const on = { mode: 'risk_on', score: 0, reasons: [] };
+  const run = (usdt) => makeDecision(on, swingBuy(price), price, usdtOnly(usdt), ind, 'PAXG', position(price, -5));
+  const big = run(1000);                                                          // 250 ⇒ 3 tramos
+  assert.equal(big.operations.length, 3);
+  const mid = run(100);                                                           // 25 ⇒ 2 tramos (10 / 15)
+  assert.deepEqual(mid.operations.map(o => Math.round(o.usdAmount)), [10, 15]);
+  assert.equal(mid.operations[0].price, price);                                   // el de "ahora" sigue estando
+  const small = run(30);                                                          // 7.5 < $10 ⇒ piso: una orden mínima
+  assert.equal(small.action, 'BUY');
+  assert.equal(small.operations.length, 1);
+  assert.equal(small.operations[0].usdAmount, 10);
+  assert.equal(small.operations[0].price, price);
+  for (const d of [big, mid, small]) assert.ok(d.operations.every(o => o.usdAmount >= 10), 'ningún tramo bajo el mínimo');
+});
+
+test('P3-2: sin llegar a una orden mínima de efectivo no se compra (con motivo claro)', () => {
+  const price = 4000;
+  const d = makeDecision({ mode: 'risk_on', score: 0, reasons: [] }, swingBuy(price), price, usdtOnly(6), ind, 'PAXG', position(price, -5));
+  assert.equal(d.action, 'WAIT');
+  assert.match(d.reason, /demasiado chico/);
+});
+
+test('P3-2: la nota de ritmo no aparece sin efectivo cargado ni con una sola compra', () => {
+  const price = 4000;
+  const mm = { mode: 'risk_on', score: 0, reasons: [] };
+  const noCash = makeDecision(mm, swingBuy(price), price, usdtOnly(0), ind, 'PAXG', position(price, -5));
+  assert.doesNotMatch(noCash.recommendation, /Ritmo:/);
+  assert.ok(noCash.operations.every(o => o.usdAmount === null));                  // muestra el plan en % (30/30/40)
+  const one = makeDecision(mm, swingBuy(price), price, usdtOnly(1000, { installments: 1 }), ind, 'PAXG', position(price, -5));
+  assert.doesNotMatch(one.recommendation, /Ritmo:/);
 });
