@@ -1,10 +1,11 @@
 // LA señal de la pantalla: una sola tarjeta con la acción en grande, el motivo en una línea, el monto y lo que pasa con tu promedio.
 // (Reemplaza el panel de vidrio del hero, la tarjeta de recomendación y el bloque de órdenes que repetían lo mismo.)
 import { motion } from 'framer-motion';
-import { ArrowRight, CalendarClock, Sparkles } from 'lucide-react';
+import { ArrowRight, CalendarClock, Sparkles, Check } from 'lucide-react';
 import { Panel } from './ui/Panel';
 import { Spinner } from './ui/Spinner';
-import { actionView, strengthDots, summarizeOps, totalDcaEffect, usageOf, cadenceView, aiView, fmtPrice } from '../utils/signalView';
+import { useAppStore } from '../store/appStore';
+import { actionView, strengthDots, summarizeOps, totalDcaEffect, usageOf, cadenceView, aiView, firstBuyOp, draftFromOp, fmtPrice } from '../utils/signalView';
 
 const GLOW = { accent: 'rgba(88,226,111,0.16)', warn: 'rgba(243,217,92,0.12)', pink: 'rgba(255,95,168,0.14)' };
 
@@ -17,6 +18,7 @@ function Dots({ n, bg }) {
 }
 
 export function SignalCard({ symbol, decision, loading, portfolioSummary, cashUsd = 0, onOpenDetails, onConfigure }) {
+  const openLog = useAppStore((s) => s.openLog);
   if (loading) {
     return <Panel className="flex items-center justify-center py-12"><Spinner /></Panel>;
   }
@@ -86,6 +88,12 @@ export function SignalCard({ symbol, decision, loading, portfolioSummary, cashUs
         <button onClick={onOpenDetails} className="mt-5 w-full py-3.5 rounded-full bg-accent text-accent-ink font-semibold text-sm glow-accent active:scale-[0.99] transition">
           Ver por qué y las órdenes
         </button>
+        {firstBuyOp(decision) && (
+          <button onClick={() => openLog(draftFromOp(firstBuyOp(decision), symbol))}
+            className="mt-2.5 w-full py-3 rounded-full border border-line text-ink/90 font-semibold text-sm flex items-center justify-center gap-2 active:scale-[0.99] transition">
+            <Check className="w-4 h-4 text-accent" aria-hidden="true" /> Ya compré · registrar
+          </button>
+        )}
       </Panel>
     </motion.div>
   );

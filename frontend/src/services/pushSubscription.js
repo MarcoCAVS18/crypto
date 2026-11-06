@@ -11,14 +11,21 @@ function urlBase64ToUint8Array(base64String) {
   return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
 }
 
+const READY_TIMEOUT_MS = 8000;
+
+// El service worker es UNO solo (el de Workbox, que carga public/sw-push.js con el handler de push): acá no se registra otro.
+// Registrar '/sw-push.js' aparte en el mismo scope pisaba al de Workbox y los avisos llegaban a un worker sin handler.
+const activeRegistration = () => Promise.race([
+  navigator.serviceWorker.ready,
+  new Promise((_, rej) => setTimeout(() => rej(new Error('el service worker no está activo')), READY_TIMEOUT_MS))
+]);
+
 // El usuario sale de la sesión del servidor (los avisos son personales): ya no se manda un userId en el pedido.
 export async function subscribeToPush() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return null;
 
   try {
-    // Registrar el service worker de push (separado del SW de Workbox)
-    const reg = await navigator.serviceWorker.register('/sw-push.js', { scope: '/' });
-    await navigator.serviceWorker.ready;
+    const reg = await activeRegistration();
 
     // Verificar si ya hay suscripción activa
     let sub = await reg.pushManager.getSubscription();
@@ -41,7 +48,7 @@ export async function subscribeToPush() {
 export async function unsubscribeFromPush() {
   if (!('serviceWorker' in navigator)) return;
   try {
-    const reg = await navigator.serviceWorker.getRegistration('/sw-push.js');
+    const reg = await navigator.serviceWorker.getRegistration();
     const sub = await reg?.pushManager?.getSubscription();
     if (sub) {
       await api.post('/push/unsubscribe', { endpoint: sub.endpoint });

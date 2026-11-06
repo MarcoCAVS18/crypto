@@ -26,6 +26,9 @@ export default defineConfig({
         ]
       },
       workbox: {
+        // El handler de push (public/sw-push.js) vive DENTRO del service worker de Workbox: antes se registraba aparte en el mismo
+        // scope "/" y los dos se pisaban (el activo era el de Workbox, sin handler de push ⇒ los avisos no se mostraban).
+        importScripts: ['sw-push.js'],
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
         runtimeCaching: [
           {

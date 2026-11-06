@@ -13,11 +13,13 @@ import { PortfolioSection } from './components/PortfolioSection';
 import { ChatScreen } from './components/ChatScreen';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { OnboardingOverlay, useOnboarding } from './components/OnboardingOverlay';
+import { OperationSheet } from './components/OperationSheet';
 import { ProfileSettingsSheet } from './components/ProfileSettingsSheet';
 import { useZoneAlert } from './hooks/useZoneAlert';
 import { useUpcomingEvents } from './hooks/useUpcomingEvents';
 import { AUTO_REFRESH_INTERVAL } from './utils/constants';
 import { effectiveCashUsd } from './utils/cash';
+import { cashAfter, calendarGapView } from './utils/signalView';
 import { requestPermission, isSupported, getPermission } from './services/notifications';
 import { subscribeToPush, unsubscribeFromPush } from './services/pushSubscription';
 import { syncSettings, resetSettingsSync } from './services/settingsSync';
@@ -58,7 +60,8 @@ function AuthenticatedApp() {
     loading, decisionLoading, error, serverWaking,
     portfolio,
     setSelectedCrypto, loadCryptoData, updateUserState,
-    getDecision, refreshData, clearError, loadPortfolio, setUserId
+    getDecision, refreshData, clearError, loadPortfolio, setUserId,
+    log, openLog, closeLog
   } = useAppStore();
 
   const { currentUser, logout } = useAuthStore();
@@ -66,7 +69,11 @@ function AuthenticatedApp() {
 
   useEffect(() => {
     setUserId(currentUser.id);
-    const activeCrypto = profileCryptos.includes(selectedCrypto) ? selectedCrypto : profileCryptos[0];
+    // Tocar un aviso abre la app en ese activo (?activo=PAXG): ahí está la señal y el botón "Ya compré"
+    const wanted = new URLSearchParams(window.location.search).get('activo');
+    if (wanted) window.history.replaceState(null, '', window.location.pathname);
+    const preferred = profileCryptos.includes(wanted) ? wanted : selectedCrypto;
+    const activeCrypto = profileCryptos.includes(preferred) ? preferred : profileCryptos[0];
     if (activeCrypto !== selectedCrypto) setSelectedCrypto(activeCrypto);
     loadCryptoData(activeCrypto);
     loadPortfolio();
@@ -103,7 +110,24 @@ function AuthenticatedApp() {
   const { alert: zoneAlert, dismiss: dismissAlert } = useZoneAlert(selectedCrypto, currentData?.price, currentData?.zones);
   const events = useUpcomingEvents(selectedCrypto);
   const noticeEvents = events.filter(e => e.daysUntil <= 14 || ['FOMC', 'CPI'].includes(e.name)).slice(0, 6);
-  const hasNotice = !!zoneAlert || noticeEvents.some(e => e.daysUntil <= 2);
+  const calendarGap = calendarGapView(currentDecision);
+  const hasNotice = !!zoneAlert || !!calendarGap || noticeEvents.some(e => e.daysUntil <= 2);
+
+  // Con la app ya abierta, el toque en un aviso llega como mensaje del service worker
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return undefined;
+    const onMsg = (e) => {
+      const sym = e.data?.type === 'activo' ? e.data.symbol : null;
+      if (!sym || !profileCryptos.includes(sym)) return;
+      setScreen('dashboard');
+      if (useAppStore.getState().selectedCrypto === sym) refreshData(); else setSelectedCrypto(sym);
+    };
+    navigator.serviceWorker.addEventListener('message', onMsg);
+    return () => navigator.serviceWorker.removeEventListener('message', onMsg);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser.id]);
+
+
 
   const handleLogout = async () => {
     // El aviso es personal: este dispositivo deja de recibir los de este usuario (necesita la sesión, por eso va antes de cerrarla)
@@ -185,10 +209,24 @@ function AuthenticatedApp() {
 
       <BottomNav active={screen} onChange={go} />
 
-      <NoticesSheet open={noticesOpen} onClose={() => setNoticesOpen(false)} alert={zoneAlert} onDismissAlert={dismissAlert} events={noticeEvents} />
+      <NoticesSheet open={noticesOpen} onClose={() => setNoticesOpen(false)} alert={zoneAlert} onDismissAlert={dismissAlert} events={noticeEvents} calendarGap={calendarGap} />
+
+      {log.k > 0 && (
+        <OperationSheet
+          key={log.k} open={log.open} onClose={closeLog} symbols={profileCryptos} draft={log.draft}
+          deduct={effectiveCashUsd(userState) > 0 ? { cash: effectiveCashUsd(userState) } : null}
+          onFail={(message) => useAppStore.setState({ error: `No se pudo guardar la compra: ${message}` })}
+          onSaved={(data, { deduct }) => {
+            // Si se descuenta, la próxima señal reparte lo que queda; en los dos casos se recalcula (el ritmo ya ve la compra nueva)
+            if (deduct) updateUserState({ cashUsd: cashAfter(effectiveCashUsd(userState), data.amount_usd) });
+            getDecision();
+          }}
+        />
+      )}
 
       <DetailsSheet
         open={details.open} onClose={() => setDetails(d => ({ ...d, open: false }))}
+        onRegister={(draft) => { setDetails(d => ({ ...d, open: false })); openLog(draft); }}
         tab={details.tab} onTabChange={(tab) => setDetails(d => ({ ...d, tab }))}
         marketData={currentData} decision={currentDecision} userState={userState}
         onUserStateSubmit={handleUserStateSubmit} decisionLoading={decisionLoading} symbol={selectedCrypto}

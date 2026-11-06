@@ -1,12 +1,15 @@
 // "Detalles → Señal": recomendación, órdenes y el porqué. La acción y el motivo ya están en la tarjeta de la pantalla.
-import { Lightbulb, BrainCircuit, Sparkles } from 'lucide-react';
+import { Lightbulb, BrainCircuit, Sparkles, CalendarX } from 'lucide-react';
 import { Panel } from './ui/Panel';
 import { Row, Rows } from './ui/Row';
 import { Section } from './ui/Section';
 import { DecisionExplainer } from './DecisionExplainer';
-import { fmtPrice, fmtUnits, usageOf, aiView } from '../utils/signalView';
+import { useAppStore } from '../store/appStore';
+import { fmtPrice, fmtUnits, usageOf, aiView, calendarGapView, draftFromOp } from '../utils/signalView';
 
-export function SignalDetails({ decision, marketData, symbol, cashUsd = 0, onConfigure }) {
+export function SignalDetails({ decision, marketData, symbol, cashUsd = 0, onConfigure, onRegister = null }) {
+  const storeOpenLog = useAppStore((s) => s.openLog);
+  const openLog = onRegister ?? storeOpenLog;      // desde la hoja de Detalles el padre la cierra antes de abrir el formulario
   if (!decision) {
     return (
       <Panel className="text-center space-y-4 py-10">
@@ -19,9 +22,17 @@ export function SignalDetails({ decision, marketData, symbol, cashUsd = 0, onCon
   const isBuy = ops[0]?.type !== 'SELL';
   const usage = usageOf(decision.operations, cashUsd);
   const ai = aiView(decision);
+  const calGap = calendarGapView(decision);
 
   return (
     <div className="space-y-7">
+      {calGap && (
+        <Panel tone="soft" className="flex gap-3">
+          <CalendarX className="w-5 h-5 text-warn shrink-0 mt-0.5" />
+          <div><p className="text-xs text-muted mb-1">{calGap.title}</p><p className="text-sm text-ink/90 leading-relaxed">{calGap.text}</p></div>
+        </Panel>
+      )}
+
       {decision.recommendation && (
         <Panel tone="soft" className="flex gap-3">
           <Lightbulb className="w-5 h-5 text-warn shrink-0 mt-0.5" />
@@ -67,7 +78,8 @@ export function SignalDetails({ decision, marketData, symbol, cashUsd = 0, onCon
               {ops.map(op => (
                 <Row key={op.level} label={op.label}
                   sub={[`a ${fmtPrice(op.price, { decimals: op.price >= 1000 ? 0 : 2 })}`, op.units != null ? `${fmtUnits(op.units)} u.` : null, op.estCostUsd != null ? `costo ≈ $${op.estCostUsd.toFixed(2)}` : null].filter(Boolean).join(' · ')}
-                  value={op.usdAmount != null ? fmtPrice(op.usdAmount, { decimals: 0 }) : `${op.percentage} %`} tone={isBuy ? 'accent' : 'pink'} />
+                  value={op.usdAmount != null ? fmtPrice(op.usdAmount, { decimals: 0 }) : `${op.percentage} %`} tone={isBuy ? 'accent' : 'pink'}
+                  right={isBuy && op.usdAmount != null ? <button onClick={() => openLog(draftFromOp(op, symbol))} className="mt-1 text-xs font-semibold text-accent">Registrar</button> : null} />
               ))}
             </Rows>
           </Panel>

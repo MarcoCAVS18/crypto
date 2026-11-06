@@ -87,14 +87,14 @@ function aiWaitDecision(proposal, summary, rule) {
  * Paso de IA sobre una compra que la regla ya propone. Devuelve la decisión final (con `ai`) o la propuesta de la regla
  * (con `ai.used=false` y el motivo) si la IA no está disponible. Nunca lanza.
  */
-async function applyAi({ proposal, symbol, marketData, ctx, userState, portfolioContext, events, scope, now }, deps, rerun) {
+async function applyAi({ proposal, symbol, marketData, ctx, userState, portfolioContext, events, calendar, scope, now }, deps, rerun) {
   const rule = buyTotals(proposal.operations);
   try {
     let news = null;
     if (symbol !== 'PAXG' && deps.ai.getNews) news = await deps.ai.getNews(symbol).catch(() => null);
     const facts = buildAiFacts({
       symbol, price: marketData.price, change24hPct: marketData.change24h ?? null, indicators: ctx.indicators, zones: ctx.zones,
-      marketMode: ctx.marketMode, news, events, portfolioContext, userState, proposal, cadence: proposal.cadence ?? null, now
+      marketMode: ctx.marketMode, news, events, portfolioContext, userState, proposal, cadence: proposal.cadence ?? null, calendar, now
     });
     const r = await decideWithAI({ facts, cadence: proposal.cadence ?? null, scope, now }, deps.ai);
     if (!r.used) return { ...proposal, ai: { version: AI_DECISION.version, used: false, reason: r.reason, message: r.message } };
@@ -137,6 +137,10 @@ export async function computeSignal({ symbol, marketData, userState, portfolioCo
     sizing ? { ...meta, sizing } : meta
   );
 
+  // Cobertura del calendario macro: si se acabó, "sin eventos" no es un dato (el riesgo de calendario no puede actuar y la IA no lo sabe)
+  let calendar = null;
+  try { calendar = deps.calendarCovers ? deps.calendarCovers(5, now) : null; } catch { /* sin dato de cobertura */ }
+
   // 1) La REGLA propone
   let decision = run();
 
@@ -144,7 +148,7 @@ export async function computeSignal({ symbol, marketData, userState, portfolioCo
   if (deps.ai && decision.action === 'BUY' && userState?.mode === 'inversion' && buyTotals(decision.operations).tranches > 0) {
     let events = [];
     try { events = deps.getUpcomingEvents ? deps.getUpcomingEvents(5, symbol, now) : []; } catch { /* sin calendario: la IA decide sin eventos */ }
-    decision = await applyAi({ proposal: decision, symbol, marketData, ctx, userState, portfolioContext, events, scope, now }, deps, run);
+    decision = await applyAi({ proposal: decision, symbol, marketData, ctx, userState, portfolioContext, events, calendar, scope, now }, deps, run);
   }
 
   // 3) Con datos macro degradados (fuentes caídas/viejas) se advierte y una compra pierde intensidad
@@ -158,5 +162,7 @@ export async function computeSignal({ symbol, marketData, userState, portfolioCo
       deps.warn?.(`[EventRisk] Error: ${err.message}`);      // no interrumpir la señal principal
     }
   }
+  // El hueco del calendario se muestra (campana y detalles): sin él, el aviso de FOMC/CPI no puede salir
+  if (calendar && calendar.covered === false) decision = { ...decision, calendarCoverage: { covered: false, daysCovered: calendar.daysCovered, lastEventDate: calendar.lastEventDate } };
   return { ...ctx, decision };
 }

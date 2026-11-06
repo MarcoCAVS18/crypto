@@ -17,12 +17,17 @@ self.addEventListener('push', (event) => {
   );
 });
 
+// Tocar el aviso abre la app en el activo del aviso (la tarjeta tiene "Ya compré" para registrar la compra con los datos cargados)
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  const symbol = event.notification.data?.symbol;
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
-      if (list.length) return list[0].focus();
-      return clients.openWindow('/');
+      if (list.length) {
+        if (symbol) list[0].postMessage({ type: 'activo', symbol });
+        return list[0].focus();
+      }
+      return clients.openWindow(symbol ? `/?activo=${encodeURIComponent(symbol)}` : '/');
     })
   );
 });

@@ -72,6 +72,7 @@ const OPS = (() => {
   const add = (symbol, n, price, usd, type = 'BUY') => out.push({ id: `${symbol}${n}${type}`, date: d(n), symbol, type, amount_usd: usd, price, units: usd / price, fee: +(usd * 0.001).toFixed(2), exchange: 'Binance', notes: '', userId: 'marco' });
   [[200, 4780, 600], [170, 4820, 500], [150, 4760, 700], [120, 4790, 400], [100, 4700, 800], [80, 4690, 500], [60, 4650, 600], [45, 4600, 500], [30, 4420, 700], [21, 4380, 500], [14, 4290, 600], [9, 4210, 400], [4, 4150, 300]].forEach(([n, p, u]) => add('PAXG', n, p, u));
   [[190, 61000, 90], [140, 66000, 80], [90, 71000, 60], [50, 78000, 60], [20, 83000, 44]].forEach(([n, p, u]) => add('BTC', n, p, u));
+  if (process.env.STALE_BUYS) out.forEach(o => { if (o.symbol === 'PAXG' && new Date(o.date) > new Date(Date.now() - 8 * DAY)) o.date = new Date(Date.now() - 9 * DAY).toISOString().slice(0, 10); });
   if (process.env.PHANTOM) add('BTC', 3, 4486, 284);   // simula un BTC cargado con precio de oro (para probar el aviso)
   return out;
 })();
@@ -98,6 +99,7 @@ const decisionFor = (symbol, body) => {
       d = { action: 'WAIT', strength: 'moderado', reason: 'La IA recomienda esperar: el FOMC es en 26 horas y los titulares de la Fed son restrictivos.', recommendation: 'El FOMC es en 26 horas y los titulares de la Fed son restrictivos: conviene esperar el dato. La compra queda pendiente.', operations: [], cadence: d.cadence, ai: { ...base, action: 'WAIT', rawAction: 'WAIT', sizeMultiplier: 1, tranches: null, waitDays: 2, waitUntil: new Date(Date.now() + 2 * DAY).toISOString(), followedRule: false, reasoning: 'El FOMC es en 26 horas y los titulares de la Fed son restrictivos: conviene esperar el dato antes de sumar.' } };
     }
   }
+  if (process.env.CAL_GAP) d = { ...d, calendarCoverage: { covered: false, daysCovered: 1, lastEventDate: '2026-12-23' } };
   return { symbol, price: m.price, marketMode: m.marketMode, zones: m.zones, decision: d };
 };
 
