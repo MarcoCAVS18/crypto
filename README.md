@@ -22,7 +22,7 @@ No es un bot: responde tres preguntas para evitar operaciones impulsivas.
 - **Frontend:** React + Vite + TailwindCSS + Zustand
 - **API:** Firebase Functions v2 (Node 22, Express, Firestore)
 - **Data:** Coinbase, Yahoo Finance, FRED, CFTC, feeds RSS
-Jobs programados (`functions/index.js`): `zoneWatcher` (push de zona de compra), `snapshotJob` (foto horaria del mercado, alerta de fuentes caídas) y `outcomeJob` (etiqueta resultados de las señales a 1/5/20/60 días).
+Jobs programados (`functions/index.js`): `zoneWatcher` (avisos push de la señal, por usuario: la misma señal que muestra la app), `snapshotJob` (foto horaria del mercado, alerta de fuentes caídas) y `outcomeJob` (etiqueta resultados de las señales a 1/5/20/60 días).
 
 Fuentes de datos: Coinbase (precios/velas), Yahoo Finance (DXY, GC=F, GVZ, plata), FRED (tasas, breakeven, dólar amplio, VIX), CFTC (COT), RSS de noticias y Groq (etiquetado de titulares y textos).
 

@@ -78,7 +78,7 @@ test('P3: PAXG en risk_off + zona de compra SIGUE acumulando (antes: WAIT, lo qu
   assert.equal(d.strength, 'moderado');
   assert.ok(d.operations.length >= 2);
   assert.ok(d.operations.every(o => o.usdAmount > 0));
-  assert.equal(d.policy.version, 'p3-2');
+  assert.equal(d.policy.version, 'p3-3');
   assert.equal(d.policy.installments, 4);
   assert.ok(d.policy.multiplier > 1, 'score bajo ⇒ tilt hacia comprar la debilidad');
   assert.match(d.recommendation, /Tamaño ajustado ×/);
@@ -309,7 +309,7 @@ test('P3-2: el caso real — 333 USDT, Risk OFF (−0.59), 18 % bajo el promedio
   const pf = position(price, -18, { units: 1.7, portfolioValueUsd: 7000 });
   const d = makeDecision(mm, swingBuy(price), price, usdtOnly(333), ind, 'PAXG', pf);
   assert.equal(d.action, 'BUY');
-  assert.equal(d.policy.version, 'p3-2');
+  assert.equal(d.policy.version, 'p3-3');
   assert.equal(d.policy.installments, 4);
   assert.ok(Math.abs(d.policy.capFraction - 0.324) < 0.001, `fracción ${d.policy.capFraction}`);
   assert.ok(Math.abs(total(d) - 333 * 0.324) < 1, `total ${total(d)}`);          // ≈ $108 (antes: $323)
@@ -388,4 +388,89 @@ test('P3-2: la nota de ritmo no aparece sin efectivo cargado ni con una sola com
   assert.ok(noCash.operations.every(o => o.usdAmount === null));                  // muestra el plan en % (30/30/40)
   const one = makeDecision(mm, swingBuy(price), price, usdtOnly(1000, { installments: 1 }), ind, 'PAXG', position(price, -5));
   assert.doesNotMatch(one.recommendation, /Ritmo:/);
+});
+
+// ── p3-3: la cadencia en el motor ────────────────────────────────────────────────────────────────
+
+const CAD_NOW = Date.parse('2026-11-06T15:00:00Z');
+const cadBuy = (daysAgo, price = 3923) => ({ date: new Date(CAD_NOW - daysAgo * 86400000).toISOString().slice(0, 10), price, amount_usd: 100 });
+const cadPos = (buys = [], extra = {}) => ({
+  hasPosition: true, avgBuyPrice: 4774, costBasis: 8231, netInvested: 8231, units: 1.72, portfolioValueUsd: 7000,
+  allBuys: buys, executedBuys: buys.filter(b => CAD_NOW - Date.parse(`${b.date}T12:00:00Z`) <= 4 * 86400000), ...extra
+});
+const cadDecide = (mm, zone, price, pf, over = {}) =>
+  makeDecision(mm, swingZones(price, zone), price, usdtOnly(333, over), ind, over.symbol ?? 'PAXG', pf, { now: CAD_NOW });
+
+test('p3-3: la revisión — con la posición bajo el promedio y una compra de hace 3 días, NINGÚN contexto dice COMPRAR', () => {
+  const price = 3923;
+  const pf = cadPos([cadBuy(3, 3950)]);
+  const contexts = [['risk_off', -0.8], ['risk_off', -0.59], ['risk_off', -0.2], ['neutral', 0], ['neutral', 0.2], ['risk_on', 0.4], ['risk_on', 0.8]];
+  let waits = 0;
+  for (const [mode, score] of contexts) for (const zone of ['buy', 'neutral', 'sell']) {
+    const d = cadDecide({ mode, score, reasons: [] }, zone, price, pf);
+    assert.equal(d.action, 'WAIT', `${mode} ${score} ${zone}`);
+    assert.match(d.reason, /Ya compraste hace 3 días/);
+    assert.match(d.recommendation, /una compra por semana/);
+    assert.equal(d.cadence.due, false);
+    assert.deepEqual(d.operations, []);
+    waits++;
+  }
+  assert.equal(waits, 21);
+});
+
+test('p3-3: sin compras registradas toca comprar (primera) y la decisión lo informa', () => {
+  const d = cadDecide({ mode: 'risk_off', score: -0.59, reasons: [] }, 'neutral', 3923, cadPos([]));
+  assert.equal(d.action, 'BUY');
+  assert.equal(d.cadence.reason, 'first');
+  assert.equal(d.cadence.due, true);
+});
+
+test('p3-3: a los 7 días vuelve a tocar, con el motivo en la recomendación', () => {
+  const d = cadDecide({ mode: 'risk_off', score: -0.59, reasons: [] }, 'neutral', 3923, cadPos([cadBuy(8, 3950)]));
+  assert.equal(d.action, 'BUY');
+  assert.equal(d.cadence.reason, 'due');
+  assert.match(d.recommendation, /Toca la compra de la semana/);
+});
+
+test('p3-3: una caída de 3 % bajo la última compra adelanta la compra (y el tramo "ahora" es a precio de mercado)', () => {
+  const d = cadDecide({ mode: 'risk_off', score: -0.59, reasons: [] }, 'neutral', 3800, cadPos([cadBuy(2, 3950)]));
+  assert.equal(d.action, 'BUY');
+  assert.equal(d.cadence.reason, 'dip');
+  assert.match(d.recommendation, /Toca antes de lo previsto/);
+  assert.equal(d.operations[0].price, 3800);
+});
+
+test('p3-3: la cadencia aplica a todos los contextos de compra, también BTC', () => {
+  const pfBtc = cadPos([cadBuy(2, 86000)], { avgBuyPrice: 90000 });
+  const d = cadDecide({ mode: 'risk_on', score: 0.6, reasons: [] }, 'buy', 86000, pfBtc, { symbol: 'BTC' });
+  assert.equal(d.action, 'WAIT');
+  assert.match(d.reason, /Ya compraste hace 2 días/);
+  const due = cadDecide({ mode: 'risk_on', score: 0.6, reasons: [] }, 'buy', 86000, cadPos([cadBuy(9, 86000)], { avgBuyPrice: 90000 }), { symbol: 'BTC' });
+  assert.equal(due.action, 'BUY');
+});
+
+test('p3-3: la cadencia NO frena las ventas ni el rebalanceo', () => {
+  const price = 6000;   // +50 %
+  const pf = { hasPosition: true, avgBuyPrice: 4000, costBasis: 4000, netInvested: 4000, units: 1, executedBuys: [cadBuy(0, 6000)], allBuys: [cadBuy(0, 6000)] };
+  const d = makeDecision({ mode: 'risk_off', score: -0.5, reasons: [] }, swingZones(price, 'sell'), price, usdtOnly(333), ind, 'PAXG', pf, { now: CAD_NOW });
+  assert.equal(d.action, 'SELL');
+});
+
+test('p3-3: simulación de 15 días con revisión HORARIA — compra el día 0, 7 y 14 (antes: COMPRAR las 360 horas)', () => {
+  const price = 3923, mm = { mode: 'risk_off', score: -0.59, reasons: [] };
+  const buys = [];
+  const buyHours = [];
+  for (let h = 0; h < 15 * 24; h++) {
+    const now = CAD_NOW + h * 3600e3;
+    const pf = { hasPosition: true, avgBuyPrice: 4774, costBasis: 8231, netInvested: 8231, units: 1.72, portfolioValueUsd: 7000, allBuys: buys, executedBuys: [] };
+    const d = makeDecision(mm, swingZones(price, 'neutral'), price, usdtOnly(333), ind, 'PAXG', pf, { now });
+    if (d.action === 'BUY') {
+      buyHours.push(h);
+      buys.push({ date: new Date(now).toISOString().slice(0, 10), price, amount_usd: 100 });     // el usuario compra y lo registra enseguida
+    }
+  }
+  assert.equal(buyHours.length, 3, `compras en las horas ${buyHours}`);
+  assert.equal(buyHours[0], 0);
+  assert.ok(buyHours[1] >= 6 * 24 && buyHours[1] <= 8 * 24, `la 2.ª a las ${buyHours[1]} h`);
+  assert.ok(buyHours[2] - buyHours[1] >= 6 * 24 && buyHours[2] - buyHours[1] <= 8 * 24);
 });

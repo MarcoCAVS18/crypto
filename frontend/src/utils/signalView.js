@@ -91,3 +91,32 @@ export function dataStatus(marketMode) {
   const problems = (h.missing?.length ?? 0) + (h.stale?.length ?? 0);
   return { known: true, problems, text: problems ? `${problems} con problema` : 'Al día' };
 }
+
+const fmtDay = (iso) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString('es-AR', { day: 'numeric', month: 'short', timeZone: 'UTC' }).replace('.', '');
+};
+
+/**
+ * Línea del ritmo de compra (una por semana, o antes si el precio cae) a partir de `decision.cadence` del servidor.
+ * COMPRAR: por qué toca ahora. ESPERAR por ritmo: cuándo toca la próxima. null si no hay nada que aclarar.
+ * @returns {{ tone:'accent'|'warn', text:string }|null}
+ */
+export function cadenceView(decision) {
+  const c = decision?.cadence;
+  if (!c) return null;
+  if (decision.action === 'BUY') {
+    if (c.reason === 'dip') {
+      return { tone: 'accent', text: `Bajó ${Number.isFinite(c.dipPct) ? `${c.dipPct} % o más ` : ''}desde tu última compra: se adelanta` };
+    }
+    if (c.reason === 'due') return { tone: 'accent', text: 'Toca la compra de la semana' };
+    if (c.reason === 'first') return { tone: 'accent', text: 'Primera compra de este activo' };
+    return null;
+  }
+  if (decision.action === 'WAIT' && c.due === false) {
+    const day = fmtDay(c.nextAt);
+    const dip = Number.isFinite(c.dipPrice) ? ` o si baja a ${fmtPrice(c.dipPrice)}` : '';
+    return { tone: 'warn', text: `Próxima compra ${day ? `desde el ${day}` : 'en unos días'}${dip}` };
+  }
+  return null;
+}

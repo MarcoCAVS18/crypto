@@ -1,7 +1,6 @@
-// Alerta de zona (compra/distribución): se dispara solo cuando la zona CAMBIA, avisa con notificación nativa si hay permiso
-// y se puede descartar por 4 h. (Antes vivía dentro de PriceAlertBanner, que ocupaba una card entera.)
+// Aviso de zona (compra/distribución) en la campana: se dispara solo cuando la zona CAMBIA y se puede descartar por 4 h.
+// Es un dato del precio, no una orden: la que decide si toca comprar es la señal (y el push sale de la señal, no de la zona). (Antes vivía dentro de PriceAlertBanner, que ocupaba una card entera.)
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { sendZoneNotification, getPermission } from '../services/notifications';
 
 const STORAGE_KEY = 'crypto_dismissed_alerts';
 const TTL_MS = 4 * 3600 * 1000;
@@ -28,10 +27,9 @@ export function useZoneAlert(symbol, price, zones) {
       if (!wasDismissedRecently(key)) {
         next = { key, type: currentZone, symbol, price,
           message: currentZone === 'buy' ? `${symbol} entró en zona de compra` : `${symbol} entró en zona de distribución`,
-          hint: currentZone === 'buy' ? 'Oportunidad de acumulación' : 'Evaluar toma de ganancias' };
+          hint: 'La señal decide si toca operar' };
       }
     }
-    if (next && getPermission() === 'granted') sendZoneNotification(next.symbol, next.type, next.price);
     setAlert(next);
   }, [symbol, price, zones]);
 

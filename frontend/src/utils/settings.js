@@ -1,3 +1,5 @@
+import { effectiveCashUsd } from './cash.js';
+
 // Ajustes opcionales del perfil que viajan al motor de decisión (el servidor los vuelve a sanear).
 export function buildSettings(userState) {
   const settings = {};
@@ -12,4 +14,20 @@ export function buildSettings(userState) {
     settings.installments = userState.installments;
   }
   return settings;
+}
+
+/**
+ * Lo que se sincroniza con el servidor (PUT /auth/settings) para que los avisos se calculen con tus mismos datos con la app cerrada.
+ * Siempre manda todos los campos: lo que no está cargado va como null (el servidor lo toma como "sin dato").
+ */
+export function syncPayload(userState) {
+  const inst = userState?.installments;
+  const num = (x) => (Number.isFinite(x) ? x : null);
+  return {
+    cashUsd: effectiveCashUsd(userState),
+    mode: userState?.mode ?? 'inversion',
+    installments: Number.isInteger(inst) && inst >= 1 && inst <= 12 ? inst : null,
+    targetPercent: Number.isFinite(userState?.targetPercent) && userState.targetPercent > 0 && userState.targetPercent < 100 ? userState.targetPercent : null,
+    feePercent: Number.isFinite(userState?.feePercent) && userState.feePercent >= 0 ? num(userState.feePercent) : null
+  };
 }

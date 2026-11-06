@@ -281,7 +281,7 @@ export async function getZoneState(symbol) {
   return doc.exists ? doc.data() : null;
 }
 
-// `state` = { zone, price, streak, lastPushAt, checkedAt } (ver services/zoneAlert.js)
+// `state` = { action, streak, lastPushAt, checkedAt } (ver services/signalAlert.js); la clave es `SIGNAL_<usuario>_<activo>`
 export async function setZoneState(symbol, state) {
   await db().collection('_zone_state').doc(symbol.toUpperCase()).set({
     ...state, updatedAt: FieldValue.serverTimestamp()

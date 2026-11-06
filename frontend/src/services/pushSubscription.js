@@ -11,7 +11,8 @@ function urlBase64ToUint8Array(base64String) {
   return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
 }
 
-export async function subscribeToPush(userId) {
+// El usuario sale de la sesión del servidor (los avisos son personales): ya no se manda un userId en el pedido.
+export async function subscribeToPush() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return null;
 
   try {
@@ -29,7 +30,7 @@ export async function subscribeToPush(userId) {
     }
 
     // Guardar en backend
-    await api.post('/push/subscribe', { userId, subscription: sub.toJSON() });
+    await api.post('/push/subscribe', { subscription: sub.toJSON() });
     return sub;
   } catch (err) {
     console.warn('[Push] subscribe error:', err.message);
