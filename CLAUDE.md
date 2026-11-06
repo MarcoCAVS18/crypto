@@ -50,6 +50,7 @@ Límites por IP en memoria (por instancia): general 240/min, IA 20/min, refresco
 
 - `GROQ_API_KEY`, `FRED_API_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`: secretos de Firebase (`firebase functions:secrets:set NOMBRE`), declarados en `functions/index.js`. Local: `functions/.env` (gitignored, ver `.env.example`).
 - `GROQ_MODEL` (opcional): modelo de Groq; por defecto `openai/gpt-oss-120b`.
+- `AI_DECISION=off` (opcional): apaga la capa de IA que decide esperar/comprar, tamaño y tramos (`services/aiDecision.js`); decide solo la regla.
 - Sin `FRED_API_KEY` todo sigue andando en **modo degradado** (visible en la tarjeta macro y en `GET /api/health/deep`).
 - Estado de salud en vivo: `GET /api/health/deep` (config, frescura por insumo, último snapshot, advertencias, huella de la clave de Groq).
 - Si la IA falla con 401: `GET /api/health/ai` prueba la clave de Groq en vivo (lista de modelos, sin gastar tokens) y dice si está mal cargada, pisada por otra clave, revocada o si el modelo no está disponible.

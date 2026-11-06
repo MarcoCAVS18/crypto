@@ -57,7 +57,8 @@ export function buildNotification(decision, { symbol, price, cashUsd = 0 } = {})
       : `${symbol}: toca comprar`;
     const share = cashUsd > 0 ? ` (${Math.round((total / cashUsd) * 100)} % de tus ${usd(cashUsd)})` : '';
     const tramos = ops.map((o, i) => `${usd(o.usdAmount)} ${i === 0 ? 'ahora a' : 'a'} ${px(o.price)}`).join(' · ');
-    const why = firstSentence(decision.reason);
+    // Si la IA ajustó la compra (tamaño o tramos), el motivo del aviso es el suyo: es lo que muestra la pantalla
+    const why = firstSentence(decision.ai?.used && decision.ai.followedRule === false && decision.ai.reasoning ? decision.ai.reasoning : decision.reason);
     return { title, body: `Usá ${usd(total)}${share} en ${ops.length} ${ops.length === 1 ? 'tramo' : 'tramos'}: ${tramos}.${why ? `\n${why}` : ''}`, tag: data.tag, data };
   }
 

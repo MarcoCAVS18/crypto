@@ -35,7 +35,9 @@ export const DCA_POLICY = Object.freeze({
   minFraction: 0.04,                        // nunca una cuota microscópica (con 12 compras y ×0.5 ≈ 4.2 %)
   maxFraction: 1.0,                         // nunca más del 100 % del efectivo (solo se alcanza con 1 compra)
   tilt: Object.freeze({ k: 0.5, min: 0.5, max: 1.5, dir: -1 }),  // dir −1: más peso cuando el score es bajo
-  cadence: Object.freeze({ days: 7, dipPct: 3 })                 // p3-3: una compra por semana, o antes si cae ≥ 3 % de la última
+  cadence: Object.freeze({ days: 7, dipPct: 3 }),                // p3-3: una compra por semana, o antes si cae ≥ 3 % de la última
+  // Límites del ajuste que puede pedir la capa de IA (aiDecision.js). El motor los aplica SIEMPRE, diga lo que diga el modelo.
+  aiSizing: Object.freeze({ min: 0.5, max: 1.5, maxTranches: 3 })
 });
 
 const round = (x, d = 3) => Math.round(x * 10 ** d) / 10 ** d;
@@ -86,6 +88,7 @@ export function buyBudgetUsd(cashUsd, fraction, minOrderUsd = 10) {
  */
 export function tranchePlan(budgetUsd, maxTranches = 3, minOrderUsd = 10) {
   const THREE = [0.3, 0.3, 0.4], TWO = [0.4, 0.6];
+  if (maxTranches <= 1) return [1];
   if (!(budgetUsd > 0)) return maxTranches >= 3 ? THREE : TWO;
   if (maxTranches >= 3 && budgetUsd * THREE[0] >= minOrderUsd) return THREE;
   if (budgetUsd * TWO[0] >= minOrderUsd) return TWO;
@@ -188,4 +191,21 @@ export function cadenceSummary(c) {
     daysSince: c.daysSince, nextAt: c.nextAt ? new Date(c.nextAt).toISOString() : null,
     dipPrice: c.dipPrice, lastBuyDate: c.lastBuy?.date ?? null, lastBuyPrice: c.lastBuy?.price ?? null
   };
+}
+
+// ── Ajuste de la IA sobre el tamaño ─────────────────────────────────────────────────────────────────
+/**
+ * Fracción final cuando la IA pide un multiplicador sobre la que propone el motor.
+ * Piso: la mitad de la propuesta. Techo: lo más grande entre la propuesta y el máximo ESTÁNDAR del propio motor (cuota base ×1.5):
+ * la IA no puede gastar más de lo que el motor ya puede llegar a gastar en un contexto muy favorable a comprar.
+ * @returns {{ fraction:number, multiplier:number }} multiplicador EFECTIVO (ya acotado)
+ */
+export function aiAdjustedFraction(baseFraction, requestedMultiplier, { installments, policy = DCA_POLICY } = {}) {
+  if (!(baseFraction > 0) || !Number.isFinite(requestedMultiplier)) return { fraction: baseFraction, multiplier: 1 };
+  const { min, max } = policy.aiSizing;
+  const n = normalizeInstallments(installments, policy.installments);
+  const ceiling = Math.min(policy.maxFraction, (1 / n) * max);
+  const want = baseFraction * Math.min(max, Math.max(min, requestedMultiplier));
+  const fraction = Math.min(Math.max(want, baseFraction * min), Math.max(baseFraction, ceiling));
+  return { fraction, multiplier: round(fraction / baseFraction) };
 }

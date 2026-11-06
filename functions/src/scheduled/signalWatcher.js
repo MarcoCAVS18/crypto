@@ -24,10 +24,12 @@ async function loadDefaultDeps() {
   const gold = await import('../services/goldContext.js');
   const prev = await import('../services/previousMode.js');
   const cal  = await import('../data/macroCalendar.js');
+  const aiDeps = await import('../config/aiDeps.js');
   return {
     getCryptoData,
     computeSignal,
-    signalDeps: { getGoldContext: gold.getGoldContext, getPreviousMode: prev.getPreviousMode, getUpcomingEvents: cal.getUpcomingEvents, warn: console.warn },
+    // `ai`: la misma capa de IA que usa la app (decisión vigente compartida por usuario ⇒ el aviso dice lo mismo que la pantalla)
+    signalDeps: { getGoldContext: gold.getGoldContext, getPreviousMode: prev.getPreviousMode, getUpcomingEvents: cal.getUpcomingEvents, warn: console.warn, ai: aiDeps.createAiDeps() },
     getProfile: db.getProfile,
     listUserOperations: db.listUserOperations,
     getZoneState: db.getZoneState,
@@ -105,7 +107,7 @@ export async function run(d) {
           if (marketData.candlesSource === 'synthetic') { console.warn(`[SignalWatcher] ${symbol}: velas sintéticas, se omite`); continue; }
 
           const portfolioContext = buildPortfolioContext(ops, symbol, prices, now);
-          const { decision } = await d.computeSignal({ symbol, marketData, userState, portfolioContext, now }, d.signalDeps);
+          const { decision } = await d.computeSignal({ symbol, marketData, userState, portfolioContext, now, scope: userId }, d.signalDeps);
 
           const key = `SIGNAL_${userId}_${symbol}`;
           const { state, push } = nextSignalState(await d.getZoneState(key), decision.action, now);

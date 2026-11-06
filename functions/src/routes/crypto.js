@@ -12,6 +12,8 @@ import { getUpcomingEvents } from '../data/macroCalendar.js';
 import { buildDecisionRecord } from '../services/decisionLog.js';
 import { insightCacheKey } from '../services/aiHelpers.js';
 import { saveDecision, getPortfolioSummaryBySymbol, getAiCache, setAiCache, getDecisionsBySymbol } from '../config/database.js';
+import { createAiDeps } from '../config/aiDeps.js';
+import { optionalSession } from '../middleware/session.js';
 
 const router = express.Router();
 
@@ -137,7 +139,7 @@ router.get('/:symbol', async (req, res) => {
 });
 
 // POST /api/decision - Genera una decisión basada en estado del usuario
-router.post('/decision', async (req, res) => {
+router.post('/decision', optionalSession, async (req, res) => {
   try {
     const { symbol, cashPercent, mode, totalCapital } = req.body;
 
@@ -188,7 +190,9 @@ router.post('/decision', async (req, res) => {
     }
 
     // Mercado → motor → calidad de datos → calendario: el mismo cálculo que usan los avisos (push)
-    const signal = await computeSignal({ symbol: symbol.toUpperCase(), marketData, userState, portfolioContext }, signalDeps);
+    // La IA decide esperar/comprar, tamaño y tramos de una compra que la regla ya permite; con sesión, su decisión vigente se
+    // comparte con los avisos de ese usuario (misma señal en la app y en el push)
+    const signal = await computeSignal({ symbol: symbol.toUpperCase(), marketData, userState, portfolioContext, scope: req.userId ?? 'anon' }, { ...signalDeps, ai: createAiDeps() });
     const { indicators, zones, marketMode } = signal;
     let decision = signal.decision;
 

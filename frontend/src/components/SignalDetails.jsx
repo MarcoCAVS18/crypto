@@ -1,10 +1,10 @@
 // "Detalles → Señal": recomendación, órdenes y el porqué. La acción y el motivo ya están en la tarjeta de la pantalla.
-import { Lightbulb, BrainCircuit } from 'lucide-react';
+import { Lightbulb, BrainCircuit, Sparkles } from 'lucide-react';
 import { Panel } from './ui/Panel';
 import { Row, Rows } from './ui/Row';
 import { Section } from './ui/Section';
 import { DecisionExplainer } from './DecisionExplainer';
-import { fmtPrice, fmtUnits, usageOf } from '../utils/signalView';
+import { fmtPrice, fmtUnits, usageOf, aiView } from '../utils/signalView';
 
 export function SignalDetails({ decision, marketData, symbol, cashUsd = 0, onConfigure }) {
   if (!decision) {
@@ -18,6 +18,7 @@ export function SignalDetails({ decision, marketData, symbol, cashUsd = 0, onCon
   const ops = (decision.operations ?? []).filter(o => o.type === 'BUY' || o.type === 'SELL');
   const isBuy = ops[0]?.type !== 'SELL';
   const usage = usageOf(decision.operations, cashUsd);
+  const ai = aiView(decision);
 
   return (
     <div className="space-y-7">
@@ -26,6 +27,28 @@ export function SignalDetails({ decision, marketData, symbol, cashUsd = 0, onCon
           <Lightbulb className="w-5 h-5 text-warn shrink-0 mt-0.5" />
           <div className="space-y-2">
             {decision.recommendation.split(/\s·\s/).map((t, i) => <p key={i} className="text-sm text-ink/90 leading-relaxed">{t.replace(/^⚠️?\s*/, '')}</p>)}
+          </div>
+        </Panel>
+      )}
+
+      {ai && (
+        <Panel tone="soft" className="flex gap-3">
+          <Sparkles className={`w-5 h-5 shrink-0 mt-0.5 ${ai.tone === 'warn' ? 'text-warn' : ai.tone === 'muted' ? 'text-muted' : 'text-accent'}`} />
+          <div className="space-y-2 min-w-0">
+            <p className="text-xs text-muted">{ai.title}{ai.confidence != null ? ` · confianza ${ai.confidence} %` : ''}</p>
+            {ai.text && <p className="text-sm text-ink/90 leading-relaxed">{ai.text}</p>}
+            {ai.detail && <p className="text-sm text-ink leading-relaxed font-semibold">{ai.detail}</p>}
+            {ai.factors.length > 0 && (
+              <ul className="space-y-1">
+                {ai.factors.map((f, i) => <li key={i} className="text-xs text-muted leading-relaxed">· {f}</li>)}
+              </ul>
+            )}
+            {ai.notes.map((n, i) => <p key={i} className="text-xs text-warn leading-relaxed">{n}</p>)}
+            {ai.kind !== 'unavailable' && (
+              <p className="text-[11px] text-muted/80 leading-relaxed">
+                La IA solo afina el momento y el tamaño de una compra que la regla ya permite (tamaño entre ×0.5 y ×1.5, 1–3 tramos, espera máxima de 3 días). Su criterio no está probado con historia: se guarda cada decisión para medirla.
+              </p>
+            )}
           </div>
         </Panel>
       )}

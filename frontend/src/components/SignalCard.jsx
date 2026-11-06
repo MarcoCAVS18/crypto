@@ -1,10 +1,10 @@
 // LA señal de la pantalla: una sola tarjeta con la acción en grande, el motivo en una línea, el monto y lo que pasa con tu promedio.
 // (Reemplaza el panel de vidrio del hero, la tarjeta de recomendación y el bloque de órdenes que repetían lo mismo.)
 import { motion } from 'framer-motion';
-import { ArrowRight, CalendarClock } from 'lucide-react';
+import { ArrowRight, CalendarClock, Sparkles } from 'lucide-react';
 import { Panel } from './ui/Panel';
 import { Spinner } from './ui/Spinner';
-import { actionView, strengthDots, summarizeOps, totalDcaEffect, usageOf, cadenceView, fmtPrice } from '../utils/signalView';
+import { actionView, strengthDots, summarizeOps, totalDcaEffect, usageOf, cadenceView, aiView, fmtPrice } from '../utils/signalView';
 
 const GLOW = { accent: 'rgba(88,226,111,0.16)', warn: 'rgba(243,217,92,0.12)', pink: 'rgba(255,95,168,0.14)' };
 
@@ -35,6 +35,7 @@ export function SignalCard({ symbol, decision, loading, portfolioSummary, cashUs
   const effect = ops.type === 'BUY' ? totalDcaEffect(decision.operations, portfolioSummary) : null;
   const usage = usageOf(decision.operations, cashUsd);
   const pace = cadenceView(decision);
+  const ai = aiView(decision);
 
   return (
     <motion.div key={`${decision.action}-${decision.strength}`} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
@@ -46,10 +47,19 @@ export function SignalCard({ symbol, decision, loading, portfolioSummary, cashUs
 
         <p className={`text-[40px] leading-tight font-bold mt-1 ${view.text}`}>{view.word}</p>
         {decision.reason && <p className="text-sm text-muted mt-1 leading-relaxed line-clamp-3">{decision.reason}</p>}
-        {pace && (
-          <p className={`mt-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ${pace.tone === 'accent' ? 'bg-accent/15 text-accent' : 'bg-warn/15 text-warn'}`}>
-            <CalendarClock className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />{pace.text}
-          </p>
+        {(pace || ai) && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {pace && (
+              <p className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ${pace.tone === 'accent' ? 'bg-accent/15 text-accent' : 'bg-warn/15 text-warn'}`}>
+                <CalendarClock className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />{pace.text}
+              </p>
+            )}
+            {ai && (
+              <p className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ${ai.tone === 'accent' ? 'bg-accent/15 text-accent' : ai.tone === 'warn' ? 'bg-warn/15 text-warn' : 'bg-white/10 text-muted'}`}>
+                <Sparkles className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />{ai.chip}
+              </p>
+            )}
+          </div>
         )}
 
         {ops.count > 0 && (

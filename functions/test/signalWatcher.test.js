@@ -86,6 +86,7 @@ test('la señal que se calcula usa los USDT, el modo y las compras del usuario (
   const a = calls.signal[0];
   assert.equal(a.symbol, 'PAXG');
   assert.equal(a.now, T0);
+  assert.equal(a.scope, 'marco');                                // la decisión de la IA se comparte con la app de ESTE usuario
   assert.equal(a.userState.totalCapital, 333);
   assert.equal(a.userState.installments, 6);
   assert.deepEqual(a.userState.costs, { feeBps: 10 });
