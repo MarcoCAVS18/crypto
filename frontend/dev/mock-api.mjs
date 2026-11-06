@@ -93,6 +93,8 @@ http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://x'); const p = u.pathname.replace(/^\/api/, ''); let m;
   try {
     if (p === '/health') return send(res, 200, { status: 'ok', warnings: [] });
+    if (p === '/auth/settings' && req.method === 'PUT') { const b = await readBody(req); console.log('PUT /auth/settings', JSON.stringify(b)); return send(res, 200, { ok: true, settings: b }); }
+    if (p === '/push/subscribe') return send(res, 200, { ok: true });
     if ((m = /^\/crypto\/([A-Za-z]+)\/candles$/.exec(p))) {
       const g = u.searchParams.get('granularity') || '1d', n = Number(u.searchParams.get('count')) || 120;
       const step = { '15m': 15 * 60e3, '1h': HOUR, '4h': 4 * HOUR, '1d': DAY }[g] ?? DAY;

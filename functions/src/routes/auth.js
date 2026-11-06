@@ -6,6 +6,7 @@ import {
 } from '../services/pinAuth.js';
 import { getProfile, createProfile, updateProfile, saveSession, deleteSession } from '../config/database.js';
 import { requireSession } from '../middleware/session.js';
+import { parseSettings } from '../services/userSettings.js';
 
 const router = express.Router();
 const COIN_RE = /^[A-Z0-9]{2,10}$/;
@@ -94,7 +95,7 @@ router.post('/logout', requireSession, async (req, res) => {
 router.get('/me', requireSession, async (req, res) => {
   try {
     const p = await getProfile(req.userId);
-    res.json({ userId: req.userId, cryptos: p?.cryptos ?? null });
+    res.json({ userId: req.userId, cryptos: p?.cryptos ?? null, settings: p?.settings ?? null });
   } catch (err) {
     console.error('[Auth] me:', err.message);
     res.status(500).json({ error: 'No se pudo leer el perfil.' });
@@ -112,6 +113,20 @@ router.put('/cryptos', requireSession, async (req, res) => {
   } catch (err) {
     console.error('[Auth] cryptos:', err.message);
     res.status(500).json({ error: 'No se pudo guardar.' });
+  }
+});
+
+// Ajustes de "Tu posición" (USDT, modo, compras, comisión, peso objetivo). El navegador los guarda en el dispositivo; acá se
+// sincronizan para que los avisos (push, con la app cerrada) se calculen con los mismos datos que ve la app.
+router.put('/settings', requireSession, async (req, res) => {
+  const parsed = parseSettings(req.body);
+  if (parsed.error) return res.status(400).json({ error: parsed.error });
+  try {
+    await updateProfile(req.userId, { settings: { ...parsed.settings, updatedAt: Date.now() } });
+    res.json({ ok: true, settings: parsed.settings });
+  } catch (err) {
+    console.error('[Auth] settings:', err.message);
+    res.status(500).json({ error: 'No se pudieron guardar los ajustes.' });
   }
 });
 

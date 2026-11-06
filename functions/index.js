@@ -11,7 +11,7 @@ const vapidPrivate  = defineSecret('VAPID_PRIVATE_KEY');
 const fredApiKey    = defineSecret('FRED_API_KEY');   // series macro de FRED (gratis, ver docs/PAXG_AUDIT.md)
 
 import app from './src/app.js';
-import { handler as zoneWatcherHandler } from './src/scheduled/zoneWatcher.js';
+import { handler as signalWatcherHandler } from './src/scheduled/signalWatcher.js';
 import { handler as snapshotHandler } from './src/scheduled/snapshotJob.js';
 import { handler as outcomeHandler } from './src/scheduled/outcomeJob.js';
 
@@ -26,15 +26,18 @@ export const api = onRequest(
   app
 );
 
-// ── Scheduled: chequea zonas cada 1 hora y pushea si cambia a buy ─────────────
+// ── Scheduled: calcula la señal de cada usuario con avisos y pushea cuando toca comprar/vender ──
+// Conserva el nombre `zoneWatcher` (antes avisaba por zona de precio) para no borrar y recrear la función al desplegar.
+// Calcula la misma señal que la app, por eso necesita el contexto de oro (IA + FRED) además de las claves de push.
 export const zoneWatcher = onSchedule(
   {
     schedule:       'every 60 minutes',
     region:         'us-central1',
-    timeoutSeconds: 60,
-    secrets:        [vapidPublic, vapidPrivate]
+    memory:         '512MiB',
+    timeoutSeconds: 120,
+    secrets:        [groqApiKey, fredApiKey, vapidPublic, vapidPrivate]
   },
-  zoneWatcherHandler
+  signalWatcherHandler
 );
 
 // ── Scheduled: snapshot horario de features de mercado (PAXG, BTC) ────────────

@@ -32,11 +32,12 @@ test('efectivo menor a 30 %: WAIT que dice el efectivo y dónde ajustarlo', () =
   assert.match(d.recommendation, /Tu posición/);
 });
 
-test('todos los tramos ya ejecutados en los últimos 4 días: WAIT que lo dice', () => {
+test('compró ayer a los niveles de los tramos: WAIT que lo dice (la cadencia manda: la próxima compra es en una semana)', () => {
   const buys = [4150, 4090, 4050].map(p => ({ price: p, amount_usd: 100, date: day(1) }));
   const d = decide({ cashPercent: 50, totalCapital: 20000 }, pf({ executedBuys: buys }));
   assert.equal(d.action, 'WAIT');
-  assert.match(d.reason, /Ya registraste compras en los últimos 4 días/);
+  assert.match(d.reason, /Ya compraste ayer.*la próxima compra toca desde el/);
+  assert.equal(d.cadence.due, false);
 });
 
 test('precio por encima del promedio y fuera de zona de compra en Risk OFF: WAIT que lo explica', () => {

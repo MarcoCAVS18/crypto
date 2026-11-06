@@ -29,12 +29,13 @@ import { modulation } from '../backtest/dcaSim.js';
 const DEFAULT_INSTALLMENTS = 4;
 
 export const DCA_POLICY = Object.freeze({
-  version: 'p3-2',
+  version: 'p3-3',
   installments: Object.freeze({ default: DEFAULT_INSTALLMENTS, min: 1, max: 12 }),
   baseFraction: 1 / DEFAULT_INSTALLMENTS,   // cuota base con el valor por defecto (la usa también el challenger `fixed_dca`)
   minFraction: 0.04,                        // nunca una cuota microscópica (con 12 compras y ×0.5 ≈ 4.2 %)
   maxFraction: 1.0,                         // nunca más del 100 % del efectivo (solo se alcanza con 1 compra)
-  tilt: Object.freeze({ k: 0.5, min: 0.5, max: 1.5, dir: -1 })   // dir −1: más peso cuando el score es bajo
+  tilt: Object.freeze({ k: 0.5, min: 0.5, max: 1.5, dir: -1 }),  // dir −1: más peso cuando el score es bajo
+  cadence: Object.freeze({ days: 7, dipPct: 3 })                 // p3-3: una compra por semana, o antes si cae ≥ 3 % de la última
 });
 
 const round = (x, d = 3) => Math.round(x * 10 ** d) / 10 ** d;
@@ -105,4 +106,86 @@ export function pacingNote({ cashUsd, fraction, installments, minOrderUsd = 10 }
   const pct = Math.round((budget / cashUsd) * 100);
   const fmt = (n) => `$${Math.round(n).toLocaleString('en-US')}`;
   return ` · Ritmo: tus USDT se reparten en ~${installments} compras; esta usa el ${pct} % (${fmt(budget)} de ${fmt(cashUsd)}) y el resto (${fmt(cashUsd - budget)}) queda de reserva por si el precio sigue bajando.`;
+}
+
+// ── Cadencia: UNA compra por período, no una señal de compra permanente ─────────────────────────────
+//
+// Con una posición bajo el promedio, "precio bajo el promedio" es verdad TODAS las horas: sin cadencia la señal decía
+// COMPRAR el 100 % del tiempo (21 de 21 escenarios en la revisión), aun después de registrar una compra hoy. Una señal
+// que nunca cambia no informa y sus avisos salen todos iguales.
+//
+// La cadencia sigue la estructura que se evaluó en el backtest (compras SEMANALES de una cuota base): toca comprar si
+//   · todavía no hay compras registradas del activo,
+//   · pasaron `days` días desde la última, o
+//   · el precio cayó `dipPct` % por debajo de la última compra (mejor entrada que la anterior: se adelanta).
+// Si no, es ESPERAR con la fecha de la próxima compra. Los 7 días y el 3 % son decisiones de ritmo (como el N de compras):
+// no salen de un backtest.
+
+const DAY_MS = 86400000;
+
+/** Momento de una compra: las operaciones se guardan con fecha sin hora ⇒ se toma el mediodía UTC de ese día. */
+export function buyTime(date) {
+  if (typeof date === 'number') return Number.isFinite(date) ? date : NaN;
+  const s = String(date ?? '');
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? Date.parse(`${s}T12:00:00Z`) : Date.parse(s);
+}
+
+/**
+ * @param {object} o
+ * @param {Array<{date:string|number, price:number}>} o.buys  compras registradas del activo (en cualquier orden)
+ * @param {number} o.price  precio actual
+ * @param {number} [o.now]
+ * @returns {{ due:boolean, reason:'first'|'due'|'dip'|'recent', days:number, dipPct:number,
+ *             lastBuy:{date:string|number, price:number}|null, daysSince:number|null, nextAt:number|null, dipPrice:number|null }}
+ */
+export function cadenceStatus({ buys = [], price, now = Date.now(), policy = DCA_POLICY }) {
+  const { days, dipPct } = policy.cadence;
+  // una fecha futura (reloj del dispositivo adelantado) no cuenta: se acota a "ahora"
+  const list = (Array.isArray(buys) ? buys : [])
+    .map(b => ({ b, at: buyTime(b?.date) }))
+    .filter(x => Number.isFinite(x.at) && Number(x.b?.price) > 0)
+    .map(x => ({ ...x, at: Math.min(x.at, now) }));
+  if (!list.length) return { due: true, reason: 'first', days, dipPct, lastBuy: null, daysSince: null, nextAt: null, dipPrice: null };
+
+  const last = list.reduce((a, x) => (x.at >= a.at ? x : a));
+  const daysSince = (now - last.at) / DAY_MS;
+  const nextAt = last.at + days * DAY_MS;
+  const lastPrice = Number(last.b.price);
+  const dipPrice = lastPrice * (1 - dipPct / 100);
+  const base = { days, dipPct, lastBuy: { date: last.b.date, price: lastPrice }, daysSince: round(daysSince, 2), nextAt, dipPrice: round(dipPrice, 2) };
+
+  if (daysSince >= days) return { ...base, due: true, reason: 'due' };
+  if (Number.isFinite(price) && price > 0 && Math.round(price * 100) <= Math.round(dipPrice * 100)) return { ...base, due: true, reason: 'dip' };
+  return { ...base, due: false, reason: 'recent' };
+}
+
+const fmtDay = (ms) => new Date(ms).toLocaleDateString('es-AR', { day: 'numeric', month: 'short', timeZone: 'UTC' }).replace('.', '');
+const fmtUsd = (n) => `$${Number(n).toLocaleString('en-US', { maximumFractionDigits: n >= 1000 ? 0 : 2 })}`;
+
+/** Texto de la espera por cadencia (español rioplatense). null si toca comprar. */
+export function cadenceWaitText(c) {
+  if (!c || c.due) return null;
+  const ago = c.daysSince < 1 ? 'hoy' : c.daysSince < 2 ? 'ayer' : `hace ${Math.floor(c.daysSince)} días`;
+  return {
+    reason: `Ya compraste ${ago} (${fmtUsd(c.lastBuy.price)}): la próxima compra toca desde el ${fmtDay(c.nextAt)}`,
+    recommendation: `El plan es una compra por semana. Próxima: desde el ${fmtDay(c.nextAt)}, o antes si el precio baja a ${fmtUsd(c.dipPrice)} (${c.dipPct} % por debajo de tu última compra).`
+  };
+}
+
+/** Por qué toca comprar, para la recomendación ("" si es la primera compra o no hay dato). */
+export function cadenceDueText(c) {
+  if (!c?.due) return '';
+  if (c.reason === 'dip') return ` Toca antes de lo previsto: el precio bajó ${c.dipPct} % o más desde tu última compra (${fmtUsd(c.lastBuy.price)}).`;
+  if (c.reason === 'due') return ` Toca la compra de la semana (la última fue hace ${Math.floor(c.daysSince)} días).`;
+  return '';
+}
+
+/** Resumen serializable para la respuesta de la API (la app y los avisos muestran lo mismo). */
+export function cadenceSummary(c) {
+  if (!c) return null;
+  return {
+    due: c.due, reason: c.reason, days: c.days, dipPct: c.dipPct,
+    daysSince: c.daysSince, nextAt: c.nextAt ? new Date(c.nextAt).toISOString() : null,
+    dipPrice: c.dipPrice, lastBuyDate: c.lastBuy?.date ?? null, lastBuyPrice: c.lastBuy?.price ?? null
+  };
 }

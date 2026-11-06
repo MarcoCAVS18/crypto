@@ -1,26 +1,22 @@
 import express from 'express';
 import { getCryptoData, getHistoricalCandles } from '../services/marketData.js';
 import { GRANULARITY_SECONDS, planGranularity } from '../services/candles.js';
-import { calculateAllIndicators, analyzeVolume } from '../services/technicalAnalysis.js';
-import { calculateZones } from '../services/zoneCalculator.js';
-import { determineMarketMode } from '../services/marketMode.js';
-import { determineGoldMarketMode } from '../services/goldMarketMode.js';
 import { getPreviousMode } from '../services/previousMode.js';
 import { getGoldContext } from '../services/goldContext.js';
 import { getCryptoNewsContext } from '../services/cryptoNewsContext.js';
-import { makeDecision } from '../services/decisionEngine.js';
+import { computeSignal, buildMarketContext } from '../services/signalService.js';
 import { generatePortfolioInsight } from '../services/groqAnalyzer.js';
-import { applyEventRisk } from '../services/eventRisk.js';
-import { pullbackLevels } from '../services/pullbacks.js';
 import { shadowFixedDca } from '../services/shadow.js';
 import { normalizeInstallments } from '../services/dcaPolicy.js';
 import { getUpcomingEvents } from '../data/macroCalendar.js';
 import { buildDecisionRecord } from '../services/decisionLog.js';
 import { insightCacheKey } from '../services/aiHelpers.js';
-import { applyDataQuality } from '../services/dataHealth.js';
 import { saveDecision, getPortfolioSummaryBySymbol, getAiCache, setAiCache, getDecisionsBySymbol } from '../config/database.js';
 
 const router = express.Router();
+
+// Dependencias del cálculo de la señal (compartido con el job de avisos: services/signalService.js)
+const signalDeps = { getGoldContext, getPreviousMode, getUpcomingEvents, warn: console.warn };
 
 const isValidSymbol = s => /^[A-Z0-9]{2,10}$/.test(s);
 
@@ -94,28 +90,10 @@ router.get('/:symbol', async (req, res) => {
     // Obtener datos de mercado
     const marketData = await getCryptoData(symbol.toUpperCase());
 
-    // Calcular indicadores técnicos
-    const indicators = calculateAllIndicators(marketData.candles);
-
-    // Analizar volumen
-    const volumeAnalysis = analyzeVolume(marketData.candles);
-
-    // Calcular zonas
-    const zones = calculateZones(marketData.price, marketData.candles, indicators);
-
-    // Determinar market mode (PAXG usa lógica macro de oro)
-    let marketMode;
+    // Indicadores, volumen, zonas y modo de mercado (PAXG usa la lógica macro de oro): el MISMO cálculo que usa la señal
+    const { indicators, volumeAnalysis, zones, marketMode } = await buildMarketContext(symbol.toUpperCase(), marketData, signalDeps);
     let newsContext = null;
-    if (symbol.toUpperCase() === 'PAXG') {
-      try {
-        const goldCtx = await getGoldContext();
-        marketMode = determineGoldMarketMode(marketData.price, indicators, volumeAnalysis, goldCtx, { previousMode: await getPreviousMode('PAXG') });
-      } catch (goldErr) {
-        console.warn('[crypto route] Gold context fallback:', goldErr.message);
-        marketMode = determineMarketMode(marketData.price, indicators, volumeAnalysis);
-      }
-    } else {
-      marketMode = determineMarketMode(marketData.price, indicators, volumeAnalysis);
+    if (symbol.toUpperCase() !== 'PAXG') {
       // Obtener contexto de noticias + sentimiento para BTC/ETH (no bloquea la respuesta)
       try {
         newsContext = await getCryptoNewsContext(symbol.toUpperCase());
@@ -186,25 +164,6 @@ router.post('/decision', async (req, res) => {
     // Obtener datos de mercado
     const marketData = await getCryptoData(symbol.toUpperCase());
 
-    // Calcular indicadores
-    const indicators = calculateAllIndicators(marketData.candles);
-    const volumeAnalysis = analyzeVolume(marketData.candles);
-
-    // Calcular zonas y market mode
-    const zones = calculateZones(marketData.price, marketData.candles, indicators);
-    let marketMode;
-    if (symbol.toUpperCase() === 'PAXG') {
-      try {
-        const goldCtx = await getGoldContext();
-        marketMode = determineGoldMarketMode(marketData.price, indicators, volumeAnalysis, goldCtx, { previousMode: await getPreviousMode('PAXG') });
-      } catch (goldErr) {
-        console.warn('[decision] Gold context fallback:', goldErr.message);
-        marketMode = determineMarketMode(marketData.price, indicators, volumeAnalysis);
-      }
-    } else {
-      marketMode = determineMarketMode(marketData.price, indicators, volumeAnalysis);
-    }
-
     // Generar decisión
     const userState = {
       cashPercent: cash,                 // número ya validado (0-100), no el valor crudo del body
@@ -228,22 +187,10 @@ router.post('/decision', async (req, res) => {
       }
     }
 
-    let decision = makeDecision(
-      marketMode, zones, marketData.price, userState, indicators, symbol.toUpperCase(), portfolioContext,
-      { candlesSource: marketData.candlesSource, pullback: symbol.toUpperCase() === 'PAXG' ? pullbackLevels(marketData.candles) : null }
-    );
-
-    // Con datos macro degradados (fuentes caídas/viejas) se advierte y una compra pierde intensidad
-    decision = applyDataQuality(decision, marketMode.goldContext?.dataHealth);
-
-    // ── Riesgo de calendario macro (determinístico, solo compras; ver services/eventRisk.js) ──
-    if (decision.action === 'BUY') {
-      try {
-        decision = applyEventRisk(decision, getUpcomingEvents(2, symbol.toUpperCase()));
-      } catch (calErr) {
-        console.warn('[EventRisk] Error:', calErr.message);      // no interrumpir la señal principal
-      }
-    }
+    // Mercado → motor → calidad de datos → calendario: el mismo cálculo que usan los avisos (push)
+    const signal = await computeSignal({ symbol: symbol.toUpperCase(), marketData, userState, portfolioContext }, signalDeps);
+    const { indicators, zones, marketMode } = signal;
+    let decision = signal.decision;
 
     // ── Portfolio insight personalizado (Groq, caché 1h) ─────────────────────
     if (portfolioContext?.hasPosition && portfolioContext.units > 0 && process.env.GROQ_API_KEY) {

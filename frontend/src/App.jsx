@@ -19,7 +19,8 @@ import { useUpcomingEvents } from './hooks/useUpcomingEvents';
 import { AUTO_REFRESH_INTERVAL } from './utils/constants';
 import { effectiveCashUsd } from './utils/cash';
 import { requestPermission, isSupported, getPermission } from './services/notifications';
-import { subscribeToPush } from './services/pushSubscription';
+import { subscribeToPush, unsubscribeFromPush } from './services/pushSubscription';
+import { syncSettings, resetSettingsSync } from './services/settingsSync';
 import { getToken } from './services/session';
 import { logoutServer } from './services/firestoreAuth';
 
@@ -90,22 +91,13 @@ function AuthenticatedApp() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCrypto]);
 
-  // Notificación nativa cuando la señal pasa a comprar/vender
-  const prevDecisionRef = useRef(null);
+  // Avisos (push): los calcula y manda el SERVIDOR con la misma señal que ves acá, con la app cerrada. Para eso (1) tus ajustes
+  // (USDT, compras, comisión…) se sincronizan con tu perfil y (2) este dispositivo queda suscripto a tu usuario. La pantalla ya no
+  // genera notificaciones propias: antes salían distintas a la señal y duplicadas.
+  useEffect(() => { syncSettings(userState); }, [userState]);
   useEffect(() => {
-    const prev = prevDecisionRef.current;
-    const curr = currentDecision?.action;
-    prevDecisionRef.current = curr;
-    if (!curr || curr === 'WAIT' || prev === curr || getPermission() !== 'granted') return;
-    const price = cryptoData[selectedCrypto]?.price;
-    const priceStr = price ? ` · $${price.toLocaleString('en-US', { maximumFractionDigits: 2 })}` : '';
-    try {
-      new Notification(
-        curr === 'BUY' ? `${selectedCrypto} — Señal de compra` : `${selectedCrypto} — Señal de venta`,
-        { body: `${currentDecision.reason ?? ''}${priceStr}`.trim(), icon: '/icon.svg', badge: '/icon.svg', tag: `signal_${selectedCrypto}`, renotify: true, silent: false }
-      );
-    } catch (e) { console.warn('[Notifications] signal:', e.message); }
-  }, [currentDecision, selectedCrypto, cryptoData]);
+    if (isSupported() && getPermission() === 'granted') subscribeToPush();
+  }, [currentUser.id]);
 
   const currentData = cryptoData[selectedCrypto];
   const { alert: zoneAlert, dismiss: dismissAlert } = useZoneAlert(selectedCrypto, currentData?.price, currentData?.zones);
@@ -113,12 +105,17 @@ function AuthenticatedApp() {
   const noticeEvents = events.filter(e => e.daysUntil <= 14 || ['FOMC', 'CPI'].includes(e.name)).slice(0, 6);
   const hasNotice = !!zoneAlert || noticeEvents.some(e => e.daysUntil <= 2);
 
-  const handleLogout = () => { setUserId(null); logoutServer(); logout(); };
+  const handleLogout = async () => {
+    // El aviso es personal: este dispositivo deja de recibir los de este usuario (necesita la sesión, por eso va antes de cerrarla)
+    await Promise.race([unsubscribeFromPush(), new Promise(r => setTimeout(r, 3000))]);
+    resetSettingsSync();
+    setUserId(null); logoutServer(); logout();
+  };
 
   const handleRefresh = async () => {
     if (isSupported() && getPermission() === 'default') {
       const result = await requestPermission();
-      if (result === 'granted') subscribeToPush(currentUser.id);
+      if (result === 'granted') subscribeToPush();
     }
     refreshData();
   };

@@ -10,7 +10,7 @@ self.addEventListener('push', (event) => {
       body,
       icon:    '/icon.svg',
       badge:   '/icon.svg',
-      tag:     `zone_${data.symbol ?? 'crypto'}`,
+      tag:     data.tag ?? `signal_${data.symbol ?? 'crypto'}`,      // un aviso por activo: el nuevo reemplaza al anterior
       renotify: true,
       data
     })

@@ -1,4 +1,5 @@
-// Notificaciones nativas del navegador/PWA
+// Permiso de notificaciones del navegador/PWA. Los avisos de la señal los manda el servidor por Web Push (services/pushSubscription.js)
+// con la misma señal que muestra la app; la pantalla ya no genera notificaciones propias (salían distintas y duplicadas).
 // Funciona en segundo plano en Android e iOS 16.4+ (instalado como PWA)
 
 export function isSupported() {
@@ -14,29 +15,4 @@ export async function requestPermission() {
   if (!isSupported()) return 'denied';
   if (Notification.permission !== 'default') return Notification.permission;
   return Notification.requestPermission();
-}
-
-export function sendZoneNotification(symbol, type, price) {
-  if (!isSupported() || Notification.permission !== 'granted') return;
-
-  const isBuy = type === 'buy';
-  const title = isBuy
-    ? `${symbol} — Zona de compra`
-    : `${symbol} — Zona de distribución`;
-  const body = `Precio: $${price.toLocaleString('en-US', { maximumFractionDigits: 2 })} · ${
-    isBuy ? 'Oportunidad de acumulación' : 'Evaluá toma de ganancias'
-  }`;
-
-  try {
-    new Notification(title, {
-      body,
-      icon: '/icon.svg',
-      badge: '/icon.svg',
-      tag: `${symbol}_${type}`,   // reemplaza notificación anterior del mismo tipo
-      renotify: true,
-      silent: false
-    });
-  } catch (e) {
-    console.warn('[Notifications] No se pudo enviar:', e.message);
-  }
 }

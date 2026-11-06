@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { actionView, modeView, strengthDots, fmtPrice, fmtUnits, summarizeOps, calcDcaEffect, totalDcaEffect, usageOf, rsiTag, zoneView, dataStatus, assetName, assetTab } from './signalView.js';
+import { actionView, modeView, strengthDots, fmtPrice, fmtUnits, summarizeOps, calcDcaEffect, totalDcaEffect, usageOf, cadenceView, rsiTag, zoneView, dataStatus, assetName, assetTab } from './signalView.js';
 
 test('acción y modo: textos y tonos; desconocidos caen en esperar / neutral', () => {
   assert.equal(actionView('BUY').word, 'Comprar'); assert.equal(actionView('SELL').tone, 'pink');
@@ -49,4 +49,21 @@ test('usageOf: cuánto de los USDT usa la compra y cuánto queda de reserva', ()
   assert.equal(usageOf([{ type: 'SELL', percentage: 30 }], 333), null);       // ventas no usan USDT
   assert.equal(usageOf([], 333), null);
   assert.equal(usageOf([{ type: 'BUY', usdAmount: 400 }], 333).reserve, 0);   // decisión vieja con menos efectivo: nunca negativa
+});
+
+test('cadenceView: COMPRAR explica por qué toca; ESPERAR por ritmo dice cuándo toca la próxima', () => {
+  assert.equal(cadenceView({ action: 'BUY', cadence: { reason: 'due' } }).text, 'Toca la compra de la semana');
+  assert.equal(cadenceView({ action: 'BUY', cadence: { reason: 'first' } }).text, 'Primera compra de este activo');
+  assert.match(cadenceView({ action: 'BUY', cadence: { reason: 'dip', dipPct: 3 } }).text, /^Bajó 3 % o más desde tu última compra/);
+  const wait = cadenceView({ action: 'WAIT', cadence: { due: false, reason: 'recent', nextAt: '2026-11-10T12:00:00.000Z', dipPrice: 3880 } });
+  assert.equal(wait.tone, 'warn');
+  assert.equal(wait.text, 'Próxima compra desde el 10 nov o si baja a $3,880');
+  assert.equal(cadenceView({ action: 'WAIT', cadence: { due: false, nextAt: 'basura' } }).text, 'Próxima compra en unos días');
+});
+
+test('cadenceView: sin cadencia, vender o esperar por otro motivo ⇒ nada que aclarar', () => {
+  assert.equal(cadenceView(null), null);
+  assert.equal(cadenceView({ action: 'BUY' }), null);
+  assert.equal(cadenceView({ action: 'SELL', cadence: { due: false } }), null);
+  assert.equal(cadenceView({ action: 'WAIT', cadence: { due: true, reason: 'due' } }), null);
 });

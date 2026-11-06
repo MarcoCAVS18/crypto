@@ -1,6 +1,6 @@
 // Motor de decisión: cruza market mode, zonas, indicadores y perfil del usuario
 
-import { dcaCapFraction, normalizeInstallments, buyBudgetUsd, tranchePlan, tiltNote, pacingNote, DCA_POLICY } from './dcaPolicy.js';
+import { dcaCapFraction, normalizeInstallments, buyBudgetUsd, tranchePlan, tiltNote, pacingNote, cadenceStatus, cadenceWaitText, cadenceDueText, cadenceSummary, DCA_POLICY } from './dcaPolicy.js';
 import { applyCosts, costNote, normalizeCosts } from './costModel.js';
 import { weightState, trimPctToBand } from './portfolioPolicy.js';
 import { evaluateExit } from './exitPolicy.js';
@@ -47,11 +47,16 @@ export function makeDecision(marketMode, zones, currentPrice, userState, indicat
     return riskOffWait(marketMode);
   }
 
+  // Cadencia de compra (solo inversión): ¿toca comprar o ya compraste hace poco? Ver dcaPolicy.js
+  const cadence = userMode === 'trading' ? null : cadenceStatus({
+    buys: [...(portfolioContext?.allBuys ?? []), ...(portfolioContext?.executedBuys ?? [])], price: currentPrice, now: meta?.now ?? Date.now()
+  });
+
   const result = userMode === 'trading'
     // --- MODO TRADING: más agresivo, usa RSI como confirmación adicional ---
     ? decideTradingMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, portfolioContext, symbol)
     // --- MODO INVERSIÓN: conservador, largo plazo, usa P&L real del portfolio ---
-    : decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, portfolioContext, indicators, symbol, { target: userState.target ?? null, pullback: meta?.pullback ?? null, installments: userState.installments, costs: userState.costs });
+    : decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, portfolioContext, indicators, symbol, { target: userState.target ?? null, pullback: meta?.pullback ?? null, installments: userState.installments, costs: userState.costs, cadence });
 
   // Sin cash suficiente no se COMPRA (y el motivo relevante es ese). Las ventas siempre se
   // permiten (liberan cash): antes este gate bloqueaba también las salidas.
@@ -78,9 +83,9 @@ export function makeDecision(marketMode, zones, currentPrice, userState, indicat
         operations: []
       };
     }
-    return { action, strength, reason, recommendation: recommendation + costNote(costed, userState.costs), operations: costed.operations, ...(policy ? { policy } : {}) };
+    return { action, strength, reason, recommendation: recommendation + costNote(costed, userState.costs), operations: costed.operations, ...(policy ? { policy } : {}), ...(cadence ? { cadence: cadenceSummary(cadence) } : {}) };
   }
-  return { action, strength, reason, recommendation, operations, ...(policy ? { policy } : {}) };
+  return { action, strength, reason, recommendation, operations, ...(policy ? { policy } : {}), ...(cadence ? { cadence: cadenceSummary(cadence) } : {}) };
 }
 
 function riskOffWait(marketMode) {
@@ -190,6 +195,8 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
   // Antes la fracción SEGUÍA al score y luego fue "75 % de todo el efectivo" (hasta 97 % con score bajo): ver dcaPolicy.js.
   const installments = normalizeInstallments(ext.installments);
   const minOrderUsd = normalizeCosts(ext.costs).minOrderUsd;
+  const cadence = ext.cadence ?? cadenceStatus({ buys: [...(portfolioCtx?.allBuys ?? []), ...executedBuys], price: currentPrice });
+  const dueNote = cadenceDueText(cadence);      // " Toca la compra de la semana…" / " Toca antes de lo previsto…" / ""
   const cashAvailable = totalCapital > 0 ? totalCapital * (cashPercent / 100) : 0;
   const dcaPolicy = dcaCapFraction(isPaxg ? goldScore : null, { installments, tilt: isPaxg });
   // Peso objetivo (opcional, solo PAXG): por debajo de la banda se acelera el DCA (×1.25, tope 100 %); por encima se frena (abajo)
@@ -231,6 +238,12 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
   const noPortfolioMsg = !hasPosition
     ? ' Registra tus operaciones en el Portfolio para que la decisión use tu promedio de compra real.'
     : '';
+
+  // Ya compraste hace poco: se espera a la próxima compra (con la fecha) en vez de repetir "Comprar" cada hora
+  const cadenceWait = () => {
+    const t = cadenceWaitText(cadence);
+    return { action: 'WAIT', strength: 'moderado', reason: `${t.reason}${pnlTag}`, recommendation: `${t.recommendation}${macroLine}`, operations: [] };
+  };
 
 
   // ── Peso objetivo: por encima de la banda no se compra más y se rebalancea (solo con ganancia) ─────────
@@ -296,6 +309,7 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
           'Si ese porcentaje no refleja tu efectivo real, ajustalo en "Tu posición".'
         );
       }
+      if (!cadence.due) return cadenceWait();
       const sz = sized();
       const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', sz.fraction, executedBuys, symbol, ext.pullback, minOrderUsd);
       if (ops.length > 0) {
@@ -303,7 +317,7 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
           action: 'BUY',
           strength: 'moderado',
           reason: `PAXG en Risk OFF: se sigue acumulando la debilidad (DCA) — no comprar en estos momentos encareció el costo promedio en el backtest${pnlTag}${allocationLine}`,
-          recommendation: `Acumulación en tramos con tamaño acotado. El score bajo no es motivo para frenar el DCA del oro; sí para no apurarse: usá los tramos escalonados.${policyNote}${sz.pace}${macroLine}${rrLine}`,
+          recommendation: `Acumulación en tramos con tamaño acotado. El score bajo no es motivo para frenar el DCA del oro; sí para no apurarse: usá los tramos escalonados.${dueNote}${policyNote}${sz.pace}${macroLine}${rrLine}`,
           operations: ops,
           policy: sz.policy
         };
@@ -333,13 +347,14 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
       dailyBias?.alignment !== 'bear';  // no entrar si el diario es claramente bajista
 
     if (macroFavorable && (isBelowAvg || currentZone === 'buy') && cashPercent >= 30) {
+      if (!cadence.due) return cadenceWait();
       const sz = sized(0.60); // entrada conservadora en contexto mixto
       const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', sz.fraction, executedBuys, symbol, ext.pullback, minOrderUsd);
       return {
         action: 'BUY',
         strength: 'moderado',
         reason: `PAXG: macro favorable en contexto técnico neutro${pnlTag}${macroLine}`,
-        recommendation: `Entrada reducida (60% de la cuota) aprovechando soporte macro. El entorno fundamental del oro justifica acumular pese al contexto técnico mixto.${sz.pace}${macroLine}${rrLine}`,
+        recommendation: `Entrada reducida (60% de la cuota) aprovechando soporte macro. El entorno fundamental del oro justifica acumular pese al contexto técnico mixto.${dueNote}${sz.pace}${macroLine}${rrLine}`,
         operations: ops,
         policy: sz.policy
       };
@@ -354,6 +369,7 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
     const buyZoneOk      = currentZone === 'buy' && cashPercent >= 30;
 
     if (buyZoneOk || dcaOpportunity) {
+      if (!cadence.due) return cadenceWait();
       const sz = sized();
       const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', sz.fraction, executedBuys, symbol, ext.pullback, minOrderUsd);
       const isDca = dcaOpportunity && !buyZoneOk;
@@ -409,8 +425,8 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
           ? `Precio por debajo del promedio de compra${pnlTag}${allocationLine}`
           : `Risk ON + zona de compra + ${cashPercent}% cash disponible${pnlTag}${allocationLine}`,
         recommendation: isDca
-          ? `Oportunidad de DCA: el precio está ${Math.abs(pnlPercent).toFixed(1)}% por debajo de tu promedio (${formatPrice(avgBuyPrice)}). Acumular en tramos reduce el precio promedio.${concentrationNote}${policyNote}${sz.pace}${macroLine}${rrLine}`
-          : `Acumulación progresiva. Dividir entrada en 2-3 tramos para promediar precio.${concentrationNote}${policyNote}${sz.pace}${macroLine}${rrLine}`,
+          ? `Oportunidad de DCA: el precio está ${Math.abs(pnlPercent).toFixed(1)}% por debajo de tu promedio (${formatPrice(avgBuyPrice)}). Acumular en tramos reduce el precio promedio.${dueNote}${concentrationNote}${policyNote}${sz.pace}${macroLine}${rrLine}`
+          : `Acumulación progresiva. Dividir entrada en 2-3 tramos para promediar precio.${dueNote}${concentrationNote}${policyNote}${sz.pace}${macroLine}${rrLine}`,
         operations: ops,
         policy: sz.policy
       };
@@ -466,6 +482,7 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
     const normalBuy = currentZone === 'buy' && cashPercent >= 50;
 
     if (strongDca || normalBuy) {
+      if (!cadence.due) return cadenceWait();
       const sz = sized(isPaxg ? 1 : 0.5);      // BTC/ETH en contexto neutral: media cuota (como antes, la mitad del esquema pleno)
       const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', sz.fraction, executedBuys, symbol, ext.pullback, minOrderUsd);
       return {
@@ -474,7 +491,7 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
         reason: strongDca
           ? `Precio ${Math.abs(pnlPercent).toFixed(1)}% por debajo del promedio${pnlTag} — contexto mixto pero DCA válido`
           : `Zona de soporte con cash suficiente (${cashPercent}%)${pnlTag}`,
-        recommendation: `Entrada reducida — máximo ${Math.round(sz.fraction * 100)}% de tus USDT. Contexto incierto, dividir en tramos.${policyNote}${sz.pace}${macroLine}`,
+        recommendation: `Entrada reducida — máximo ${Math.round(sz.fraction * 100)}% de tus USDT. Contexto incierto, dividir en tramos.${dueNote}${policyNote}${sz.pace}${macroLine}`,
         operations: ops,
         policy: sz.policy
       };

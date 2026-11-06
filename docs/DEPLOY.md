@@ -30,7 +30,9 @@ y después *Run workflow* del deploy. Diagnóstico: `/api/health/deep` (configur
 - Los permisos de la cuenta de servicio para `firestore:rules/indexes` (Firebase Rules Admin / Cloud Datastore Index Admin) hay que otorgarlos si querés usar `deploy_firestore`.
 
 ## Checklist después de cada deploy (resumen del *Smoke test*)
-Debería decir: ✅ Web · ✅ API · ✅ Groq (la clave funciona) · versiones `p3 / p3 / p3-2` · ✅ COT desde la función · "Contexto de oro … faltan: nada" · Noticias 9/9 · Métricas PAXG con 200 · y **ningún aviso de calendario**. Si algo falla: `/api/health/deep` (config y frescura), `/api/health/ai`, `/api/health/news`, `/api/health/cot`.
+Debería decir: ✅ Web · ✅ API · ✅ Groq (la clave funciona) · versiones `p3 / p3 / p3-3` · ✅ COT desde la función · "Contexto de oro … faltan: nada" · Noticias 9/9 · Métricas PAXG con 200 · y **ningún aviso de calendario**. Si algo falla: `/api/health/deep` (config y frescura), `/api/health/ai`, `/api/health/news`, `/api/health/cot`.
+
+**Avisos push (`zoneWatcher`, cada 60 min):** calcula la señal de cada usuario con avisos activados (sus USDT, compras y ritmo) y manda un push cuando toca **comprar o vender**; esperar no avisa. Sale de la misma función que `/api/crypto/decision`. Después del primer deploy **cada usuario tiene que abrir la app una vez** (sincroniza sus ajustes con el perfil y re-suscribe el dispositivo a su usuario): hasta entonces no recibe avisos. Usa los secretos de Groq y FRED (contexto de oro) además de VAPID; si el job falla revisá sus logs en la consola de Cloud Functions.
 
 **Ojo con el cron:** GitHub desactiva los workflows programados (*News relay*) tras 60 días sin actividad en el repo. Si las noticias o el COT dejan de actualizarse, revisá Actions → *News relay* y reactivalo.
 

@@ -168,6 +168,46 @@ test('auth: monedas — solo con sesión, validadas', async () => {
   assert.deepEqual((await call('GET', '/api/auth/me', null, body.token)).body.cryptos, ['BTC', 'PAXG']);
 });
 
+test('auth: ajustes de "Tu posición" — solo con sesión, validados, por usuario, y vuelven en /me', async () => {
+  const marco = (await call('POST', '/api/auth/setup', { userId: 'marco', pin: '1111' })).body.token;
+  const tomas = (await call('POST', '/api/auth/setup', { userId: 'tomas', pin: '2222' })).body.token;
+  assert.equal((await call('PUT', '/api/auth/settings', { cashUsd: 100 })).status, 401);
+  assert.equal((await call('GET', '/api/auth/me', null, marco)).body.settings, null);                      // todavía no sincronizó
+
+  for (const bad of [{ cashUsd: -5 }, { mode: 'hacker' }, { feePercent: 50 }, { targetPercent: 100 }]) {
+    assert.equal((await call('PUT', '/api/auth/settings', bad, marco)).status, 400, JSON.stringify(bad));
+  }
+  const ok = await call('PUT', '/api/auth/settings', { cashUsd: 333.456, mode: 'inversion', installments: 4, feePercent: 0.1, userId: 'tomas', pinHash: 'x' }, marco);
+  assert.equal(ok.status, 200);
+  assert.equal(ok.body.settings.cashUsd, 333.46);
+
+  const me = (await call('GET', '/api/auth/me', null, marco)).body;
+  assert.equal(me.settings.cashUsd, 333.46);
+  assert.equal(me.settings.installments, 4);
+  assert.ok(me.settings.updatedAt > 0);
+  assert.equal(me.settings.userId, undefined);                                                              // no se cuela nada del body
+  assert.equal((await call('GET', '/api/auth/me', null, tomas)).body.settings, null);                      // cada usuario, lo suyo
+  assert.ok(!JSON.stringify(me).includes('pinHash'));
+  const saved = (await db.collection('user_profiles').doc('marco').get()).data();
+  assert.equal(saved.pinHash.length, 64);                                                                   // el PIN no se tocó
+});
+
+test('push: exige sesión y guarda la suscripción a nombre del usuario de la sesión (no del body)', async () => {
+  const sub = { endpoint: 'https://push.example/abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH', keys: { p256dh: 'k', auth: 'a' } };
+  assert.equal((await call('POST', '/api/push/subscribe', { subscription: sub })).status, 401);
+  assert.equal((await call('POST', '/api/push/unsubscribe', { endpoint: sub.endpoint })).status, 401);
+
+  const marco = (await call('POST', '/api/auth/setup', { userId: 'marco', pin: '1111' })).body.token;
+  assert.equal((await call('POST', '/api/push/subscribe', {}, marco)).status, 400);
+  assert.equal((await call('POST', '/api/push/subscribe', { subscription: { endpoint: 'x'.repeat(2001) } }, marco)).status, 400);
+  assert.equal((await call('POST', '/api/push/subscribe', { subscription: sub, userId: 'tomas' }, marco)).status, 200);
+
+  const docs = [...db._cols.get('push_subscriptions').values()];
+  assert.equal(docs.length, 1);
+  assert.equal(docs[0].userId, 'marco');                                                                    // intentó anotarla a nombre de Tomás
+  assert.equal(docs[0].subscription.endpoint, sub.endpoint);
+});
+
 const op = (o = {}) => ({ date: '2026-09-01', symbol: 'PAXG', type: 'BUY', amount_usd: 100, price: 4000, units: 0.025, fee: 0.1, exchange: 'Binance', notes: '', ...o });
 
 test('portfolio: exige sesión', async () => {

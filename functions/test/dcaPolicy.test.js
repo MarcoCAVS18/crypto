@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DCA_POLICY, dcaCapFraction, tiltNote, normalizeInstallments, buyBudgetUsd, tranchePlan, pacingNote } from '../src/services/dcaPolicy.js';
+import { DCA_POLICY, dcaCapFraction, tiltNote, normalizeInstallments, buyBudgetUsd, tranchePlan, pacingNote, cadenceStatus, cadenceWaitText, cadenceDueText, cadenceSummary } from '../src/services/dcaPolicy.js';
 import { modulation } from '../src/backtest/dcaSim.js';
 
 test('el mapeo desplegado es exactamente el evaluado en el backtest (modulation con los mismos parámetros)', () => {
@@ -48,7 +48,7 @@ test('tiltNote: describe el ajuste con honestidad (efecto chico) y no dice nada 
 // ── p3-2: ritmo de compra ───────────────────────────────────────────────────────
 
 test('p3-2: la cuota base es 1/N de los USDT y el tilt acotado (el evaluado) la modula', () => {
-  assert.equal(DCA_POLICY.version, 'p3-2');
+  assert.equal(DCA_POLICY.version, 'p3-3');
   assert.equal(DCA_POLICY.baseFraction, 0.25);
   for (const n of [1, 2, 4, 8, 12]) {
     const r = dcaCapFraction(0, { installments: n });
@@ -125,4 +125,68 @@ test('pacingNote: dice cuánto se usa y cuánto queda de reserva; calla sin efec
   assert.equal(pacingNote({ cashUsd: 0, fraction: 0.25, installments: 4 }), '');
   assert.equal(pacingNote({ cashUsd: 333, fraction: 1, installments: 1 }), '');
   assert.match(pacingNote({ cashUsd: 30, fraction: 0.25, installments: 4 }), /esta usa el 33 % \(\$10 de \$30\)/);   // el piso se refleja
+});
+
+// ── p3-3: cadencia (una compra por semana; la señal deja de ser "COMPRAR" permanente) ─────────────────
+
+const NOW0 = Date.parse('2026-11-06T15:00:00Z');
+const DAYS = (n) => n * 86400000;
+const buyOn = (daysAgo, price = 3923) => ({ date: new Date(NOW0 - DAYS(daysAgo)).toISOString().slice(0, 10), price, amount_usd: 100 });
+const cadenceOf = (buys, price = 3923, now = NOW0) => cadenceStatus({ buys, price, now });
+
+test('cadencia: sin compras registradas toca comprar (primera)', () => {
+  const c = cadenceOf([]);
+  assert.equal(c.due, true);
+  assert.equal(c.reason, 'first');
+  assert.equal(cadenceOf(undefined).due, true);
+  assert.equal(cadenceOf([{ date: 'basura', price: 1 }, { date: '2026-11-01', price: 0 }]).reason, 'first');   // datos inválidos se ignoran
+});
+
+test('cadencia: compró hace poco ⇒ espera con la fecha de la próxima; a los 7 días toca; el borde exacto cuenta', () => {
+  const c = cadenceOf([buyOn(2)]);
+  assert.equal(c.due, false);
+  assert.equal(c.reason, 'recent');
+  assert.ok(c.daysSince > 1.5 && c.daysSince < 2.5);
+  assert.equal(new Date(c.nextAt).toISOString().slice(0, 10), '2026-11-11');              // compra del 4-nov (12:00 UTC) + 7 días
+  assert.equal(cadenceOf([buyOn(6)]).due, false);
+  assert.equal(cadenceOf([buyOn(7)], 3923, NOW0 + 3 * 3600e3).reason, 'due');             // 7 días pasaditos del mediodía de la compra
+  assert.equal(cadenceOf([buyOn(9)]).reason, 'due');
+});
+
+test('cadencia: una caída de 3 % o más bajo la última compra adelanta la próxima', () => {
+  const buys = [buyOn(2, 4000)];
+  assert.equal(cadenceOf(buys, 3900).due, false);                  // −2.5 %
+  const dip = cadenceOf(buys, 3880);                                // −3 % exacto
+  assert.equal(dip.due, true);
+  assert.equal(dip.reason, 'dip');
+  assert.equal(dip.dipPrice, 3880);
+  assert.equal(cadenceOf(buys, 3700).reason, 'dip');
+  assert.equal(cadenceOf(buys, 4100).due, false);                  // subió: no hay mejor entrada
+});
+
+test('cadencia: usa la compra MÁS NUEVA (sin importar el orden) y acota fechas futuras al presente', () => {
+  const c = cadenceOf([buyOn(20), buyOn(1), buyOn(10)]);
+  assert.equal(c.due, false);
+  assert.ok(c.daysSince < 2);
+  const future = cadenceOf([{ date: new Date(NOW0 + DAYS(30)).toISOString().slice(0, 10), price: 3923 }]);
+  assert.equal(future.due, false);                                  // un reloj adelantado no habilita comprar antes
+  assert.ok(future.daysSince >= 0);
+});
+
+test('cadenceWaitText / cadenceDueText / cadenceSummary: textos y resumen serializable', () => {
+  const wait = cadenceWaitText(cadenceOf([buyOn(3, 3950)]));
+  assert.match(wait.reason, /Ya compraste hace 3 días \(\$3,950\): la próxima compra toca desde el 10 nov/);
+  assert.match(wait.recommendation, /una compra por semana.*o antes si el precio baja a \$3,832 \(3 % por debajo de tu última compra\)/);
+  assert.match(cadenceWaitText(cadenceOf([buyOn(0)])).reason, /Ya compraste hoy/);
+  assert.match(cadenceWaitText(cadenceOf([buyOn(1)])).reason, /Ya compraste ayer/);
+  assert.equal(cadenceWaitText(cadenceOf([])), null);
+  assert.equal(cadenceDueText(cadenceOf([])), '');
+  assert.match(cadenceDueText(cadenceOf([buyOn(8)])), /Toca la compra de la semana/);
+  assert.match(cadenceDueText(cadenceOf([buyOn(2, 4000)], 3800)), /Toca antes de lo previsto.*bajó 3 % o más/);
+  const s = cadenceSummary(cadenceOf([buyOn(3, 3950)]));
+  assert.equal(s.due, false);
+  assert.equal(typeof s.nextAt, 'string');
+  assert.equal(s.lastBuyPrice, 3950);
+  assert.doesNotThrow(() => JSON.stringify(s));
+  assert.equal(cadenceSummary(null), null);
 });

@@ -7,7 +7,7 @@ Reglas de contenido: **una idea, un lugar** (la señal vive en la tarjeta de Ini
 - **Inicio**: activos (píldoras) → precio + velas con zonas → *Señal* (Comprar / Esperar / Vender, monto y efecto en tu promedio) → resumen de mercado.
 - **Detalles** (hoja, 3 pestañas): *Señal* (órdenes, cuánto de tus USDT se usa y cuánto queda de reserva, y por qué), *Mercado* (lectura de la IA, macro, indicadores, noticias), *Posición* (tus USDT).
 - **Portfolio**: valor y P&L → distribución (donut) y posiciones → evolución → actividad → resultados de las señales → operaciones. Agregar operación y "Repartir USDT" son hojas.
-- **Asistente**: pantalla completa (tercer ícono de la barra). **Avisos** (campana): alerta de zona + próximos eventos macro.
+- **Asistente**: pantalla completa (tercer ícono de la barra). **Avisos** (campana): aviso de zona (dato del precio; la que decide es la señal) + próximos eventos macro. La tarjeta de la señal muestra el **ritmo de compra** (una por semana, o antes si baja ≥ 3 %): "Toca la compra de la semana" / "Próxima compra desde el … o si baja a $…". Las notificaciones push las manda el servidor (ver `docs/PAXG_AUDIT.md`), la pantalla ya no crea las suyas.
 
 ## Sistema de diseño
 - Tokens en `src/index.css` (`@theme`): `bg, panel, panel-2, line, ink, muted, faint, accent, accent-ink, pink, lime, warn`. Las paletas por defecto de Tailwind (slate/violet/…) están re-pintadas para que lo viejo no desentone.
