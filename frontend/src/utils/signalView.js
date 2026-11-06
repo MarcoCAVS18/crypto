@@ -120,3 +120,34 @@ export function cadenceView(decision) {
   }
   return null;
 }
+
+/**
+ * Participación de la IA en la decisión (`decision.ai` del servidor) lista para mostrar. null si no hay nada que aclarar
+ * (compra que la regla no propuso, o decisión pausada después por el calendario).
+ * La IA solo afina el momento y el tamaño de una compra que la regla ya permite: acá se cuenta qué hizo y qué cambió.
+ * @returns {{ kind:'wait'|'buy'|'adjusted'|'unavailable', tone:'accent'|'warn'|'muted', chip:string, title:string, text:string,
+ *             factors:string[], detail:string|null, notes:string[], confidence:number|null }|null}
+ */
+export function aiView(decision) {
+  const ai = decision?.ai;
+  if (!ai) return null;
+  if (!ai.used) {
+    return { kind: 'unavailable', tone: 'muted', chip: 'IA sin respuesta: decide la regla', title: 'La IA no pudo evaluar esta compra', text: ai.message ?? 'Decide la regla.', factors: [], detail: null, notes: [], confidence: null };
+  }
+  const confidence = Number.isFinite(ai.confidence) ? Math.round(ai.confidence * 100) : null;
+  const base = { text: ai.reasoning ?? '', factors: ai.keyFactors ?? [], notes: ai.notes ?? [], confidence };
+
+  if (decision.action === 'WAIT' && ai.action === 'WAIT') {
+    const day = fmtDay(ai.waitUntil);
+    return { ...base, kind: 'wait', tone: 'warn', chip: `IA: esperar${day ? ` hasta el ${day}` : ''}`, title: 'La IA recomienda esperar', detail: day ? `La compra queda pendiente: se vuelve a evaluar desde el ${day} o antes si cambia el contexto.` : null };
+  }
+  if (decision.action !== 'BUY') return null;                       // p. ej. el calendario pausó una compra que la IA aprobaba: ya lo explica la recomendación
+
+  const a = ai.applied;
+  if (a && !ai.followedRule && Number.isFinite(a.totalUsd)) {
+    const fmt = (n) => fmtPrice(n, { decimals: 0 });
+    const t = (n) => `${n} ${n === 1 ? 'tramo' : 'tramos'}`;
+    return { ...base, kind: 'adjusted', tone: 'accent', chip: `IA: ajustó a ${fmt(a.totalUsd)} en ${t(a.tranches)}`, title: 'La IA ajustó la compra', detail: `La regla proponía ${fmt(a.ruleTotalUsd)} en ${t(a.ruleTranches)}; la IA lo dejó en ${fmt(a.totalUsd)} en ${t(a.tranches)}.` };
+  }
+  return { ...base, kind: 'buy', tone: 'accent', chip: ai.capped ? 'IA: se compra (tope de espera)' : 'IA: confirma la compra', title: ai.capped ? 'Se compra igual: tope de espera' : 'La IA confirma la compra', detail: null };
+}

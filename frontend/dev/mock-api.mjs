@@ -81,7 +81,23 @@ const decisionFor = (symbol, body) => {
   const ops = OPS.filter(o => o.symbol === symbol);
   const units = ops.reduce((a, o) => a + o.units, 0), cost = ops.reduce((a, o) => a + o.amount_usd, 0);
   const ctx = body.portfolioContext ?? { hasPosition: units > 0, units, avgBuyPrice: cost / units, costBasis: cost, netInvested: cost, currentPrice: m.price, allBuys: [], executedBuys: [] };
-  const d = makeDecision(m.marketMode, m.zones, m.price, { cashPercent: Number(body.cashPercent) || 100, mode: body.mode || 'inversion', totalCapital: Number(body.totalCapital) || 0, costs: body.settings?.costs, installments: body.settings?.installments, target: body.settings?.target ?? null }, m.indicators, symbol, ctx, { candlesSource: 'real' });
+  // AI_MOCK=adjust|wait|buy|off: simula la capa de IA (el servidor real la calcula en services/signalService.js)
+  const aiMode = process.env.AI_MOCK;
+  const pctx = aiMode ? { ...ctx, allBuys: [{ price: m.price * 1.02, date: new Date(Date.now() - 9 * DAY).toISOString().slice(0, 10) }], executedBuys: [] } : ctx;
+  const us = { cashPercent: Number(body.cashPercent) || 100, mode: body.mode || 'inversion', totalCapital: Number(body.totalCapital) || 0, costs: body.settings?.costs, installments: body.settings?.installments, target: body.settings?.target ?? null };
+  let d = makeDecision(m.marketMode, m.zones, m.price, us, m.indicators, symbol, pctx, { candlesSource: 'real' });
+  if (aiMode && d.action === 'BUY') {
+    const sum = (x) => x.operations.reduce((a, o) => a + (o.usdAmount ?? 0), 0);
+    const base = { version: 'ai1', used: true, cached: false, confidence: 0.78, keyFactors: ['FOMC en 26 h', 'Dólar firme', 'Precio 14 % bajo tu promedio'], notes: [], capped: false };
+    if (aiMode === 'off') d = { ...d, ai: { version: 'ai1', used: false, reason: 'error', message: 'La IA no pudo evaluar esta compra; decide la regla.' } };
+    else if (aiMode === 'buy') d = { ...d, ai: { ...base, action: 'BUY', rawAction: 'BUY', sizeMultiplier: 1, tranches: null, followedRule: true, reasoning: 'No hay eventos cerca y el precio está bien por debajo de tu promedio: la cuota semanal se compra como propone la regla.' } };
+    else if (aiMode === 'adjust') {
+      const adj = makeDecision(m.marketMode, m.zones, m.price, us, m.indicators, symbol, pctx, { candlesSource: 'real', sizing: { multiplier: 0.7, tranches: 2 } });
+      d = { ...adj, ai: { ...base, action: 'BUY', rawAction: 'BUY', sizeMultiplier: 0.7, tranches: 2, followedRule: false, reasoning: 'El FOMC es en 26 horas y el dólar sigue firme: entro con el 70 % de la cuota y en dos tramos para completar después del dato.', applied: { totalUsd: sum(adj), tranches: adj.operations.length, ruleTotalUsd: sum(d), ruleTranches: d.operations.length } } };
+    } else if (aiMode === 'wait') {
+      d = { action: 'WAIT', strength: 'moderado', reason: 'La IA recomienda esperar: el FOMC es en 26 horas y los titulares de la Fed son restrictivos.', recommendation: 'El FOMC es en 26 horas y los titulares de la Fed son restrictivos: conviene esperar el dato. La compra queda pendiente.', operations: [], cadence: d.cadence, ai: { ...base, action: 'WAIT', rawAction: 'WAIT', sizeMultiplier: 1, tranches: null, waitDays: 2, waitUntil: new Date(Date.now() + 2 * DAY).toISOString(), followedRule: false, reasoning: 'El FOMC es en 26 horas y los titulares de la Fed son restrictivos: conviene esperar el dato antes de sumar.' } };
+    }
+  }
   return { symbol, price: m.price, marketMode: m.marketMode, zones: m.zones, decision: d };
 };
 

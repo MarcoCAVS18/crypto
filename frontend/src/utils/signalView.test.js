@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { actionView, modeView, strengthDots, fmtPrice, fmtUnits, summarizeOps, calcDcaEffect, totalDcaEffect, usageOf, cadenceView, rsiTag, zoneView, dataStatus, assetName, assetTab } from './signalView.js';
+import { actionView, modeView, strengthDots, fmtPrice, fmtUnits, summarizeOps, calcDcaEffect, totalDcaEffect, usageOf, cadenceView, aiView, rsiTag, zoneView, dataStatus, assetName, assetTab } from './signalView.js';
 
 test('acción y modo: textos y tonos; desconocidos caen en esperar / neutral', () => {
   assert.equal(actionView('BUY').word, 'Comprar'); assert.equal(actionView('SELL').tone, 'pink');
@@ -66,4 +66,31 @@ test('cadenceView: sin cadencia, vender o esperar por otro motivo ⇒ nada que a
   assert.equal(cadenceView({ action: 'BUY' }), null);
   assert.equal(cadenceView({ action: 'SELL', cadence: { due: false } }), null);
   assert.equal(cadenceView({ action: 'WAIT', cadence: { due: true, reason: 'due' } }), null);
+});
+
+test('aiView: ESPERAR de la IA, compra confirmada, compra ajustada, tope de espera y sin respuesta', () => {
+  const used = { used: true, confidence: 0.82, reasoning: 'FOMC mañana.', keyFactors: ['FOMC'], notes: [], followedRule: true };
+  const wait = aiView({ action: 'WAIT', ai: { ...used, action: 'WAIT', waitUntil: '2026-11-08T12:00:00.000Z' } });
+  assert.equal(wait.kind, 'wait'); assert.equal(wait.tone, 'warn'); assert.equal(wait.chip, 'IA: esperar hasta el 8 nov'); assert.equal(wait.confidence, 82);
+  assert.match(wait.detail, /desde el 8 nov/);
+
+  const ok = aiView({ action: 'BUY', ai: { ...used, action: 'BUY' } });
+  assert.equal(ok.kind, 'buy'); assert.equal(ok.chip, 'IA: confirma la compra'); assert.equal(ok.detail, null);
+
+  const adj = aiView({ action: 'BUY', ai: { ...used, action: 'BUY', followedRule: false, applied: { totalUsd: 75, tranches: 2, ruleTotalUsd: 125, ruleTranches: 3 } } });
+  assert.equal(adj.kind, 'adjusted'); assert.equal(adj.chip, 'IA: ajustó a $75 en 2 tramos');
+  assert.equal(adj.detail, 'La regla proponía $125 en 3 tramos; la IA lo dejó en $75 en 2 tramos.');
+  assert.equal(aiView({ action: 'BUY', ai: { ...used, action: 'BUY', followedRule: false, applied: { totalUsd: 20, tranches: 1, ruleTotalUsd: 40, ruleTranches: 3 } } }).chip, 'IA: ajustó a $20 en 1 tramo');
+
+  const capped = aiView({ action: 'BUY', ai: { ...used, action: 'WAIT', capped: true, notes: ['tope'] } });
+  assert.equal(capped.chip, 'IA: se compra (tope de espera)'); assert.deepEqual(capped.notes, ['tope']);
+
+  const off = aiView({ action: 'BUY', ai: { used: false, message: 'La IA no pudo evaluar esta compra; decide la regla.' } });
+  assert.equal(off.kind, 'unavailable'); assert.equal(off.tone, 'muted'); assert.equal(off.chip, 'IA sin respuesta: decide la regla');
+});
+
+test('aiView: nada que mostrar sin IA o si el calendario pausó una compra que la IA aprobaba', () => {
+  assert.equal(aiView(null), null);
+  assert.equal(aiView({ action: 'BUY' }), null);
+  assert.equal(aiView({ action: 'WAIT', ai: { used: true, action: 'BUY', reasoning: 'ok', confidence: 0.8 } }), null);
 });

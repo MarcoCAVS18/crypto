@@ -34,5 +34,7 @@ Debería decir: ✅ Web · ✅ API · ✅ Groq (la clave funciona) · versiones 
 
 **Avisos push (`zoneWatcher`, cada 60 min):** calcula la señal de cada usuario con avisos activados (sus USDT, compras y ritmo) y manda un push cuando toca **comprar o vender**; esperar no avisa. Sale de la misma función que `/api/crypto/decision`. Después del primer deploy **cada usuario tiene que abrir la app una vez** (sincroniza sus ajustes con el perfil y re-suscribe el dispositivo a su usuario): hasta entonces no recibe avisos. Usa los secretos de Groq y FRED (contexto de oro) además de VAPID; si el job falla revisá sus logs en la consola de Cloud Functions.
 
+**Capa de IA de la decisión:** la API y el job de avisos consultan a Groq (una vez por usuario/activo cuando toca comprar; ver `docs/PAXG_AUDIT.md`). Variable opcional `AI_DECISION=off` para apagarla (decide solo la regla). La decisión vigente se guarda en `_ai_cache/aidec_*`; si la IA se comporta raro, apagala y revisá `decisions.ai` en el historial.
+
 **Ojo con el cron:** GitHub desactiva los workflows programados (*News relay*) tras 60 días sin actividad en el repo. Si las noticias o el COT dejan de actualizarse, revisá Actions → *News relay* y reactivalo.
 

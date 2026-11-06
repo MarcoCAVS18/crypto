@@ -61,6 +61,16 @@ export function buildDecisionRecord({ symbol, marketData, marketMode, zones, ind
     shadow:       shadow,                 // qué habría hecho la política de referencia (modo sombra)
     dcaPolicy:    decision?.policy ? { version: decision.policy.version, multiplier: decision.policy.multiplier, capFraction: decision.policy.capFraction, ...(decision.policy.installments ? { installments: decision.policy.installments } : {}) } : null,
     calendarModulated: !!decision?.calendarRisk,
+    // Capa de IA (modo sombra de la IA): lo que proponía la regla y lo que hizo el modelo. Con esto se compara, contra los
+    // resultados reales (outcomeJob), "comprar cuando la regla lo decía" vs "lo que decidió la IA". No hay backtest del timing de la IA.
+    ai: decision?.ai ? {
+      used: !!decision.ai.used, version: decision.ai.version ?? null, reason: decision.ai.reason ?? null,
+      ruleAction: decision.ai.used ? 'BUY' : null,            // la IA solo se consulta cuando la regla propone comprar
+      action: decision.ai.action ?? null, rawAction: decision.ai.rawAction ?? null, confidence: round(decision.ai.confidence, 2),
+      sizeMultiplier: round(decision.ai.sizeMultiplier, 2), tranches: decision.ai.tranches ?? null, waitDays: decision.ai.waitDays ?? null,
+      followedRule: decision.ai.followedRule ?? null, capped: !!decision.ai.capped, cached: !!decision.ai.cached,
+      ruleTotalUsd: round(decision.ai.applied?.ruleTotalUsd, 2), appliedTotalUsd: round(decision.ai.applied?.totalUsd, 2), appliedTranches: decision.ai.applied?.tranches ?? null
+    } : null,
     cashPercent:  Number(userState?.cashPercent),
     userMode:     userState?.mode ?? null,
     rsi:          round(indicators?.rsi, 1),

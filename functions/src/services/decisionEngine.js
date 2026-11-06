@@ -1,6 +1,6 @@
 // Motor de decisión: cruza market mode, zonas, indicadores y perfil del usuario
 
-import { dcaCapFraction, normalizeInstallments, buyBudgetUsd, tranchePlan, tiltNote, pacingNote, cadenceStatus, cadenceWaitText, cadenceDueText, cadenceSummary, DCA_POLICY } from './dcaPolicy.js';
+import { dcaCapFraction, normalizeInstallments, buyBudgetUsd, tranchePlan, tiltNote, pacingNote, cadenceStatus, cadenceWaitText, cadenceDueText, cadenceSummary, aiAdjustedFraction, DCA_POLICY } from './dcaPolicy.js';
 import { applyCosts, costNote, normalizeCosts } from './costModel.js';
 import { weightState, trimPctToBand } from './portfolioPolicy.js';
 import { evaluateExit } from './exitPolicy.js';
@@ -13,7 +13,7 @@ import { evaluateExit } from './exitPolicy.js';
  * @param {object} indicators      - { rsi, atr, ema, trendShort, trendLong }
  * @param {string} symbol          - e.g. 'BTC', 'PAXG'
  * @param {object|null} portfolioContext - { units, avgBuyPrice, costBasis, hasPosition, ... }
- * @param {object} meta            - { candlesSource: 'real'|'stale'|'synthetic' }
+ * @param {object} meta            - { candlesSource: 'real'|'stale'|'synthetic', sizing?: { multiplier, tranches } (ajuste de la IA, siempre re-acotado) }
  */
 export function makeDecision(marketMode, zones, currentPrice, userState, indicators = {}, symbol = '', portfolioContext = null, meta = {}) {
   const { cashPercent, mode: userMode, totalCapital = 0 } = userState;
@@ -56,7 +56,7 @@ export function makeDecision(marketMode, zones, currentPrice, userState, indicat
     // --- MODO TRADING: más agresivo, usa RSI como confirmación adicional ---
     ? decideTradingMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, portfolioContext, symbol)
     // --- MODO INVERSIÓN: conservador, largo plazo, usa P&L real del portfolio ---
-    : decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, portfolioContext, indicators, symbol, { target: userState.target ?? null, pullback: meta?.pullback ?? null, installments: userState.installments, costs: userState.costs, cadence });
+    : decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, portfolioContext, indicators, symbol, { target: userState.target ?? null, pullback: meta?.pullback ?? null, installments: userState.installments, costs: userState.costs, cadence, sizing: meta?.sizing ?? null });
 
   // Sin cash suficiente no se COMPRA (y el motivo relevante es ese). Las ventas siempre se
   // permiten (liberan cash): antes este gate bloqueaba también las salidas.
@@ -203,11 +203,17 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
   const weight = isPaxg ? weightState(allocationPercent ?? (totalCapital > 0 ? 0 : NaN), ext.target) : null;
   const bandBoost = weight?.state === 'below' ? 1.25 : 1;
   // `factor` recorta la cuota en contextos de entrada reducida (neutral con soporte macro, BTC/ETH en neutral)
+  // Ajuste de la capa de IA (aiDecision.js): multiplicador y tramos sobre lo que propone la regla. Se acota ACÁ otra vez
+  // (×0.5–×1.5, sin pasar el máximo estándar de la política; 1–3 tramos), sin importar lo que haya devuelto el modelo.
+  const aiSizing = ext.sizing ?? null;
+  const tranchesCap = Number.isInteger(aiSizing?.tranches) ? Math.min(DCA_POLICY.aiSizing.maxTranches, Math.max(1, aiSizing.tranches)) : DCA_POLICY.aiSizing.maxTranches;
   const sized = (factor = 1) => {
-    const fraction = Math.min(DCA_POLICY.maxFraction, dcaPolicy.capFraction * bandBoost * factor);
+    const ruleFraction = Math.min(DCA_POLICY.maxFraction, dcaPolicy.capFraction * bandBoost * factor);
+    const adj = aiSizing ? aiAdjustedFraction(ruleFraction, aiSizing.multiplier, { installments }) : null;
+    const fraction = adj ? adj.fraction : ruleFraction;
     return {
       fraction,
-      policy: { ...dcaPolicy, capFraction: Math.round(fraction * 1000) / 1000, ...(bandBoost > 1 ? { bandBoost } : {}), ...(factor !== 1 ? { reduction: factor } : {}) },
+      policy: { ...dcaPolicy, capFraction: Math.round(fraction * 1000) / 1000, ...(bandBoost > 1 ? { bandBoost } : {}), ...(factor !== 1 ? { reduction: factor } : {}), ...(adj ? { aiMultiplier: adj.multiplier } : {}) },
       pace: pacingNote({ cashUsd: cashAvailable, fraction, installments, minOrderUsd })
     };
   };
@@ -311,7 +317,7 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
       }
       if (!cadence.due) return cadenceWait();
       const sz = sized();
-      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', sz.fraction, executedBuys, symbol, ext.pullback, minOrderUsd);
+      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', sz.fraction, executedBuys, symbol, ext.pullback, minOrderUsd, tranchesCap);
       if (ops.length > 0) {
         return {
           action: 'BUY',
@@ -349,7 +355,7 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
     if (macroFavorable && (isBelowAvg || currentZone === 'buy') && cashPercent >= 30) {
       if (!cadence.due) return cadenceWait();
       const sz = sized(0.60); // entrada conservadora en contexto mixto
-      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', sz.fraction, executedBuys, symbol, ext.pullback, minOrderUsd);
+      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', sz.fraction, executedBuys, symbol, ext.pullback, minOrderUsd, tranchesCap);
       return {
         action: 'BUY',
         strength: 'moderado',
@@ -371,7 +377,7 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
     if (buyZoneOk || dcaOpportunity) {
       if (!cadence.due) return cadenceWait();
       const sz = sized();
-      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', sz.fraction, executedBuys, symbol, ext.pullback, minOrderUsd);
+      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', sz.fraction, executedBuys, symbol, ext.pullback, minOrderUsd, tranchesCap);
       const isDca = dcaOpportunity && !buyZoneOk;
       const concentrationNote = isLightlyExposed
         ? ' Posición leve — buena oportunidad para construir posición.'
@@ -484,7 +490,7 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
     if (strongDca || normalBuy) {
       if (!cadence.due) return cadenceWait();
       const sz = sized(isPaxg ? 1 : 0.5);      // BTC/ETH en contexto neutral: media cuota (como antes, la mitad del esquema pleno)
-      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', sz.fraction, executedBuys, symbol, ext.pullback, minOrderUsd);
+      const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', sz.fraction, executedBuys, symbol, ext.pullback, minOrderUsd, tranchesCap);
       return {
         action: 'BUY',
         strength: 'moderado',
@@ -609,8 +615,9 @@ function decideTradingMode(marketMode, zones, currentPrice, cashPercent, rsi, to
  * @param {number} capitalFraction - fracción del efectivo disponible que usa ESTA señal (0-1): la cuota del ritmo de compra
  * @param {Array}  executedBuys    - [{ price, amount_usd }] del portfolio
  * @param {number} minOrderUsd     - monto mínimo de una orden: define el piso del presupuesto y cuántos tramos caben
+ * @param {number} tranchesCap     - máximo de tramos (1–3): lo baja la capa de IA; el piso por monto mínimo sigue valiendo
  */
-function generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, mode, capitalFraction = 1.0, executedBuys = [], symbol = '', pullback = null, minOrderUsd = 10) {
+function generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, mode, capitalFraction = 1.0, executedBuys = [], symbol = '', pullback = null, minOrderUsd = 10, tranchesCap = 3) {
   const capitalDisponible = totalCapital > 0 ? totalCapital * (cashPercent / 100) : 0;
   // Presupuesto de la señal: cuota × efectivo, con piso (una orden mínima) y techo (el efectivo)
   const capitalAUsar = buyBudgetUsd(capitalDisponible, capitalFraction, minOrderUsd);
@@ -644,7 +651,7 @@ function generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, m
 
   // Inversión: hasta 3 niveles (2 con poco efectivo en el esquema por %), y menos si el presupuesto no alcanza para que
   // cada tramo llegue al mínimo de orden (si no, se descartaban después y podía quedar solo el tramo profundo).
-  const plan = tranchePlan(capitalAUsar, cashPercent >= 60 ? 3 : 2, minOrderUsd);
+  const plan = tranchePlan(capitalAUsar, Math.min(tranchesCap, cashPercent >= 60 ? 3 : 2), minOrderUsd);
   const pctOf = (w) => Math.round(w * 100);
   const candidates = plan.length === 3
     ? [
