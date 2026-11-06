@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  MACRO_EVENTS, etToUtcMs, etDateKey, getUpcomingEvents, getCalendarCoverage, POST_EVENT_WINDOW_MS
+  MACRO_EVENTS, etToUtcMs, etDateKey, getUpcomingEvents, getCalendarCoverage, calendarCovers, POST_EVENT_WINDOW_MS
 } from '../src/data/macroCalendar.js';
 
 const utc = (iso) => new Date(iso).getTime();
@@ -134,4 +134,15 @@ test('cobertura: informa último evento, días restantes y no verificados', () =
   assert.ok(c.upcomingCount > 0);
   assert.equal(c.unverifiedUpcoming, 0);   // las 7 fechas pendientes quedaron contrastadas
   assert.equal(getCalendarCoverage(utc('2027-01-15T00:00:00Z')).daysCovered, 0);
+});
+
+test('calendarCovers: cubre mientras el último evento cargado esté a `daysAhead` días o más; después "no se sabe", no "no hay eventos"', () => {
+  const last = getCalendarCoverage(utc('2026-11-06T12:00:00Z')).lastEventDate;
+  const ok = calendarCovers(5, utc('2026-11-06T12:00:00Z'));
+  assert.deepEqual([ok.covered, ok.lastEventDate], [true, last]);
+  const gap = calendarCovers(5, utc('2026-12-22T12:00:00Z'));                  // queda 1 día de calendario
+  assert.equal(gap.covered, false);
+  assert.equal(gap.daysCovered, 1);
+  assert.equal(calendarCovers(5, utc('2027-01-15T00:00:00Z')).covered, false);  // calendario agotado
+  assert.equal(calendarCovers(2, utc('2026-12-20T12:00:00Z')).covered, true);   // para una ventana más corta todavía alcanza
 });

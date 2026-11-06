@@ -151,3 +151,31 @@ export function aiView(decision) {
   }
   return { ...base, kind: 'buy', tone: 'accent', chip: ai.capped ? 'IA: se compra (tope de espera)' : 'IA: confirma la compra', title: ai.capped ? 'Se compra igual: tope de espera' : 'La IA confirma la compra', detail: null };
 }
+
+/** Primera orden de compra de la señal (la de "ahora"), o null. */
+export const firstBuyOp = (decision) => (decision?.action === 'BUY' ? (decision.operations ?? []).find(o => o?.type === 'BUY' && o.price > 0) ?? null : null);
+
+/**
+ * Orden propuesta → datos para precargar el formulario de operación ("Ya compré" / "Registrar"). El usuario puede corregir todo antes de guardar.
+ * El precio va redondeado como se muestra en pantalla y las unidades salen de monto ÷ precio (así los tres campos cuadran).
+ */
+export function draftFromOp(op, symbol, today = new Date().toISOString().slice(0, 10)) {
+  if (!op || op.type !== 'BUY' || !(op.price > 0)) return null;
+  const price = op.price >= 1000 ? Math.round(op.price) : Math.round(op.price * 100) / 100;
+  const amount = Number.isFinite(op.usdAmount) && op.usdAmount > 0 ? Math.round(op.usdAmount * 100) / 100 : null;
+  return { symbol, type: 'BUY', date: today, price, ...(amount ? { amount_usd: amount, units: Number((amount / price).toFixed(8)) } : {}) };
+}
+
+/** USDT que quedan después de una compra (nunca negativo). */
+export const cashAfter = (cash, usdSpent) => Math.max(0, Math.round(((Number(cash) || 0) - (Number(usdSpent) || 0)) * 100) / 100);
+
+/** El calendario macro no cubre los próximos días: "sin eventos" no es un dato. null si está cubierto o no hay dato. */
+export function calendarGapView(decision) {
+  const c = decision?.calendarCoverage;
+  if (!c || c.covered !== false) return null;
+  const day = c.lastEventDate ? fmtDay(`${c.lastEventDate}T12:00:00Z`) : null;
+  return {
+    title: 'Calendario macro sin cubrir',
+    text: `${day ? `El calendario cargado termina el ${day}` : 'El calendario cargado se agotó'}: la señal no puede avisarte de eventos como el FOMC o el CPI (la IA lo sabe y no asume que no los hay). Hay que cargar las fechas nuevas.`
+  };
+}

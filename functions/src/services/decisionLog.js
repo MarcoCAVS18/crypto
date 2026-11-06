@@ -61,6 +61,7 @@ export function buildDecisionRecord({ symbol, marketData, marketMode, zones, ind
     shadow:       shadow,                 // qué habría hecho la política de referencia (modo sombra)
     dcaPolicy:    decision?.policy ? { version: decision.policy.version, multiplier: decision.policy.multiplier, capFraction: decision.policy.capFraction, ...(decision.policy.installments ? { installments: decision.policy.installments } : {}) } : null,
     calendarModulated: !!decision?.calendarRisk,
+    calendarGap: !!decision?.calendarCoverage,          // el calendario macro no cubría los próximos días (el riesgo de calendario no pudo actuar)
     // Capa de IA (modo sombra de la IA): lo que proponía la regla y lo que hizo el modelo. Con esto se compara, contra los
     // resultados reales (outcomeJob), "comprar cuando la regla lo decía" vs "lo que decidió la IA". No hay backtest del timing de la IA.
     ai: decision?.ai ? {

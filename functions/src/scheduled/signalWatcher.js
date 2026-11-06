@@ -29,7 +29,7 @@ async function loadDefaultDeps() {
     getCryptoData,
     computeSignal,
     // `ai`: la misma capa de IA que usa la app (decisión vigente compartida por usuario ⇒ el aviso dice lo mismo que la pantalla)
-    signalDeps: { getGoldContext: gold.getGoldContext, getPreviousMode: prev.getPreviousMode, getUpcomingEvents: cal.getUpcomingEvents, warn: console.warn, ai: aiDeps.createAiDeps() },
+    signalDeps: { getGoldContext: gold.getGoldContext, getPreviousMode: prev.getPreviousMode, getUpcomingEvents: cal.getUpcomingEvents, calendarCovers: cal.calendarCovers, warn: console.warn, ai: aiDeps.createAiDeps() },
     getProfile: db.getProfile,
     listUserOperations: db.listUserOperations,
     getZoneState: db.getZoneState,

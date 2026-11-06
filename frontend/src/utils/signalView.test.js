@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { actionView, modeView, strengthDots, fmtPrice, fmtUnits, summarizeOps, calcDcaEffect, totalDcaEffect, usageOf, cadenceView, aiView, rsiTag, zoneView, dataStatus, assetName, assetTab } from './signalView.js';
+import { actionView, modeView, strengthDots, fmtPrice, fmtUnits, summarizeOps, calcDcaEffect, totalDcaEffect, usageOf, cadenceView, aiView, firstBuyOp, draftFromOp, cashAfter, calendarGapView, rsiTag, zoneView, dataStatus, assetName, assetTab } from './signalView.js';
 
 test('acción y modo: textos y tonos; desconocidos caen en esperar / neutral', () => {
   assert.equal(actionView('BUY').word, 'Comprar'); assert.equal(actionView('SELL').tone, 'pink');
@@ -93,4 +93,45 @@ test('aiView: nada que mostrar sin IA o si el calendario pausó una compra que l
   assert.equal(aiView(null), null);
   assert.equal(aiView({ action: 'BUY' }), null);
   assert.equal(aiView({ action: 'WAIT', ai: { used: true, action: 'BUY', reasoning: 'ok', confidence: 0.8 } }), null);
+});
+
+test('draftFromOp: la orden propuesta precarga el formulario (precio como se ve, unidades = monto ÷ precio) y solo para compras', () => {
+  const d = draftFromOp({ type: 'BUY', price: 3923.4567, usdAmount: 32.4, level: 1 }, 'PAXG', '2026-11-06');
+  assert.deepEqual(d, { symbol: 'PAXG', type: 'BUY', date: '2026-11-06', price: 3923, amount_usd: 32.4, units: Number((32.4 / 3923).toFixed(8)) });
+  const cheap = draftFromOp({ type: 'BUY', price: 0.123456, usdAmount: 50 }, 'DOGE', '2026-11-06');
+  assert.equal(cheap.price, 0.12);
+  assert.equal(cheap.units, Number((50 / 0.12).toFixed(8)));
+  // sin monto (plan en %): solo precio, el usuario completa lo demás
+  assert.deepEqual(draftFromOp({ type: 'BUY', price: 4100, usdAmount: null }, 'PAXG', '2026-11-06'), { symbol: 'PAXG', type: 'BUY', date: '2026-11-06', price: 4100 });
+  assert.equal(draftFromOp({ type: 'SELL', price: 4100, usdAmount: 10 }, 'PAXG'), null);
+  assert.equal(draftFromOp(null, 'PAXG'), null);
+  assert.equal(draftFromOp({ type: 'BUY', price: 0 }, 'PAXG'), null);
+  assert.match(draftFromOp({ type: 'BUY', price: 10, usdAmount: 5 }, 'X').date, /^\d{4}-\d{2}-\d{2}$/);
+});
+
+test('firstBuyOp: la primera compra de una señal de COMPRAR; null si espera, vende o no hay órdenes', () => {
+  const ops = [{ type: 'BUY', price: 3923, usdAmount: 32 }, { type: 'BUY', price: 3864, usdAmount: 32 }];
+  assert.equal(firstBuyOp({ action: 'BUY', operations: ops }), ops[0]);
+  assert.equal(firstBuyOp({ action: 'WAIT', operations: ops }), null);
+  assert.equal(firstBuyOp({ action: 'BUY', operations: [] }), null);
+  assert.equal(firstBuyOp({ action: 'SELL', operations: [{ type: 'SELL', percentage: 30 }] }), null);
+  assert.equal(firstBuyOp(null), null);
+});
+
+test('cashAfter: lo que queda de los USDT después de la compra (nunca negativo, con centavos)', () => {
+  assert.equal(cashAfter(333, 32.4), 300.6);
+  assert.equal(cashAfter(333, 108), 225);
+  assert.equal(cashAfter(50, 80), 0);
+  assert.equal(cashAfter(undefined, 10), 0);
+  assert.equal(cashAfter(100, 'x'), 100);
+});
+
+test('calendarGapView: avisa cuando el calendario no cubre los próximos días; nada si está cubierto o no hay dato', () => {
+  const v = calendarGapView({ calendarCoverage: { covered: false, daysCovered: 1, lastEventDate: '2026-12-23' } });
+  assert.equal(v.title, 'Calendario macro sin cubrir');
+  assert.match(v.text, /^El calendario cargado termina el 23 dic: la señal no puede avisarte de eventos como el FOMC o el CPI/);
+  assert.match(calendarGapView({ calendarCoverage: { covered: false } }).text, /^El calendario cargado se agotó/);
+  assert.equal(calendarGapView({ calendarCoverage: { covered: true } }), null);
+  assert.equal(calendarGapView({}), null);
+  assert.equal(calendarGapView(null), null);
 });

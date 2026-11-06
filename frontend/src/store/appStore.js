@@ -32,6 +32,9 @@ export const useAppStore = create(
       // Decisión actual
       currentDecision: null,
 
+      // Hoja "Ya compré" (registrar la compra que propuso la señal): `k` cambia en cada apertura para que el formulario arranque limpio
+      log: { open: false, k: 0, draft: null },
+
       // Portfolio
       portfolio: {
         operations: [],
@@ -94,6 +97,9 @@ export const useAppStore = create(
           set({ loading: false, serverWaking: false, error: error.message || 'Error cargando datos' });
         }
       },
+
+      openLog: (draft) => { if (draft) set((s) => ({ log: { open: true, k: s.log.k + 1, draft } })); },
+      closeLog: () => set((s) => ({ log: { ...s.log, open: false } })),
 
       updateUserState: (newState) => {
         set((state) => ({ userState: { ...state.userState, ...newState } }));

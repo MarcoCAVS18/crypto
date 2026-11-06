@@ -6,6 +6,7 @@ import { PillTabs } from './ui/PillTabs';
 import { sanitizeDecimal } from '../utils/decimalInput';
 import { operationIssues, priceFarFromMarket } from '../utils/opChecks';
 import { useAppStore } from '../store/appStore';
+import { cashAfter } from '../utils/signalView';
 
 const EXCHANGES = ['Binance', 'Coinbase', 'Kraken', 'OKX', 'Bybit', 'Manual'];
 const today = () => new Date().toISOString().split('T')[0];
@@ -25,12 +26,17 @@ const toForm = (op) => ({
   fee: op.fee > 0 ? String(op.fee) : '', exchange: op.exchange || 'Binance', notes: op.notes ?? ''
 });
 
-/** Nueva operación, o —con `editing`— corrige una existente. `draft` = datos para reintentar una que falló. El padre le cambia la `key` en cada apertura (formulario siempre fresco). */
-export function OperationSheet({ open, onClose, symbols, editing = null, draft = null, onFail = null }) {
+/**
+ * Nueva operación, o —con `editing`— corrige una existente. `draft` = datos para precargar (reintentar una que falló o registrar la compra de la señal).
+ * `deduct` = { cash } ofrece descontar la compra de tus USDT (solo al registrar una compra de la señal); `onSaved(data, { deduct })` avisa que se guardó.
+ * El padre le cambia la `key` en cada apertura (formulario siempre fresco).
+ */
+export function OperationSheet({ open, onClose, symbols, editing = null, draft = null, onFail = null, deduct = null, onSaved = null }) {
   const { addOperation, updateOperation, cryptoData, selectedCrypto } = useAppStore();
   const [form, setForm] = useState(() => (editing || draft ? toForm({ ...(editing ?? {}), ...(draft ?? {}) }) : emptyForm(symbols.includes(selectedCrypto) ? selectedCrypto : symbols[0])));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [deductCash, setDeductCash] = useState(true);
 
   const set = (field, value) => setForm(prev => {
     const u = { ...prev, [field]: value };
@@ -63,6 +69,7 @@ export function OperationSheet({ open, onClose, symbols, editing = null, draft =
     onClose();
     try {
       if (editing) await updateOperation(editing.id, data); else await addOperation(data);
+      onSaved?.(data, { deduct: !!deduct && !editing && data.type === 'BUY' && deductCash });
     } catch (e) { onFail?.(e.message, data, editing); } finally { setSaving(false); }
   };
 
@@ -85,6 +92,20 @@ export function OperationSheet({ open, onClose, symbols, editing = null, draft =
           </Field>
         </div>
         <Field label="Notas (opcional)"><input type="text" value={form.notes} onChange={e => set('notes', e.target.value)} className={cls} /></Field>
+
+        {deduct && !editing && form.type === 'BUY' && (
+          <label className="flex items-start gap-3 rounded-2xl bg-panel-2 border border-line px-4 py-3.5 cursor-pointer">
+            <input type="checkbox" checked={deductCash} onChange={e => setDeductCash(e.target.checked)} className="mt-1 w-4 h-4 accent-accent" />
+            <span className="text-sm text-ink leading-snug">
+              Descontar de mis USDT
+              <span className="block text-xs text-muted mt-0.5">
+                {parseFloat(form.amount_usd) > 0
+                  ? `Te quedan $${cashAfter(deduct.cash, parseFloat(form.amount_usd)).toLocaleString('en-US', { maximumFractionDigits: 2 })} para las próximas compras (la señal reparte lo que queda).`
+                  : 'Así la próxima señal reparte solo lo que te queda.'}
+              </span>
+            </span>
+          </label>
+        )}
 
         <button onClick={submit} disabled={saving} className="w-full py-4 rounded-full bg-accent text-accent-ink font-bold text-base glow-accent disabled:opacity-50">
           {saving ? 'Guardando…' : editing ? 'Guardar cambios' : 'Guardar operación'}

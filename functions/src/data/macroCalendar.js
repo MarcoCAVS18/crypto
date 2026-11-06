@@ -137,3 +137,14 @@ export function getCalendarCoverage(now = Date.now()) {
     unverifiedUpcoming: upcoming.filter(e => !e.verified).length
   };
 }
+
+/**
+ * ¿El calendario cargado cubre los próximos `daysAhead` días? Cuando se acaba, "no hay eventos en la lista" deja de significar
+ * "no hay eventos": significa "no se sabe". Quien lo consulta (riesgo de calendario, IA, pantalla) tiene que decirlo en vez de
+ * asumir que está todo tranquilo.
+ * @returns {{ covered:boolean, daysCovered:number, lastEventDate:string }}
+ */
+export function calendarCovers(daysAhead = 5, now = Date.now()) {
+  const { daysCovered, lastEventDate } = getCalendarCoverage(now);
+  return { covered: daysCovered >= daysAhead, daysCovered, lastEventDate };
+}

@@ -194,6 +194,27 @@ test('el historial guarda lo que propuso la regla y lo que hizo la IA (para medi
   assert.equal(plain.ai, null);
 });
 
+test('calendario sin cobertura: la señal lo informa, la IA lo sabe y queda registrado en el historial', async () => {
+  const { deps, seen } = aiDeps(buy);
+  deps.calendarCovers = () => ({ covered: false, daysCovered: 1, lastEventDate: '2026-12-23' });
+  const s = await signal(deps);
+  assert.deepEqual(s.decision.calendarCoverage, { covered: false, daysCovered: 1, lastEventDate: '2026-12-23' });
+  assert.match(seen.prompts[0], /SIN COBERTURA/);
+  const rec = buildDecisionRecord({ symbol: 'BTC', marketData, marketMode: s.marketMode, zones: s.zones, indicators: s.indicators, userState: user, decision: s.decision });
+  assert.equal(rec.calendarGap, true);
+
+  // con cobertura no aparece nada
+  const ok = aiDeps(buy);
+  ok.deps.calendarCovers = () => ({ covered: true, daysCovered: 40, lastEventDate: '2027-01-30' });
+  const t = await signal(ok.deps);
+  assert.equal(t.decision.calendarCoverage, undefined);
+  assert.doesNotMatch(ok.seen.prompts[0], /SIN COBERTURA/);
+  // y si la dependencia falla, la señal sale igual
+  const bad = aiDeps(buy);
+  bad.deps.calendarCovers = () => { throw new Error('boom'); };
+  assert.equal((await signal(bad.deps)).decision.action, 'BUY');
+});
+
 // ── propiedad: ninguna respuesta del modelo (válida, exagerada o basura) saca la señal de los límites ──────────────
 
 test('barrido: con 300 respuestas aleatorias (también basura) y varios USDT/compras, la señal siempre respeta los límites duros', async () => {

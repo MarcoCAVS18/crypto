@@ -8,7 +8,7 @@ import { computeSignal, buildMarketContext } from '../services/signalService.js'
 import { generatePortfolioInsight } from '../services/groqAnalyzer.js';
 import { shadowFixedDca } from '../services/shadow.js';
 import { normalizeInstallments } from '../services/dcaPolicy.js';
-import { getUpcomingEvents } from '../data/macroCalendar.js';
+import { getUpcomingEvents, calendarCovers } from '../data/macroCalendar.js';
 import { buildDecisionRecord } from '../services/decisionLog.js';
 import { insightCacheKey } from '../services/aiHelpers.js';
 import { saveDecision, getPortfolioSummaryBySymbol, getAiCache, setAiCache, getDecisionsBySymbol } from '../config/database.js';
@@ -18,7 +18,7 @@ import { optionalSession } from '../middleware/session.js';
 const router = express.Router();
 
 // Dependencias del cálculo de la señal (compartido con el job de avisos: services/signalService.js)
-const signalDeps = { getGoldContext, getPreviousMode, getUpcomingEvents, warn: console.warn };
+const signalDeps = { getGoldContext, getPreviousMode, getUpcomingEvents, calendarCovers, warn: console.warn };
 
 const isValidSymbol = s => /^[A-Z0-9]{2,10}$/.test(s);
 

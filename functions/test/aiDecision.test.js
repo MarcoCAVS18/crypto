@@ -79,6 +79,21 @@ test('buildDecisionPrompt: sin titulares ni eventos lo dice, no inventa', () => 
   assert.match(p, /EVENTOS MACRO PRÓXIMOS: ninguno/);
 });
 
+test('calendario sin cobertura: el prompt dice que NO se sabe (no "ninguno relevante") y la huella cambia', () => {
+  const gap = { covered: false, daysCovered: 1, lastEventDate: '2026-12-23' };
+  const facts = buildAiFacts(baseInput({ events: [], calendar: gap }));
+  assert.deepEqual(facts.calendar, { covered: false, lastEventDate: '2026-12-23' });
+  const p = buildDecisionPrompt(facts);
+  assert.match(p, /SIN COBERTURA\. El calendario cargado termina el 2026-12-23/);
+  assert.match(p, /no asumas que no los hay/);
+  assert.doesNotMatch(p, /ninguno relevante/);
+  assert.notEqual(aiFingerprint(facts), aiFingerprint(buildAiFacts(baseInput({ events: [], calendar: { covered: true } }))));
+  // con cobertura (o sin dato de cobertura) se comporta como antes
+  assert.match(buildDecisionPrompt(buildAiFacts(baseInput({ events: [] }))), /ninguno relevante/);
+  // si algunos eventos sí figuran, se muestran junto con el aviso
+  assert.match(buildDecisionPrompt(buildAiFacts(baseInput({ calendar: gap }))), /Los que sí figuran: FOMC \(critical, en 20 h\)/);
+});
+
 // ── validación de la respuesta ───────────────────────────────────────────────
 
 const good = { action: 'WAIT', confidence: 0.8, sizeMultiplier: 1, tranches: 2, waitDays: 2, reasoning: 'FOMC en 20 horas: conviene esperar el dato.', keyFactors: ['FOMC', 'volatilidad'] };
