@@ -54,6 +54,7 @@ export function buildNotification(decision, { symbol, price, cashUsd = 0 } = {})
     const dropPct = c?.reason === 'dip' && c.lastBuyPrice > 0 && price > 0 ? Math.round((1 - price / c.lastBuyPrice) * 1000) / 10 : null;
     const title = c?.reason === 'dip' ? `${symbol}: bajó${dropPct ? ` ${dropPct} %` : ''} — conviene adelantar la compra`
       : c?.reason === 'due' ? `${symbol}: toca la compra de la semana`
+      : c?.reason === 'zone' ? `${symbol}: entró en zona de compra`
       : `${symbol}: toca comprar`;
     const share = cashUsd > 0 ? ` (${Math.round((total / cashUsd) * 100)} % de tus ${usd(cashUsd)})` : '';
     const tramos = ops.map((o, i) => `${usd(o.usdAmount)} ${i === 0 ? 'ahora a' : 'a'} ${px(o.price)}`).join(' · ');

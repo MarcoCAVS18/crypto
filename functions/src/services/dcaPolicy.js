@@ -29,13 +29,14 @@ import { modulation } from '../backtest/dcaSim.js';
 const DEFAULT_INSTALLMENTS = 4;
 
 export const DCA_POLICY = Object.freeze({
-  version: 'p3-3',
+  version: 'p3-4',
   installments: Object.freeze({ default: DEFAULT_INSTALLMENTS, min: 1, max: 12 }),
   baseFraction: 1 / DEFAULT_INSTALLMENTS,   // cuota base con el valor por defecto (la usa también el challenger `fixed_dca`)
   minFraction: 0.04,                        // nunca una cuota microscópica (con 12 compras y ×0.5 ≈ 4.2 %)
   maxFraction: 1.0,                         // nunca más del 100 % del efectivo (solo se alcanza con 1 compra)
   tilt: Object.freeze({ k: 0.5, min: 0.5, max: 1.5, dir: -1 }),  // dir −1: más peso cuando el score es bajo
-  cadence: Object.freeze({ days: 7, dipPct: 3 }),                // p3-3: una compra por semana, o antes si cae ≥ 3 % de la última
+  // p3-3: una compra por semana, o antes si cae ≥ 3 % de la última. p3-4: en ZONA DE COMPRA el ritmo no frena (`buyZoneBypass`; false = el ritmo manda siempre)
+  cadence: Object.freeze({ days: 7, dipPct: 3, buyZoneBypass: true }),
   // Límites del ajuste que puede pedir la capa de IA (aiDecision.js). El motor los aplica SIEMPRE, diga lo que diga el modelo.
   aiSizing: Object.freeze({ min: 0.5, max: 1.5, maxTranches: 3 })
 });
@@ -165,10 +166,23 @@ export function cadenceStatus({ buys = [], price, now = Date.now(), policy = DCA
 const fmtDay = (ms) => new Date(ms).toLocaleDateString('es-AR', { day: 'numeric', month: 'short', timeZone: 'UTC' }).replace('.', '');
 const fmtUsd = (n) => `$${Number(n).toLocaleString('en-US', { maximumFractionDigits: n >= 1000 ? 0 : 2 })}`;
 
+const agoText = (daysSince) => (daysSince < 1 ? 'hoy' : daysSince < 2 ? 'ayer' : `hace ${Math.floor(daysSince)} días`);
+
+/**
+ * En zona de compra el ritmo no frena: si el precio entró en la zona de compra, comprar es lo que se quiere aunque la última compra
+ * sea reciente (antes decía "ya compraste ayer, la próxima toca el …" con el precio en la zona). Los tramos que ya ejecutaste
+ * en los últimos 4 días siguen sin repetirse (los filtra el motor), así que queda lo que falta del plan, no una compra nueva entera.
+ * Solo levanta el freno por ritmo (`recent`): lo demás (zonas, riesgo macro, efectivo) sigue mandando.
+ */
+export function withBuyZoneBypass(cadence, currentZone, policy = DCA_POLICY) {
+  if (!cadence || cadence.due || !policy.cadence.buyZoneBypass || currentZone !== 'buy') return cadence;
+  return { ...cadence, due: true, reason: 'zone' };
+}
+
 /** Texto de la espera por cadencia (español rioplatense). null si toca comprar. */
 export function cadenceWaitText(c) {
   if (!c || c.due) return null;
-  const ago = c.daysSince < 1 ? 'hoy' : c.daysSince < 2 ? 'ayer' : `hace ${Math.floor(c.daysSince)} días`;
+  const ago = agoText(c.daysSince);
   return {
     reason: `Ya compraste ${ago} (${fmtUsd(c.lastBuy.price)}): la próxima compra toca desde el ${fmtDay(c.nextAt)}`,
     recommendation: `El plan es una compra por semana. Próxima: desde el ${fmtDay(c.nextAt)}, o antes si el precio baja a ${fmtUsd(c.dipPrice)} (${c.dipPct} % por debajo de tu última compra).`
@@ -180,6 +194,7 @@ export function cadenceDueText(c) {
   if (!c?.due) return '';
   if (c.reason === 'dip') return ` Toca antes de lo previsto: el precio bajó ${c.dipPct} % o más desde tu última compra (${fmtUsd(c.lastBuy.price)}).`;
   if (c.reason === 'due') return ` Toca la compra de la semana (la última fue hace ${Math.floor(c.daysSince)} días).`;
+  if (c.reason === 'zone') return ` Estás en zona de compra: se puede sumar aunque ya compraste ${agoText(c.daysSince)} (los tramos que ya ejecutaste no se repiten).`;
   return '';
 }
 

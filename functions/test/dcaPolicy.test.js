@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DCA_POLICY, dcaCapFraction, tiltNote, normalizeInstallments, buyBudgetUsd, tranchePlan, pacingNote, cadenceStatus, cadenceWaitText, cadenceDueText, cadenceSummary } from '../src/services/dcaPolicy.js';
+import { DCA_POLICY, dcaCapFraction, tiltNote, normalizeInstallments, buyBudgetUsd, tranchePlan, pacingNote, cadenceStatus, cadenceWaitText, cadenceDueText, withBuyZoneBypass, cadenceSummary } from '../src/services/dcaPolicy.js';
 import { modulation } from '../src/backtest/dcaSim.js';
 
 test('el mapeo desplegado es exactamente el evaluado en el backtest (modulation con los mismos parámetros)', () => {
@@ -48,7 +48,7 @@ test('tiltNote: describe el ajuste con honestidad (efecto chico) y no dice nada 
 // ── p3-2: ritmo de compra ───────────────────────────────────────────────────────
 
 test('p3-2: la cuota base es 1/N de los USDT y el tilt acotado (el evaluado) la modula', () => {
-  assert.equal(DCA_POLICY.version, 'p3-3');
+  assert.equal(DCA_POLICY.version, 'p3-4');
   assert.equal(DCA_POLICY.baseFraction, 0.25);
   for (const n of [1, 2, 4, 8, 12]) {
     const r = dcaCapFraction(0, { installments: n });
@@ -189,4 +189,36 @@ test('cadenceWaitText / cadenceDueText / cadenceSummary: textos y resumen serial
   assert.equal(s.lastBuyPrice, 3950);
   assert.doesNotThrow(() => JSON.stringify(s));
   assert.equal(cadenceSummary(null), null);
+});
+
+// ── p3-4: en zona de compra el ritmo no frena ────────────────────────────────────────────────────────
+test('p3-4: withBuyZoneBypass levanta SOLO el freno por ritmo y solo en zona de compra', () => {
+  const NOW = Date.parse('2026-11-06T15:00:00Z');
+  const recent = cadenceStatus({ buys: [{ date: '2026-11-03', price: 3950 }], price: 3923, now: NOW });
+  assert.equal(recent.due, false);
+  const z = withBuyZoneBypass(recent, 'buy');
+  assert.equal(z.due, true);
+  assert.equal(z.reason, 'zone');
+  assert.equal(z.lastBuy.price, 3950);                                   // conserva los datos de la última compra
+  // fuera de la zona no cambia nada
+  assert.equal(withBuyZoneBypass(recent, 'neutral'), recent);
+  assert.equal(withBuyZoneBypass(recent, 'sell'), recent);
+  assert.equal(withBuyZoneBypass(recent, undefined), recent);
+  // si ya tocaba comprar (semana, caída o primera) se deja el motivo original
+  const due = cadenceStatus({ buys: [{ date: '2026-10-20', price: 3950 }], price: 3923, now: NOW });
+  assert.equal(withBuyZoneBypass(due, 'buy').reason, 'due');
+  assert.equal(withBuyZoneBypass(cadenceStatus({ buys: [], price: 1, now: NOW }), 'buy').reason, 'first');
+  assert.equal(withBuyZoneBypass(null, 'buy'), null);
+  // el interruptor: con buyZoneBypass en false el ritmo manda siempre
+  const off = { ...DCA_POLICY, cadence: { ...DCA_POLICY.cadence, buyZoneBypass: false } };
+  assert.equal(withBuyZoneBypass(recent, 'buy', off), recent);
+  assert.equal(DCA_POLICY.cadence.buyZoneBypass, true);
+});
+
+test('p3-4: el texto de la zona dice que se puede sumar y que los tramos ejecutados no se repiten', () => {
+  const NOW = Date.parse('2026-11-06T15:00:00Z');
+  const z = withBuyZoneBypass(cadenceStatus({ buys: [{ date: '2026-11-05', price: 3950 }], price: 3923, now: NOW }), 'buy');
+  assert.match(cadenceDueText(z), /^ Estás en zona de compra: se puede sumar aunque ya compraste ayer \(los tramos que ya ejecutaste no se repiten\)\./);
+  assert.equal(cadenceSummary(z).reason, 'zone');
+  assert.equal(cadenceSummary(z).due, true);
 });

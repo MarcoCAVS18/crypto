@@ -1,6 +1,6 @@
 // Motor de decisión: cruza market mode, zonas, indicadores y perfil del usuario
 
-import { dcaCapFraction, normalizeInstallments, buyBudgetUsd, tranchePlan, tiltNote, pacingNote, cadenceStatus, cadenceWaitText, cadenceDueText, cadenceSummary, aiAdjustedFraction, DCA_POLICY } from './dcaPolicy.js';
+import { dcaCapFraction, normalizeInstallments, buyBudgetUsd, tranchePlan, tiltNote, pacingNote, cadenceStatus, cadenceWaitText, cadenceDueText, cadenceSummary, withBuyZoneBypass, aiAdjustedFraction, DCA_POLICY } from './dcaPolicy.js';
 import { applyCosts, costNote, normalizeCosts } from './costModel.js';
 import { weightState, trimPctToBand } from './portfolioPolicy.js';
 import { evaluateExit } from './exitPolicy.js';
@@ -48,9 +48,10 @@ export function makeDecision(marketMode, zones, currentPrice, userState, indicat
   }
 
   // Cadencia de compra (solo inversión): ¿toca comprar o ya compraste hace poco? Ver dcaPolicy.js
-  const cadence = userMode === 'trading' ? null : cadenceStatus({
+  // En zona de compra el ritmo no frena (p3-4): ahí se quiere comprar aunque la última compra sea reciente.
+  const cadence = userMode === 'trading' ? null : withBuyZoneBypass(cadenceStatus({
     buys: [...(portfolioContext?.allBuys ?? []), ...(portfolioContext?.executedBuys ?? [])], price: currentPrice, now: meta?.now ?? Date.now()
-  });
+  }), zones?.currentZone);
 
   const result = userMode === 'trading'
     // --- MODO TRADING: más agresivo, usa RSI como confirmación adicional ---
@@ -491,6 +492,15 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
       if (!cadence.due) return cadenceWait();
       const sz = sized(isPaxg ? 1 : 0.5);      // BTC/ETH en contexto neutral: media cuota (como antes, la mitad del esquema pleno)
       const ops = generateBuyOperations(currentPrice, zones, cashPercent, totalCapital, 'inversion', sz.fraction, executedBuys, symbol, ext.pullback, minOrderUsd, tranchesCap);
+      // Sin tramos pendientes (todos los niveles ya compraste en los últimos 4 días) no hay nada que comprar: antes decía COMPRAR sin órdenes
+      if (ops.length === 0) {
+        return {
+          action: 'WAIT', strength: 'moderado',
+          reason: `Ya registraste compras en los últimos 4 días a los niveles de los tramos de este ciclo (±1.5 %)${pnlTag}`,
+          recommendation: `Esperá a que el precio baje a otro nivel o a que pasen unos días: promediar varias veces al mismo precio no mejora el costo base.${macroLine}`,
+          operations: []
+        };
+      }
       return {
         action: 'BUY',
         strength: 'moderado',

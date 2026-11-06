@@ -73,6 +73,11 @@ test('buildDecisionPrompt: incluye la propuesta de la regla, el ritmo, los titul
   assert.match(p, /saltear compras encareció el costo promedio/);
 });
 
+test('buildDecisionPrompt: si toca por estar en zona de compra, el modelo lo sabe', () => {
+  const p = buildDecisionPrompt(buildAiFacts(baseInput({ cadence: { ...cadence, reason: 'zone', daysSince: 3 } })));
+  assert.match(p, /Hoy toca porque: el precio está en zona de compra \(se compra aunque la última compra sea reciente\)/);
+});
+
 test('buildDecisionPrompt: sin titulares ni eventos lo dice, no inventa', () => {
   const p = buildDecisionPrompt(buildAiFacts(baseInput({ symbol: 'BTC', marketMode: { mode: 'neutral', score: 0, reasons: [] }, news: null, events: [] })));
   assert.match(p, /TITULARES: sin titulares disponibles/);
