@@ -127,7 +127,7 @@ export function buildDecisionPrompt(f) {
     ? `POSICIÓN: promedio de compra ${usd(f.position.avgBuyPrice)} (precio ${f.position.pnlPct >= 0 ? '+' : ''}${f.position.pnlPct} % vs tu promedio) · vale ${usd(f.position.valueUsd)} · ${f.position.buysCount} compras registradas`
     : 'POSICIÓN: todavía no tenés este activo.');
   if (f.cadence) {
-    const why = { first: 'primera compra', due: 'pasó la semana desde la última', dip: 'el precio bajó respecto de la última compra (se adelanta)', recent: 'compra reciente' }[f.cadence.reason] ?? f.cadence.reason;
+    const why = { first: 'primera compra', due: 'pasó la semana desde la última', dip: 'el precio bajó respecto de la última compra (se adelanta)', zone: 'el precio está en zona de compra (se compra aunque la última compra sea reciente)', recent: 'compra reciente' }[f.cadence.reason] ?? f.cadence.reason;
     lines.push(`RITMO: una compra por semana, o antes si el precio baja ≥ ${f.cadence.dipPct} % de la última. Hoy toca porque: ${why}${f.cadence.daysSince != null ? ` (última hace ${f.cadence.daysSince} días a ${usd(f.cadence.lastBuyPrice)})` : ''}.`);
   }
   lines.push(`EFECTIVO: ${usd(f.cash.usd)} en USDT, repartidos en ~${f.cash.installments} compras. LA REGLA PROPONE: ${usd(rule.totalUsd)} (${rule.pctOfCash ?? '—'} % de tus USDT) en ${rule.tranches.length} ${rule.tranches.length === 1 ? 'tramo' : 'tramos'}: ${rule.tranches.map((t, i) => `${usd(t.usd)} ${i === 0 ? 'ahora a' : 'a'} ${usd(t.price)}`).join(' · ')}.`);

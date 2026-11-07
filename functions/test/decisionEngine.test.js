@@ -78,7 +78,7 @@ test('P3: PAXG en risk_off + zona de compra SIGUE acumulando (antes: WAIT, lo qu
   assert.equal(d.strength, 'moderado');
   assert.ok(d.operations.length >= 2);
   assert.ok(d.operations.every(o => o.usdAmount > 0));
-  assert.equal(d.policy.version, 'p3-3');
+  assert.equal(d.policy.version, 'p3-4');
   assert.equal(d.policy.installments, 4);
   assert.ok(d.policy.multiplier > 1, 'score bajo ⇒ tilt hacia comprar la debilidad');
   assert.match(d.recommendation, /Tamaño ajustado ×/);
@@ -309,7 +309,7 @@ test('P3-2: el caso real — 333 USDT, Risk OFF (−0.59), 18 % bajo el promedio
   const pf = position(price, -18, { units: 1.7, portfolioValueUsd: 7000 });
   const d = makeDecision(mm, swingBuy(price), price, usdtOnly(333), ind, 'PAXG', pf);
   assert.equal(d.action, 'BUY');
-  assert.equal(d.policy.version, 'p3-3');
+  assert.equal(d.policy.version, 'p3-4');
   assert.equal(d.policy.installments, 4);
   assert.ok(Math.abs(d.policy.capFraction - 0.324) < 0.001, `fracción ${d.policy.capFraction}`);
   assert.ok(Math.abs(total(d) - 333 * 0.324) < 1, `total ${total(d)}`);          // ≈ $108 (antes: $323)
@@ -401,12 +401,12 @@ const cadPos = (buys = [], extra = {}) => ({
 const cadDecide = (mm, zone, price, pf, over = {}) =>
   makeDecision(mm, swingZones(price, zone), price, usdtOnly(333, over), ind, over.symbol ?? 'PAXG', pf, { now: CAD_NOW });
 
-test('p3-3: la revisión — con la posición bajo el promedio y una compra de hace 3 días, NINGÚN contexto dice COMPRAR', () => {
+test('p3-3: la revisión — con una compra de hace 3 días y el precio FUERA de la zona de compra, NINGÚN contexto dice COMPRAR', () => {
   const price = 3923;
   const pf = cadPos([cadBuy(3, 3950)]);
   const contexts = [['risk_off', -0.8], ['risk_off', -0.59], ['risk_off', -0.2], ['neutral', 0], ['neutral', 0.2], ['risk_on', 0.4], ['risk_on', 0.8]];
   let waits = 0;
-  for (const [mode, score] of contexts) for (const zone of ['buy', 'neutral', 'sell']) {
+  for (const [mode, score] of contexts) for (const zone of ['neutral', 'sell']) {
     const d = cadDecide({ mode, score, reasons: [] }, zone, price, pf);
     assert.equal(d.action, 'WAIT', `${mode} ${score} ${zone}`);
     assert.match(d.reason, /Ya compraste hace 3 días/);
@@ -415,7 +415,53 @@ test('p3-3: la revisión — con la posición bajo el promedio y una compra de h
     assert.deepEqual(d.operations, []);
     waits++;
   }
-  assert.equal(waits, 21);
+  assert.equal(waits, 14);
+});
+
+test('p3-4: EN ZONA DE COMPRA el ritmo no frena — con una compra de hace 3 días se sigue comprando lo que falta del plan, en todos los contextos', () => {
+  const price = 3923;
+  const pf = cadPos([cadBuy(3, 3950)]);
+  for (const [mode, score] of [['risk_off', -0.8], ['risk_off', -0.59], ['risk_off', -0.2], ['neutral', 0], ['neutral', 0.2], ['risk_on', 0.4], ['risk_on', 0.8]]) {
+    const d = cadDecide({ mode, score, reasons: [] }, 'buy', price, pf);
+    assert.equal(d.action, 'BUY', `${mode} ${score}`);
+    assert.equal(d.cadence.reason, 'zone');
+    assert.equal(d.cadence.due, true);
+    assert.match(d.recommendation, /Estás en zona de compra: se puede sumar aunque ya compraste hace 3 días/);
+    // el tramo "ahora" (a ±1.5 % de la compra de hace 3 días) no se repite: quedan los niveles de abajo
+    assert.ok(d.operations.length >= 1 && d.operations.every(o => o.price < 3900), `${mode} ${score}: ${d.operations.map(o => o.price)}`);
+  }
+});
+
+test('p3-4: si ya compraste TODOS los niveles del plan, en la zona no hay nada que comprar (esperar, no "comprar" sin órdenes)', () => {
+  const today = new Date(CAD_NOW).toISOString().slice(0, 10);
+  const buys = [3923, 3864, 3805].map(p => ({ date: today, price: p, amount_usd: 30 }));
+  const pf = cadPos(buys);
+  for (const [mode, score] of [['risk_off', -0.59], ['neutral', 0], ['risk_on', 0.4]]) {
+    const d = cadDecide({ mode, score, reasons: [] }, 'buy', 3923, pf);
+    assert.equal(d.action, 'WAIT', `${mode}`);
+    assert.deepEqual(d.operations, []);
+    assert.match(d.reason, /Ya (registraste|compraste)/);
+  }
+});
+
+test('p3-4: en la zona se compra el plan y después se espera: sin repetir la compra cada hora (revisión horaria, 10 días)', () => {
+  const price = 3923, mm = { mode: 'risk_off', score: -0.59, reasons: [] };
+  const buys = [];
+  const buyHours = [];
+  for (let h = 0; h < 10 * 24; h++) {
+    const now = CAD_NOW + h * 3600e3;
+    const executed = buys.filter(b => now - Date.parse(b.date) <= 4 * 86400000);
+    const pf = { hasPosition: true, avgBuyPrice: 4774, costBasis: 8231, netInvested: 8231, units: 1.72, portfolioValueUsd: 7000, allBuys: buys, executedBuys: executed };
+    const d = makeDecision(mm, swingZones(price, 'buy'), price, usdtOnly(333), ind, 'PAXG', pf, { now });
+    if (d.action === 'BUY') {
+      buyHours.push(h);
+      for (const o of d.operations) buys.push({ date: new Date(now).toISOString(), price: o.price, amount_usd: o.usdAmount });   // compra todo lo propuesto y lo registra
+    }
+  }
+  // el plan se compra de una vez y la señal vuelve a COMPRAR solo cuando se liberan los niveles (ventana de 4 días), no cada hora
+  assert.ok(buyHours.length >= 1 && buyHours.length <= 3, `compras en las horas ${buyHours}`);
+  assert.equal(buyHours[0], 0);
+  for (let i = 1; i < buyHours.length; i++) assert.ok(buyHours[i] - buyHours[i - 1] >= 4 * 24 - 1, `separación ${buyHours[i] - buyHours[i - 1]} h`);
 });
 
 test('p3-3: sin compras registradas toca comprar (primera) y la decisión lo informa', () => {
@@ -440,11 +486,14 @@ test('p3-3: una caída de 3 % bajo la última compra adelanta la compra (y el tr
   assert.equal(d.operations[0].price, 3800);
 });
 
-test('p3-3: la cadencia aplica a todos los contextos de compra, también BTC', () => {
-  const pfBtc = cadPos([cadBuy(2, 86000)], { avgBuyPrice: 90000 });
-  const d = cadDecide({ mode: 'risk_on', score: 0.6, reasons: [] }, 'buy', 86000, pfBtc, { symbol: 'BTC' });
+test('p3-3: la cadencia aplica a todos los contextos de compra, también BTC (y en la zona de compra se levanta)', () => {
+  const pfBtc = cadPos([cadBuy(2, 86000)], { avgBuyPrice: 100000 });
+  const d = cadDecide({ mode: 'neutral', score: 0, reasons: [] }, 'neutral', 86000, pfBtc, { symbol: 'BTC' });   // 14 % bajo el promedio: DCA, pero compraste hace 2 días
   assert.equal(d.action, 'WAIT');
   assert.match(d.reason, /Ya compraste hace 2 días/);
+  const inZone = cadDecide({ mode: 'neutral', score: 0, reasons: [] }, 'buy', 86000, pfBtc, { symbol: 'BTC' });
+  assert.equal(inZone.action, 'BUY');
+  assert.equal(inZone.cadence.reason, 'zone');
   const due = cadDecide({ mode: 'risk_on', score: 0.6, reasons: [] }, 'buy', 86000, cadPos([cadBuy(9, 86000)], { avgBuyPrice: 90000 }), { symbol: 'BTC' });
   assert.equal(due.action, 'BUY');
 });

@@ -86,7 +86,9 @@ const decisionFor = (symbol, body) => {
   const aiMode = process.env.AI_MOCK;
   const pctx = aiMode ? { ...ctx, allBuys: [{ price: m.price * 1.02, date: new Date(Date.now() - 9 * DAY).toISOString().slice(0, 10) }], executedBuys: [] } : ctx;
   const us = { cashPercent: Number(body.cashPercent) || 100, mode: body.mode || 'inversion', totalCapital: Number(body.totalCapital) || 0, costs: body.settings?.costs, installments: body.settings?.installments, target: body.settings?.target ?? null };
-  let d = makeDecision(m.marketMode, m.zones, m.price, us, m.indicators, symbol, pctx, { candlesSource: 'real' });
+  // IN_ZONE=1: el precio entra en la zona de compra (para probar que el ritmo no frena ahí)
+  const zonesNow = process.env.IN_ZONE ? { ...m.zones, currentZone: 'buy' } : m.zones;
+  let d = makeDecision(m.marketMode, zonesNow, m.price, us, m.indicators, symbol, pctx, { candlesSource: 'real' });
   if (aiMode && d.action === 'BUY') {
     const sum = (x) => x.operations.reduce((a, o) => a + (o.usdAmount ?? 0), 0);
     const base = { version: 'ai1', used: true, cached: false, confidence: 0.78, keyFactors: ['FOMC en 26 h', 'Dólar firme', 'Precio 14 % bajo tu promedio'], notes: [], capped: false };
@@ -100,7 +102,7 @@ const decisionFor = (symbol, body) => {
     }
   }
   if (process.env.CAL_GAP) d = { ...d, calendarCoverage: { covered: false, daysCovered: 1, lastEventDate: '2026-12-23' } };
-  return { symbol, price: m.price, marketMode: m.marketMode, zones: m.zones, decision: d };
+  return { symbol, price: m.price, marketMode: m.marketMode, zones: zonesNow, decision: d };
 };
 
 const send = (res, code, data) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': '*' }); res.end(JSON.stringify(data)); };

@@ -69,6 +69,9 @@ test('aviso de compra: título según el motivo y cuerpo con monto, % de los USD
   assert.equal(due.tag, 'signal_PAXG');
   assert.deepEqual(due.data, { kind: 'signal', symbol: 'PAXG', action: 'BUY', tag: 'signal_PAXG' });
 
+  const zone = buildNotification(buyDecision({ reason: 'zone' }), { symbol: 'PAXG', price: 3923, cashUsd: 333 });
+  assert.equal(zone.title, 'PAXG: entró en zona de compra');
+
   const first = buildNotification(buyDecision({ reason: 'first' }), { symbol: 'PAXG', price: 3923, cashUsd: 333 });
   assert.equal(first.title, 'PAXG: toca comprar');
 

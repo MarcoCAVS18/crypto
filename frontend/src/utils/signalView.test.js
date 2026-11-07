@@ -54,6 +54,7 @@ test('usageOf: cuánto de los USDT usa la compra y cuánto queda de reserva', ()
 test('cadenceView: COMPRAR explica por qué toca; ESPERAR por ritmo dice cuándo toca la próxima', () => {
   assert.equal(cadenceView({ action: 'BUY', cadence: { reason: 'due' } }).text, 'Toca la compra de la semana');
   assert.equal(cadenceView({ action: 'BUY', cadence: { reason: 'first' } }).text, 'Primera compra de este activo');
+  assert.equal(cadenceView({ action: 'BUY', cadence: { reason: 'zone', due: true } }).text, 'En zona de compra: se suma aunque ya compraste');
   assert.match(cadenceView({ action: 'BUY', cadence: { reason: 'dip', dipPct: 3 } }).text, /^Bajó 3 % o más desde tu última compra/);
   const wait = cadenceView({ action: 'WAIT', cadence: { due: false, reason: 'recent', nextAt: '2026-11-10T12:00:00.000Z', dipPrice: 3880 } });
   assert.equal(wait.tone, 'warn');

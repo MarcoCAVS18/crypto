@@ -111,6 +111,7 @@ export function cadenceView(decision) {
     }
     if (c.reason === 'due') return { tone: 'accent', text: 'Toca la compra de la semana' };
     if (c.reason === 'first') return { tone: 'accent', text: 'Primera compra de este activo' };
+    if (c.reason === 'zone') return { tone: 'accent', text: 'En zona de compra: se suma aunque ya compraste' };
     return null;
   }
   if (decision.action === 'WAIT' && c.due === false) {
