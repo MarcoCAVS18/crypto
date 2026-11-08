@@ -1,6 +1,6 @@
 // Scheduled function — una vez por hora calcula, para cada usuario con avisos activados, LA MISMA señal que muestra la app
 // (services/signalService.js, con sus USDT, su portfolio y su cadencia de compra) y manda un push cuando toca COMPRAR o VENDER.
-// Se exporta con el nombre `zoneWatcher` en functions/index.js (se mantiene para no borrar/recrear la función al desplegar).
+// Se exporta como `signalWatcher` en functions/index.js (antes `zoneWatcher`: ver el comentario ahí sobre por qué se renombró).
 //
 // Antes avisaba solo cuando el precio entraba en "zona de compra" (con un texto fijo): no miraba ni la señal de la app ni al
 // usuario, así que los avisos salían todos iguales y no coincidían con lo que decía la pantalla.
