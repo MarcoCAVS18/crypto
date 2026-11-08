@@ -444,6 +444,19 @@ test('p3-4: si ya compraste TODOS los niveles del plan, en la zona no hay nada q
   }
 });
 
+test('p3-4: el motor no depende del reloj real — el mismo escenario da lo mismo con otra fecha de pedido', () => {
+  for (const nowIso of ['2026-11-06T15:00:00Z', '2030-01-15T15:00:00Z', '2024-03-01T09:00:00Z']) {
+    const now = Date.parse(nowIso), day = nowIso.slice(0, 10);
+    const buys = [3923, 3864, 3805].map(p => ({ date: day, price: p, amount_usd: 30 }));
+    const pf = { hasPosition: true, avgBuyPrice: 4774, costBasis: 8231, netInvested: 8231, units: 1.72, portfolioValueUsd: 7000, allBuys: buys, executedBuys: buys };
+    for (const [mode, score] of [['risk_off', -0.59], ['neutral', 0], ['risk_on', 0.4]]) {
+      const d = makeDecision({ mode, score, reasons: [] }, swingZones(3923, 'buy'), 3923, usdtOnly(333), ind, 'PAXG', pf, { now });
+      assert.equal(d.action, 'WAIT', `${nowIso} ${mode}`);
+      assert.deepEqual(d.operations, []);
+    }
+  }
+});
+
 test('p3-4: en la zona se compra el plan y después se espera: sin repetir la compra cada hora (revisión horaria, 10 días)', () => {
   const price = 3923, mm = { mode: 'risk_off', score: -0.59, reasons: [] };
   const buys = [];

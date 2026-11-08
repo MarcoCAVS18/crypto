@@ -57,7 +57,7 @@ export function makeDecision(marketMode, zones, currentPrice, userState, indicat
     // --- MODO TRADING: más agresivo, usa RSI como confirmación adicional ---
     ? decideTradingMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, portfolioContext, symbol)
     // --- MODO INVERSIÓN: conservador, largo plazo, usa P&L real del portfolio ---
-    : decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, portfolioContext, indicators, symbol, { target: userState.target ?? null, pullback: meta?.pullback ?? null, installments: userState.installments, costs: userState.costs, cadence, sizing: meta?.sizing ?? null });
+    : decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, totalCapital, portfolioContext, indicators, symbol, { target: userState.target ?? null, pullback: meta?.pullback ?? null, installments: userState.installments, costs: userState.costs, cadence, sizing: meta?.sizing ?? null, now: meta?.now ?? null });
 
   // Sin cash suficiente no se COMPRA (y el motivo relevante es ese). Las ventas siempre se
   // permiten (liberan cash): antes este gate bloqueaba también las salidas.
@@ -389,7 +389,7 @@ function decideInversionMode(marketMode, zones, currentPrice, cashPercent, rsi, 
       // reconocer la compra y sugerir esperar corrección.
       // Si no hay compra de hoy, ofrecer acumulación adicional pequeña (20%).
       if (ops.length === 0) {
-        const todayUTC = new Date().toISOString().slice(0, 10);
+        const todayUTC = new Date(ext.now ?? Date.now()).toISOString().slice(0, 10);      // el reloj del pedido (meta.now), no el real: así el motor es determinístico
         const boughtTodayHere = executedBuys.some(b => {
           if (!b.date || !b.price) return false;
           const buyDate = new Date(b.date).toISOString().slice(0, 10);

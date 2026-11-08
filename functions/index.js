@@ -27,9 +27,11 @@ export const api = onRequest(
 );
 
 // ── Scheduled: calcula la señal de cada usuario con avisos y pushea cuando toca comprar/vender ──
-// Conserva el nombre `zoneWatcher` (antes avisaba por zona de precio) para no borrar y recrear la función al desplegar.
-// Calcula la misma señal que la app, por eso necesita el contexto de oro (IA + FRED) además de las claves de push.
-export const zoneWatcher = onSchedule(
+// Antes se llamaba `zoneWatcher` (avisaba por zona de precio). Se renombró a propósito: al agregarle los secretos de IA y FRED,
+// Cloud Run rechazó actualizar el servicio `zonewatcher` ("Secret environment variable overlaps non secret environment variable:
+// GROQ_API_KEY") y eso hacía fallar TODO el deploy (no se publicaba ni el sitio). Con otro nombre se crea limpio y `--force`
+// borra el viejo. Calcula la misma señal que la app, por eso necesita el contexto de oro (IA + FRED) además de las claves de push.
+export const signalWatcher = onSchedule(
   {
     schedule:       'every 60 minutes',
     region:         'us-central1',

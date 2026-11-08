@@ -1,7 +1,7 @@
 // Scheduled function — una vez por hora guarda un snapshot de mercado de PAXG y BTC con todas las
 // features de la señal (ver services/snapshot.js). Es la base para medir aciertos y calibrar (P2/P4).
 //
-// Patrón igual a signalWatcher (exportado como `zoneWatcher`): `handler()` es el punto de entrada del scheduler (onSchedule le pasa el
+// Patrón igual a signalWatcher: `handler()` es el punto de entrada del scheduler (onSchedule le pasa el
 // evento como 1er argumento, por eso no acepta dependencias) y `run(deps)` es testeable.
 
 import { getCryptoData } from '../services/marketData.js';

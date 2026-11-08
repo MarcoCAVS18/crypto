@@ -6,7 +6,7 @@ Netlify y Render **ya no se usan** y se eliminaron del repo (incluido `backend/`
 ## Flujo
 | Qué | Cómo |
 |---|---|
-| Deploy normal | Push/merge a `main` → `.github/workflows/deploy.yml` (Hosting + Functions: `api`, `zoneWatcher`, `snapshotJob`, `outcomeJob`) |
+| Deploy normal | Push/merge a `main` → `.github/workflows/deploy.yml` (Hosting + Functions: `api`, `signalWatcher`, `snapshotJob`, `outcomeJob`) |
 | Verificar | Corre solo `.github/workflows/smoke.yml` después de cada deploy: carga la web, llama a la API y resume en el job qué falta (Groq, FRED, versiones, alertas). También a mano: Actions → *Smoke test* → Run workflow |
 | Noticias | `.github/workflows/news-relay.yml` (cada 30 min y a mano) trae los feeds desde GitHub Actions y los guarda en Firestore (`_ai_cache/headlines_relay_*`). Motivo: los mismos feeds dan ~14 titulares desde Actions/Render y ~1 desde Cloud Functions (limitan IPs de Google Cloud). La API usa el relé cuando sus consultas devuelven menos de 3. Los cron de Actions solo corren desde `main`: la primera vez, correlo a mano (*Run workflow*) |
 | Cambiaste un secreto de Firebase | Actions → *Deploy to Firebase* → Run workflow (las funciones leen los secretos al iniciar) |
@@ -24,6 +24,8 @@ printf '%s' 'VALOR' | firebase functions:secrets:set NOMBRE --data-file -   # si
 y después *Run workflow* del deploy. Diagnóstico: `/api/health/deep` (configuración y frescura) y `/api/health/ai` (prueba la clave de Groq).
 
 ## Notas del deploy
+- **Si el deploy falla, el sitio NO se publica** (Hosting se libera después de las funciones) y el *Smoke test* aparece como *skipped*. Después de mergear a `main`, mirá que *Deploy to Firebase* termine en verde; un *skipped* en el smoke significa que el deploy falló: leé el paso *Deploy to Firebase*.
+- `Secret environment variable overlaps non secret environment variable: X`: el servicio de Cloud Run ya tenía `X` como variable normal y ahora se le agrega el secreto del mismo nombre. Se arregla quitando la variable normal (`gcloud run services update <servicio> --region us-central1 --remove-env-vars X`) o, sin acceso a GCP, renombrando la función en `functions/index.js` (se crea limpia y `--force` borra la vieja). Así se resolvió con `zoneWatcher` → `signalWatcher`.
 - El log muestra `409 … unable to queue the operation` al actualizar varias funciones a la vez: es un reintento normal, termina en "Successful update operation".
 - `firebase-functions@5` da una advertencia de versión vieja: subir a la última es un cambio con rupturas posibles; no se hizo sin poder probar el deploy.
 - `index.html` y los service workers se sirven sin caché (para que un deploy nuevo no quede tapado por una PWA vieja); `/assets/**` con caché larga e inmutable.
@@ -32,7 +34,7 @@ y después *Run workflow* del deploy. Diagnóstico: `/api/health/deep` (configur
 ## Checklist después de cada deploy (resumen del *Smoke test*)
 Debería decir: ✅ Web · ✅ API · ✅ Groq (la clave funciona) · versiones `p3 / p3 / p3-4` · ✅ COT desde la función · "Contexto de oro … faltan: nada" · Noticias 9/9 · Métricas PAXG con 200 · y **ningún aviso de calendario**. Si algo falla: `/api/health/deep` (config y frescura), `/api/health/ai`, `/api/health/news`, `/api/health/cot`.
 
-**Avisos push (`zoneWatcher`, cada 60 min):** calcula la señal de cada usuario con avisos activados (sus USDT, compras y ritmo) y manda un push cuando toca **comprar o vender**; esperar no avisa. Sale de la misma función que `/api/crypto/decision`. Después del primer deploy **cada usuario tiene que abrir la app una vez** (sincroniza sus ajustes con el perfil y re-suscribe el dispositivo a su usuario): hasta entonces no recibe avisos. Usa los secretos de Groq y FRED (contexto de oro) además de VAPID; si el job falla revisá sus logs en la consola de Cloud Functions.
+**Avisos push (`signalWatcher`, cada 60 min):** calcula la señal de cada usuario con avisos activados (sus USDT, compras y ritmo) y manda un push cuando toca **comprar o vender**; esperar no avisa. Sale de la misma función que `/api/crypto/decision`. Después del primer deploy **cada usuario tiene que abrir la app una vez** (sincroniza sus ajustes con el perfil y re-suscribe el dispositivo a su usuario): hasta entonces no recibe avisos. Usa los secretos de Groq y FRED (contexto de oro) además de VAPID; si el job falla revisá sus logs en la consola de Cloud Functions.
 
 **Service worker y push:** hay UN solo service worker (el de Workbox), que carga `public/sw-push.js` con el handler de `push` (`workbox.importScripts` en `vite.config.js`). No volver a registrar `sw-push.js` aparte: en el mismo scope se pisan y los avisos dejan de mostrarse. Después del deploy, los usuarios reciben el worker nuevo al abrir la app.
 
